@@ -52,3 +52,26 @@ jobs:
       - name: Logs on failure
         if: failure()
         run: docker compose -f docker/before/docker-compose.yml logs --tail 200
+  dynamodb-design:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cache AdventureWorks backups
+        uses: actions/cache@v4
+        with:
+          path: docker/before/baks
+          key: aw-baks-2022-v1
+      - run: pip install -r requirements-design.txt
+      - name: mapping.json is in sync with mapping.yaml
+        run: |
+          python scripts/design/expand_mapping.py
+          git diff --stat --exit-code design/mapping
+      - name: SQL Server + DynamoDB Local, load via mapping, run access-pattern tests vs SQL
+        run: PYTHON=python scripts/design-validate.sh
+      - name: Load stats
+        if: always()
+        run: cat /tmp/load-stats.json || true

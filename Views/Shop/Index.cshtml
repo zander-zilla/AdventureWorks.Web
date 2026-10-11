@@ -1,0 +1,21 @@
+@* BEFORE BASELINE (demo-only) *@
+@model IEnumerable<AdventureWorks.Web.Models.Product>
+@{ ViewData["Title"] = "Shop"; }
+<h2>Shop (signed in as @User.Identity.Name)</h2>
+<p><a asp-action="MyOrders">My orders</a></p>
+<table class="table">
+    <tr><th>Product</th><th>Number</th><th>List price</th><th></th></tr>
+    @foreach (var p in Model)
+    {
+        <tr>
+            <td>@p.Name</td><td>@p.ProductNumber</td><td>@p.ListPrice.ToString("0.00")</td>
+            <td>
+                <form asp-action="Order" method="post" class="form-inline">
+                    <input type="hidden" name="productId" value="@p.ProductId" />
+                    <input name="quantity" value="1" size="2" class="form-control input-sm" />
+                    <button type="submit" class="btn btn-sm btn-success">Order</button>
+                </form>
+            </td>
+        </tr>
+    }
+</table>

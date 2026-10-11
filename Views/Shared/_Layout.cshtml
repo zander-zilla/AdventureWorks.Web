@@ -33,6 +33,21 @@
                     <li><a asp-area="" asp-controller="Home" asp-action="Index">Home</a></li>
                     <li><a asp-area="" asp-controller="Home" asp-action="About">About</a></li>
                     <li><a asp-area="" asp-controller="Home" asp-action="Contact">Contact</a></li>
+                    <li><a asp-area="" asp-controller="Products" asp-action="Index">Products</a></li>
+                    <li><a asp-area="" asp-controller="Customers" asp-action="Index">Customers</a></li>
+                    <li><a asp-area="" asp-controller="Shop" asp-action="Index">Shop (demo)</a></li>
+                </ul>
+                @* BEFORE BASELINE (demo-only) login status *@
+                <ul class="nav navbar-nav navbar-right">
+                    @if (User.Identity.IsAuthenticated)
+                    {
+                        <li><a asp-controller="Shop" asp-action="MyOrders">@User.Identity.Name</a></li>
+                        <li><form asp-controller="Account" asp-action="Logout" method="post" class="navbar-form"><button class="btn btn-link navbar-btn" type="submit">Log out</button></form></li>
+                    }
+                    else
+                    {
+                        <li><a asp-controller="Account" asp-action="Login">Demo login</a></li>
+                    }
                 </ul>
             </div>
         </div>

@@ -38,5 +38,5 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 |---|---|---|
 | 0 Setup | In review | #1 |
 | 1 Discovery | In review (stacked on #1): inventory, domain split, DW lineage, playbook, seed access patterns — see docs/discovery | #2 |
-| 2 Access patterns | In review (stacked on #2): docs/design/access-patterns.md/.json | #3 |
+| 2 Access patterns | Approved (D1–D10), in review (stacked on #2): docs/design/access-patterns.md/.json | #3 |
 | 3–8 | Not started | – |

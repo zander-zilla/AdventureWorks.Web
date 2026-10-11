@@ -1,7 +1,49 @@
 {
- "version": 1,
+ "version": 2,
  "phase": 2,
- "status": "draft-for-review",
+ "status": "approved 2026-10-11",
+ "decisions": [
+  {
+   "id": "D1",
+   "decision": "Shopper read multipliers (x10 browse, x5 detail, x3 history per order) and a demo peak of ~1 order/s are accepted for sizing."
+  },
+  {
+   "id": "D2",
+   "decision": "Product search (CAT-12): case-insensitive name-prefix in DynamoDB for the demo; OpenSearch (zero-ETL) later."
+  },
+  {
+   "id": "D3",
+   "decision": "Carts (SAL-01) only for logged-in customers (cartId = customerId); items expire via TTL after 7 days."
+  },
+  {
+   "id": "D4",
+   "decision": "The .NET 10 app writes orders directly to DynamoDB; the old app keeps writing SQL, which flows one-way via CDC (side-by-side cutover)."
+  },
+  {
+   "id": "D5",
+   "decision": "DynamoDB-created orders get ids from a range above SQL's, with a source prefix on the order number."
+  },
+  {
+   "id": "D6",
+   "decision": "Phase 3 key design covers all 7 domains, including back-office patterns."
+  },
+  {
+   "id": "D7",
+   "decision": "Territory and sales-person lists (SAL-08, SAL-09, CUS-10) are served by Redshift only."
+  },
+  {
+   "id": "D8",
+   "decision": "Strong consistency only for login (CUS-01), cart (SAL-01) and read-after-checkout (SAL-04 right after SAL-02); everything else eventual."
+  },
+  {
+   "id": "D9",
+   "decision": "Product descriptions kept in all 6 cultures (CAT-13)."
+  },
+  {
+   "id": "D10",
+   "decision": "SQL deletes become tombstone items in DynamoDB (TTL later) so Redshift sees deletes (CDC-02)."
+  }
+ ],
  "legend": {
   "read_write": "R | W | R/W",
   "consistency": "eventual | strong | conditional",
@@ -89,7 +131,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-02",
@@ -110,7 +152,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Delete must be refused while products reference it (was an FK).",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-03",
@@ -133,7 +175,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "504 products total, 197 currently sellable with a no-discount offer. Price sort needs a second ordering.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-04",
@@ -157,7 +199,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Pre-join: model/description/photos/offers fetched with the product in one request; stock is a copied value from Inventory.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-05",
@@ -178,7 +220,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "ProductNumber and Name are unique in SQL; uniqueness must be enforced on write.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-06",
@@ -199,7 +241,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "504 items: paged full listing; fine as a scan of a small type or an index over all products.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-07",
@@ -221,7 +263,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Price change must also append a list-price history record (CAT-09).",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-08",
@@ -244,7 +286,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-09",
@@ -267,7 +309,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "395 list + 395 cost history rows.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-10",
@@ -290,7 +332,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-11",
@@ -311,7 +353,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CAT-12",
@@ -329,13 +371,13 @@
     "business"
    ],
    "shopper_page": true,
-   "scope": "opensearch-or-defer",
+   "scope": "dynamodb",
    "hard": {
     "why": "ad hoc / free-text search; DynamoDB only supports key-prefix matching",
-    "approach": "Demo: name-prefix via an index on normalized name (begins_with) or client-side filter over the 197 sellable products. Production: OpenSearch fed by DynamoDB Streams (zero-ETL OpenSearch integration)."
+    "approach": "DECIDED (D2): demo = case-insensitive name-prefix (begins_with on a normalized name key). Later: OpenSearch via DynamoDB zero-ETL for full text."
    },
-   "notes": "",
-   "status": "draft-for-review"
+   "notes": "Name-prefix only for the demo (D2).",
+   "status": "approved"
   },
   {
    "id": "CAT-13",
@@ -355,8 +397,8 @@
    "shopper_page": true,
    "scope": "dynamodb",
    "hard": null,
-   "notes": "",
-   "status": "draft-for-review"
+   "notes": "All 6 cultures kept (D9).",
+   "status": "approved"
   },
   {
    "id": "INV-01",
@@ -378,7 +420,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "1,069 rows. Total is pushed to Catalog (CAT-04/03) as a denormalized copy via Streams.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "INV-02",
@@ -403,7 +445,7 @@
     "approach": "Sparse 'needs reorder' marker maintained when stock changes (written by the same stream that updates totals); or Redshift report."
    },
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "INV-03",
@@ -427,7 +469,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "In SQL the order-detail trigger writes a TransactionHistory row per order line; in the target this becomes an event from Sales, not a cross-table write.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "INV-04",
@@ -452,7 +494,7 @@
     "approach": "Store BOM edges per assembly; app iterates levels (max depth ~4, 2,679 edges) or keep a materialized flattened tree per top-level assembly, rebuilt on change."
    },
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "INV-05",
@@ -476,7 +518,7 @@
     "approach": "Inverted index on BOM edges (component -> assembly), iterate levels in app."
    },
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "INV-06",
@@ -499,7 +541,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "INV-07",
@@ -523,7 +565,7 @@
     "approach": "Redshift: rebuild from zero-ETL'd transaction history (phase 6). No DynamoDB keys."
    },
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "SAL-01",
@@ -544,8 +586,8 @@
    "shopper_page": true,
    "scope": "dynamodb",
    "hard": null,
-   "notes": "Only 3 rows today; cart is short-lived (TTL). Product name/price read from Catalog at render time.",
-   "status": "draft-for-review"
+   "notes": "Logged-in customers only, cartId = customerId; 7-day TTL (D3). Only 3 rows today. Product name/price read from Catalog at render time.",
+   "status": "approved"
   },
   {
    "id": "SAL-02",
@@ -568,8 +610,8 @@
    "shopper_page": true,
    "scope": "dynamodb",
    "hard": null,
-   "notes": "Needs product price/offer (CAT-10), tax rate (REF-02), ship method (REF-04), address/card snapshot (CUS-03). Header SubTotal maintained in the same transaction (replaces trigger). Max 72 lines/order today.",
-   "status": "draft-for-review"
+   "notes": "Needs product price/offer (CAT-10), tax rate (REF-02), ship method (REF-04), address/card snapshot (CUS-03). Header SubTotal maintained in the same transaction (replaces trigger). Max 72 lines/order today. The .NET 10 app writes orders directly to DynamoDB; the old app writes SQL and flows via CDC (one-way, side-by-side cutover) (D4). DynamoDB-created orders get ids from a range above SQL's with a source prefix (D5).",
+   "status": "approved"
   },
   {
    "id": "SAL-03",
@@ -580,7 +622,7 @@
    "result": "orders (number, date, status, total, line summary)",
    "frequency": "~3x orders",
    "read_write": "R",
-   "consistency": "eventual",
+   "consistency": "eventual (read-after-checkout uses SAL-04 strong, D8)",
    "sort": "OrderDate desc",
    "filter": "",
    "source": [
@@ -591,7 +633,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Max 28 orders per customer today; bounded.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "SAL-04",
@@ -602,7 +644,7 @@
    "result": "header + lines + reasons",
    "frequency": "~3x orders",
    "read_write": "R",
-   "consistency": "eventual",
+   "consistency": "strong right after checkout (D8), else eventual",
    "sort": "",
    "filter": "",
    "source": [
@@ -613,7 +655,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "SAL-05",
@@ -635,7 +677,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "All 31,465 historical orders are status 5 (shipped) → only new orders are 'open'; sparse.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "SAL-06",
@@ -656,7 +698,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "SAL-07",
@@ -678,7 +720,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "SAL-08",
@@ -697,10 +739,10 @@
     "dw:FactResellerSales"
    ],
    "shopper_page": false,
-   "scope": "dynamodb",
+   "scope": "redshift",
    "hard": null,
-   "notes": "",
-   "status": "draft-for-review"
+   "notes": "Redshift only (D7).",
+   "status": "approved"
   },
   {
    "id": "SAL-09",
@@ -718,10 +760,10 @@
     "business"
    ],
    "shopper_page": false,
-   "scope": "dynamodb",
+   "scope": "redshift",
    "hard": null,
-   "notes": "10 territories → coarse partitions; consider date-bucketed key in phase 3 or Redshift.",
-   "status": "draft-for-review"
+   "notes": "Redshift only (D7); 10 territories would be coarse partitions.",
+   "status": "approved"
   },
   {
    "id": "SAL-10",
@@ -743,7 +785,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "SalesYTD/SalesLastYear are stored aggregates in SQL → maintain as pre-aggregated counters on order write.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "SAL-11",
@@ -767,7 +809,7 @@
     "approach": "Redshift view over zero-ETL data (phase 6); not a DynamoDB key."
    },
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "SAL-12",
@@ -789,7 +831,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "SAL-13",
@@ -810,7 +852,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Candidate for a sparse lookup; or accept Redshift for rare lookups (decide in phase 3).",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CUS-01",
@@ -833,7 +875,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Email must be unique across persons (19,972 emails). Password hash/salt in SQL; demo uses a shared password.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CUS-02",
@@ -856,7 +898,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CUS-03",
@@ -878,7 +920,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CUS-04",
@@ -900,7 +942,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CUS-05",
@@ -921,7 +963,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "19,820 customers; paged scan of one type is acceptable for admin.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CUS-06",
@@ -943,7 +985,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CUS-07",
@@ -966,7 +1008,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CUS-08",
@@ -988,7 +1030,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Keep the XML as a map; DW needs it.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CUS-09",
@@ -1009,7 +1051,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Changing an address does not change past orders (orders carry a snapshot).",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CUS-10",
@@ -1027,10 +1069,10 @@
     "business"
    ],
    "shopper_page": false,
-   "scope": "dynamodb",
+   "scope": "redshift",
    "hard": null,
-   "notes": "10 territories x ~2k customers; candidate for Redshift instead of an index.",
-   "status": "draft-for-review"
+   "notes": "Redshift only (D7).",
+   "status": "approved"
   },
   {
    "id": "CUS-11",
@@ -1055,7 +1097,7 @@
     "approach": "Customer & Party owns all persons, so keep a person item keyed by businessEntityId; Purchasing/HR keep copies of what they display."
    },
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "PUR-01",
@@ -1077,7 +1119,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "PUR-02",
@@ -1098,7 +1140,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "PUR-03",
@@ -1119,7 +1161,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Many-to-many with PUR-02 (460 edges).",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "PUR-04",
@@ -1140,7 +1182,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "PUR-05",
@@ -1161,7 +1203,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "PUR-06",
@@ -1182,7 +1224,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "PUR-07",
@@ -1203,7 +1245,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Sparse: few open POs.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "HR-01",
@@ -1225,7 +1267,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "HR-02",
@@ -1247,7 +1289,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "HR-03",
@@ -1273,7 +1315,7 @@
     "approach": "Store the materialized org path (e.g. /1/4/3/) as a sort key → subtree = begins_with; chain = parse path. 290 employees, so client-side is also fine."
    },
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "HR-04",
@@ -1294,7 +1336,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "HR-05",
@@ -1317,7 +1359,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "HR-06",
@@ -1342,7 +1384,7 @@
     "approach": "Out of scope for keys; if needed, OpenSearch or a client-side filter over 13 items."
    },
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "REF-01",
@@ -1363,7 +1405,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "REF-02",
@@ -1384,7 +1426,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "REF-03",
@@ -1406,7 +1448,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "REF-04",
@@ -1427,7 +1469,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "REF-05",
@@ -1450,7 +1492,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CDC-01",
@@ -1471,7 +1513,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Requires every target item to be addressable from its source PK (deterministic key) and to carry the last-applied LSN.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CDC-02",
@@ -1479,7 +1521,7 @@
    "question": "Apply a source delete",
    "actor": "CDC consumer",
    "inputs": "source table, PK, LSN",
-   "result": "target item(s) deleted or tombstoned",
+   "result": "target item(s) tombstoned",
    "frequency": "low",
    "read_write": "W",
    "consistency": "conditional on LSN",
@@ -1491,8 +1533,8 @@
    "shopper_page": false,
    "scope": "dynamodb",
    "hard": null,
-   "notes": "e.g. reset-demo deletes demo orders → must remove them from aw-sales.",
-   "status": "draft-for-review"
+   "notes": "DECIDED (D10): SQL deletes become tombstone items (deleted flag, TTL later) so zero-ETL/Redshift sees the delete; e.g. reset-demo deletes demo orders.",
+   "status": "approved"
   },
   {
    "id": "CDC-03",
@@ -1516,7 +1558,7 @@
     "approach": "Event-driven refresh via DynamoDB Streams/EventBridge; immutable snapshots (order lines, order addresses) are never refreshed."
    },
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "CDC-04",
@@ -1537,7 +1579,7 @@
    "scope": "dynamodb",
    "hard": null,
    "notes": "Design keys so a child can be written using only its own source columns (no lookup of the parent required).",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "DW-01",
@@ -1558,7 +1600,7 @@
    "scope": "redshift",
    "hard": null,
    "notes": "Needs entityType + plain-named business attributes on every item (not only inside PK/SK).",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "DW-02",
@@ -1582,7 +1624,7 @@
    "scope": "redshift",
    "hard": null,
    "notes": "Order/line items must keep: OnlineOrderFlag, CustomerID, StoreID, SalesPersonID, TerritoryID, CurrencyRateID, SpecialOfferID, product standard cost at order date, dates.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "DW-03",
@@ -1603,7 +1645,7 @@
    "scope": "redshift",
    "hard": null,
    "notes": "Keep demographics maps, price/cost history and employee history items so dimensions can be derived.",
-   "status": "draft-for-review"
+   "status": "approved"
   },
   {
    "id": "DW-04",
@@ -1628,7 +1670,7 @@
     "approach": "Redshift + QuickSight only; no GSIs for reporting."
    },
    "notes": "",
-   "status": "draft-for-review"
+   "status": "approved"
   }
  ]
 }

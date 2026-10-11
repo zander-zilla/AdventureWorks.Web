@@ -1,6 +1,21 @@
 # Access-pattern catalog (phase 2)
 
-Generated from `scripts/design/access_patterns.py` (source of truth) together with [`access-patterns.json`](access-patterns.json). Status: **draft for John's review** — no key design here (phase 3).
+Generated from `scripts/design/access_patterns.py` (source of truth) together with [`access-patterns.json`](access-patterns.json). Status: **approved by John (2026-10-11)** with decisions D1–D10 below — no key design here (phase 3).
+
+## Decisions (2026-10-11)
+
+| ID | Decision |
+|---|---|
+| D1 | Shopper read multipliers (x10 browse, x5 detail, x3 history per order) and a demo peak of ~1 order/s are accepted for sizing. |
+| D2 | Product search (CAT-12): case-insensitive name-prefix in DynamoDB for the demo; OpenSearch (zero-ETL) later. |
+| D3 | Carts (SAL-01) only for logged-in customers (cartId = customerId); items expire via TTL after 7 days. |
+| D4 | The .NET 10 app writes orders directly to DynamoDB; the old app keeps writing SQL, which flows one-way via CDC (side-by-side cutover). |
+| D5 | DynamoDB-created orders get ids from a range above SQL's, with a source prefix on the order number. |
+| D6 | Phase 3 key design covers all 7 domains, including back-office patterns. |
+| D7 | Territory and sales-person lists (SAL-08, SAL-09, CUS-10) are served by Redshift only. |
+| D8 | Strong consistency only for login (CUS-01), cart (SAL-01) and read-after-checkout (SAL-04 right after SAL-02); everything else eventual. |
+| D9 | Product descriptions kept in all 6 cultures (CAT-13). |
+| D10 | SQL deletes become tombstone items in DynamoDB (TTL later) so Redshift sees deletes (CDC-02). |
 
 Frequency estimates come from AdventureWorks2022 row counts: 31,465 orders over 37 months (2011-05-31 → 2014-06-30) ≈ 28 orders/day (27,659 online), 121,317 lines (max 72/order), max 28 orders per customer, 19,820 customers, 504 products (197 sellable with the no-discount offer), 4,012 POs, 72,591 work orders. Shopper read multipliers (×10 browse, ×5 detail, ×3 history per order) are assumptions to confirm.
 
@@ -10,15 +25,15 @@ Scope: **dynamodb** = must be served by the domain table's keys/indexes in phase
 
 | Domain | Table | Patterns | DynamoDB | Redshift | Other | Shopper | Hard |
 |---|---|---|---|---|---|---|---|
-| Catalog | `aw-catalog` | 13 | 12 | 0 | 1 | 8 | 1 |
+| Catalog | `aw-catalog` | 13 | 13 | 0 | 0 | 8 | 1 |
 | Inventory & Manufacturing | `aw-inventory` | 7 | 6 | 1 | 0 | 0 | 4 |
-| Sales | `aw-sales` | 13 | 12 | 1 | 0 | 4 | 1 |
-| Customer & Party | `aw-customer` | 11 | 11 | 0 | 0 | 4 | 1 |
+| Sales | `aw-sales` | 13 | 10 | 3 | 0 | 4 | 1 |
+| Customer & Party | `aw-customer` | 11 | 10 | 1 | 0 | 4 | 1 |
 | Purchasing | `aw-purchasing` | 7 | 7 | 0 | 0 | 0 | 0 |
 | HR | `aw-hr` | 6 | 5 | 0 | 1 | 0 | 2 |
 | Reference | `aw-reference` | 5 | 5 | 0 | 0 | 3 | 0 |
 | Cross-cutting | `(all)` | 8 | 4 | 4 | 0 | 0 | 2 |
-| **Total** | | **70** | 62 | 6 | 2 | 19 | 11 |
+| **Total** | | **70** | 60 | 9 | 1 | 19 | 11 |
 
 ## Shopper journey coverage
 
@@ -35,7 +50,7 @@ Scope: **dynamodb** = must be served by the domain table's keys/indexes in phase
 
 | ID | Pattern | Why hard | Proposed approach |
 |---|---|---|---|
-| CAT-12 | Search products by free text (name, description, color) | ad hoc / free-text search; DynamoDB only supports key-prefix matching | Demo: name-prefix via an index on normalized name (begins_with) or client-side filter over the 197 sellable products. Production: OpenSearch fed by DynamoDB Streams (zero-ETL OpenSearch integration). |
+| CAT-12 | Search products by free text (name, description, color) | ad hoc / free-text search; DynamoDB only supports key-prefix matching | DECIDED (D2): demo = case-insensitive name-prefix (begins_with on a normalized name key). Later: OpenSearch via DynamoDB zero-ETL for full text. |
 | INV-02 | Which products are below their reorder point / safety stock? | filter across all products comparing two values | Sparse 'needs reorder' marker maintained when stock changes (written by the same stream that updates totals); or Redshift report. |
 | INV-04 | Explode the bill of materials for an assembly (all levels, as of a date) | recursive (multi-level) traversal | Store BOM edges per assembly; app iterates levels (max depth ~4, 2,679 edges) or keep a materialized flattened tree per top-level assembly, rebuilt on change. |
 | INV-05 | Where is this component used? | reverse recursive traversal | Inverted index on BOM edges (component -> assembly), iterate levels in app. |
@@ -64,10 +79,10 @@ Scope: **dynamodb** = must be served by the domain table's keys/indexes in phase
 | CAT-09 | What was this product's list price / standard cost on a given date? | Order pricing audit; DW DimProduct SCD2 | productId, date | price/cost effective on that date | low online; bulk in analytics | R | eventual | sort: by start date | dynamodb | fn:dbo.ufnGetProductListPrice<br>fn:dbo.ufnGetProductStandardCost<br>dw:DimProduct |
 | CAT-10 | Which special offers apply to this product today? 🛒 | Shopper: product detail / cart pricing | productId, date | active offers (discount %, min/max qty) | high (with CAT-04 / checkout) | R | eventual | filter: StartDate <= today <= EndDate | dynamodb | table:Sales.SpecialOffer<br>table:Sales.SpecialOfferProduct<br>fn:dbo.ufnGetProductDealerPrice |
 | CAT-11 | Show / add reviews for a product 🛒 | Shopper | productId | reviews newest first | low (4 reviews exist) | R/W | eventual | sort: ReviewDate desc | dynamodb | table:Production.ProductReview |
-| CAT-12 | Search products by free text (name, description, color) ⚠ 🛒 | Shopper: search box | text | matching products ranked | medium | R | eventual | – | opensearch-or-defer | business |
+| CAT-12 | Search products by free text (name, description, color) ⚠ 🛒 | Shopper: search box | text | matching products ranked | medium | R | eventual | – | dynamodb | business |
 | CAT-13 | Show the culture-specific description (en, fr, es, ...) 🛒 | Shopper (localized site) | productModelId, culture | description text | low | R | eventual | – | dynamodb | table:Production.ProductModelProductDescriptionCulture |
 
-Notes: **CAT-02** Delete must be refused while products reference it (was an FK). **CAT-03** 504 products total, 197 currently sellable with a no-discount offer. Price sort needs a second ordering. **CAT-04** Pre-join: model/description/photos/offers fetched with the product in one request; stock is a copied value from Inventory. **CAT-05** ProductNumber and Name are unique in SQL; uniqueness must be enforced on write. **CAT-06** 504 items: paged full listing; fine as a scan of a small type or an index over all products. **CAT-07** Price change must also append a list-price history record (CAT-09). **CAT-09** 395 list + 395 cost history rows.
+Notes: **CAT-02** Delete must be refused while products reference it (was an FK). **CAT-03** 504 products total, 197 currently sellable with a no-discount offer. Price sort needs a second ordering. **CAT-04** Pre-join: model/description/photos/offers fetched with the product in one request; stock is a copied value from Inventory. **CAT-05** ProductNumber and Name are unique in SQL; uniqueness must be enforced on write. **CAT-06** 504 items: paged full listing; fine as a scan of a small type or an index over all products. **CAT-07** Price change must also append a list-price history record (CAT-09). **CAT-09** 395 list + 395 cost history rows. **CAT-12** Name-prefix only for the demo (D2). **CAT-13** All 6 cultures kept (D9).
 
 ## Inventory & Manufacturing — `aw-inventory`
 
@@ -87,29 +102,29 @@ Notes: **INV-01** 1,069 rows. Total is pushed to Catalog (CAT-04/03) as a denorm
 
 ## Sales — `aw-sales`
 
-**One-page summary.** Carts, checkout, orders and lines, and the sales organisation (sales people, quotas, territories). Hot path of the live demo: the order a test customer places flows SQL -> CDC -> DynamoDB here. Owner: Sales. 13 patterns (4 shopper-facing, 1 served from Redshift).
+**One-page summary.** Carts, checkout, orders and lines, and the sales organisation (sales people, quotas, territories). Hot path of the live demo: the order a test customer places flows SQL -> CDC -> DynamoDB here. Owner: Sales. 13 patterns (4 shopper-facing, 3 served from Redshift).
 
 | ID | Question (business words) | Actor / screen | Inputs | Expected result | Frequency / volume | R/W | Consistency | Sort / filter | Scope | Source |
 |---|---|---|---|---|---|---|---|---|---|---|
 | SAL-01 | Add / change / remove an item in my cart, and show my cart 🛒 | Shopper: cart | cartId (= customer or anonymous session), productId, qty | cart lines with current product name/price | ~10x orders | R/W | strong (read-your-writes) | sort: date added | dynamodb | table:Sales.ShoppingCartItem<br>shopper:cart |
 | SAL-02 | Check out: turn my cart into an order (header + lines) with tax, freight, totals 🛒 | Shopper: checkout; demo Shop/Order | customerId, cart, ship-to/bill-to address, ship method, card | new order id/number | ~28/day historic (31,465 orders / 37 months); demo bursts | W | strong; atomic (transaction) | – | dynamodb | screen:Shop/Order (demo)<br>trigger:Sales.iduSalesOrderDetail (SubTotal)<br>table:Sales.SalesOrderHeader<br>table:Sales.SalesOrderDetail |
-| SAL-03 | Show my order history, newest first 🛒 | Shopper: My orders | customerId, page | orders (number, date, status, total, line summary) | ~3x orders | R | eventual | sort: OrderDate desc | dynamodb | screen:Shop/MyOrders (demo)<br>table:Sales.SalesOrderHeader |
-| SAL-04 | Show one order with its lines (and sales reasons) 🛒 | Shopper; customer service | salesOrderId or SalesOrderNumber | header + lines + reasons | ~3x orders | R | eventual | – | dynamodb | table:Sales.SalesOrderDetail<br>table:Sales.SalesOrderHeaderSalesReason |
+| SAL-03 | Show my order history, newest first 🛒 | Shopper: My orders | customerId, page | orders (number, date, status, total, line summary) | ~3x orders | R | eventual (read-after-checkout uses SAL-04 strong, D8) | sort: OrderDate desc | dynamodb | screen:Shop/MyOrders (demo)<br>table:Sales.SalesOrderHeader |
+| SAL-04 | Show one order with its lines (and sales reasons) 🛒 | Shopper; customer service | salesOrderId or SalesOrderNumber | header + lines + reasons | ~3x orders | R | strong right after checkout (D8), else eventual | – | dynamodb | table:Sales.SalesOrderDetail<br>table:Sales.SalesOrderHeaderSalesReason |
 | SAL-05 | Which orders are in status X (e.g. in process / to ship) by date? | Fulfilment | status, date range | orders | low-medium | R | eventual | sort: OrderDate; filter: status | dynamodb | fn:dbo.ufnGetSalesOrderStatusText<br>business |
 | SAL-06 | Ship / cancel / revise an order | Fulfilment; customer service | salesOrderId | order updated (status, ship date, revision) | ~orders | W | strong; conditional on current status/revision | – | dynamodb | trigger:Sales.uSalesOrderHeader (RevisionNumber/ModifiedDate) |
 | SAL-07 | Orders for a store / reseller over a date range | Sales rep; store portal | customerId (store) , date range | orders | low | R | eventual | sort: OrderDate desc | dynamodb | dw:FactResellerSales<br>table:Sales.SalesOrderHeader |
-| SAL-08 | Orders taken by a sales person over a date range | Sales manager | salesPersonId, date range | orders | low | R | eventual | sort: OrderDate desc | dynamodb | business<br>dw:FactResellerSales |
-| SAL-09 | Orders in a territory over a date range | Sales manager | territoryId, date range | orders | low | R | eventual | sort: OrderDate desc | dynamodb | business |
+| SAL-08 | Orders taken by a sales person over a date range | Sales manager | salesPersonId, date range | orders | low | R | eventual | sort: OrderDate desc | redshift | business<br>dw:FactResellerSales |
+| SAL-09 | Orders in a territory over a date range | Sales manager | territoryId, date range | orders | low | R | eventual | sort: OrderDate desc | redshift | business |
 | SAL-10 | Sales person profile with quota history and YTD/last-year sales | Sales manager | salesPersonId | sales person, territory, quotas by quarter, YTD figures | low | R | eventual | sort: QuotaDate | dynamodb | view:Sales.vSalesPerson<br>table:Sales.SalesPersonQuotaHistory |
 | SAL-11 | Sales by sales person by fiscal year ⚠ | Sales manager | – | pivot of sales per person per FY | low | R | eventual | – | redshift | view:Sales.vSalesPersonSalesByFiscalYears |
 | SAL-12 | Which sales people cover a territory (now and historically)? | Sales manager | territoryId | sales people with start/end | low | R | eventual | sort: StartDate | dynamodb | table:Sales.SalesTerritoryHistory<br>table:Sales.SalesTerritory |
 | SAL-13 | Find an order by purchase order number or card approval code | Customer service | PO number \| approval code | order | low | R | eventual | – | dynamodb | business |
 
-Notes: **SAL-01** Only 3 rows today; cart is short-lived (TTL). Product name/price read from Catalog at render time. **SAL-02** Needs product price/offer (CAT-10), tax rate (REF-02), ship method (REF-04), address/card snapshot (CUS-03). Header SubTotal maintained in the same transaction (replaces trigger). Max 72 lines/order today. **SAL-03** Max 28 orders per customer today; bounded. **SAL-05** All 31,465 historical orders are status 5 (shipped) → only new orders are 'open'; sparse. **SAL-09** 10 territories → coarse partitions; consider date-bucketed key in phase 3 or Redshift. **SAL-10** SalesYTD/SalesLastYear are stored aggregates in SQL → maintain as pre-aggregated counters on order write. **SAL-13** Candidate for a sparse lookup; or accept Redshift for rare lookups (decide in phase 3).
+Notes: **SAL-01** Logged-in customers only, cartId = customerId; 7-day TTL (D3). Only 3 rows today. Product name/price read from Catalog at render time. **SAL-02** Needs product price/offer (CAT-10), tax rate (REF-02), ship method (REF-04), address/card snapshot (CUS-03). Header SubTotal maintained in the same transaction (replaces trigger). Max 72 lines/order today. The .NET 10 app writes orders directly to DynamoDB; the old app writes SQL and flows via CDC (one-way, side-by-side cutover) (D4). DynamoDB-created orders get ids from a range above SQL's with a source prefix (D5). **SAL-03** Max 28 orders per customer today; bounded. **SAL-05** All 31,465 historical orders are status 5 (shipped) → only new orders are 'open'; sparse. **SAL-08** Redshift only (D7). **SAL-09** Redshift only (D7); 10 territories would be coarse partitions. **SAL-10** SalesYTD/SalesLastYear are stored aggregates in SQL → maintain as pre-aggregated counters on order write. **SAL-13** Candidate for a sparse lookup; or accept Redshift for rare lookups (decide in phase 3).
 
 ## Customer & Party — `aw-customer`
 
-**One-page summary.** Identity and profile: persons, stores, logins, emails, phones, addresses, payment cards, store contacts. Serves login, checkout address/card selection and the customer screens. Owner: Customer service. 11 patterns (4 shopper-facing, 0 served from Redshift).
+**One-page summary.** Identity and profile: persons, stores, logins, emails, phones, addresses, payment cards, store contacts. Serves login, checkout address/card selection and the customer screens. Owner: Customer service. 11 patterns (4 shopper-facing, 1 served from Redshift).
 
 | ID | Question (business words) | Actor / screen | Inputs | Expected result | Frequency / volume | R/W | Consistency | Sort / filter | Scope | Source |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -122,10 +137,10 @@ Notes: **SAL-01** Only 3 rows today; cart is short-lived (TTL). Product name/pri
 | CUS-07 | Show a store with its contacts, addresses and demographics | Sales rep | storeId | store + contacts (role) + addresses + demographics | low | R | eventual | – | dynamodb | view:Sales.vStoreWithContacts<br>view:Sales.vStoreWithAddresses<br>view:Sales.vStoreWithDemographics |
 | CUS-08 | Show a person's demographics | Marketing; DW | personId | income, education, occupation, cars, children, ... | low | R | eventual | – | dynamodb | view:Sales.vPersonDemographics<br>dw:DimCustomer |
 | CUS-09 | Add / update my address, email, phone or card 🛒 | Shopper: account | customerId, value | updated profile | low | W | eventual | – | dynamodb | shopper:account |
-| CUS-10 | Customers in a territory | Sales manager | territoryId | customers | low | R | eventual | – | dynamodb | business |
+| CUS-10 | Customers in a territory | Sales manager | territoryId | customers | low | R | eventual | – | redshift | business |
 | CUS-11 | Contact info for any business entity (person, store, vendor contact, employee) ⚠ | Back office | businessEntityId | name, job title, type, phone, email | low | R | eventual | – | dynamodb | fn:dbo.ufnGetContactInformation<br>view:Person.vAdditionalContactInfo |
 
-Notes: **CUS-01** Email must be unique across persons (19,972 emails). Password hash/salt in SQL; demo uses a shared password. **CUS-05** 19,820 customers; paged scan of one type is acceptable for admin. **CUS-08** Keep the XML as a map; DW needs it. **CUS-09** Changing an address does not change past orders (orders carry a snapshot). **CUS-10** 10 territories x ~2k customers; candidate for Redshift instead of an index.
+Notes: **CUS-01** Email must be unique across persons (19,972 emails). Password hash/salt in SQL; demo uses a shared password. **CUS-05** 19,820 customers; paged scan of one type is acceptable for admin. **CUS-08** Keep the XML as a map; DW needs it. **CUS-09** Changing an address does not change past orders (orders carry a snapshot). **CUS-10** Redshift only (D7).
 
 ## Purchasing — `aw-purchasing`
 
@@ -175,7 +190,7 @@ Notes: **PUR-03** Many-to-many with PUR-02 (460 edges). **PUR-07** Sparse: few o
 | ID | Question (business words) | Actor / screen | Inputs | Expected result | Frequency / volume | R/W | Consistency | Sort / filter | Scope | Source |
 |---|---|---|---|---|---|---|---|---|---|---|
 | CDC-01 | Apply a source change (insert/update) to the target item(s), idempotently, keyed by the SQL primary key | CDC Lambda (DMS→Kinesis) / Debezium consumer | source table, source PK, after-image, LSN/commit ts | target item(s) upserted | every OLTP write (68 tables); demo bursts | W | conditional on LSN (ignore older) | – | dynamodb | cdc:all 68 tables |
-| CDC-02 | Apply a source delete | CDC consumer | source table, PK, LSN | target item(s) deleted or tombstoned | low | W | conditional on LSN | – | dynamodb | cdc:all 68 tables |
+| CDC-02 | Apply a source delete | CDC consumer | source table, PK, LSN | target item(s) tombstoned | low | W | conditional on LSN | – | dynamodb | cdc:all 68 tables |
 | CDC-03 | Fan out a source change to denormalized copies in other items/domains ⚠ | CDC consumer / stream processor | changed entity | copies refreshed (e.g. product name on catalog listings, person name on employee) | low-medium | W | eventual | – | dynamodb | docs/discovery/domains.md (break/duplicate table) |
 | CDC-04 | Child row arrives before its parent (e.g. order line before header) | CDC consumer | child change | item written without waiting for parent | per transaction | W | eventual | – | dynamodb | cdc ordering |
 | DW-01 | Land all domain data in Redshift continuously | DynamoDB zero-ETL → Redshift | – | SUPER rows per item | continuous | R | eventual | – | redshift | dw:all facts/dims |
@@ -183,20 +198,7 @@ Notes: **PUR-03** Many-to-many with PUR-02 (460 edges). **PUR-07** Sparse: few o
 | DW-03 | Rebuild DimCustomer / DimReseller / DimGeography / DimProduct (SCD2) / DimEmployee / DimPromotion / DimCurrency / DimSalesTerritory | Redshift SQL | domain items | dimension rows | batch | R | eventual | – | redshift | dw:Dim* |
 | DW-04 | Any aggregate report (sales by period/territory/category, top products, inventory balance) ⚠ | Analyst / QuickSight | any | aggregates | ad hoc | R | eventual | – | redshift | dw:views<br>view:Sales.vSalesPersonSalesByFiscalYears |
 
-Notes: **CDC-01** Requires every target item to be addressable from its source PK (deterministic key) and to carry the last-applied LSN. **CDC-02** e.g. reset-demo deletes demo orders → must remove them from aw-sales. **CDC-04** Design keys so a child can be written using only its own source columns (no lookup of the parent required). **DW-01** Needs entityType + plain-named business attributes on every item (not only inside PK/SK). **DW-02** Order/line items must keep: OnlineOrderFlag, CustomerID, StoreID, SalesPersonID, TerritoryID, CurrencyRateID, SpecialOfferID, product standard cost at order date, dates. **DW-03** Keep demographics maps, price/cost history and employee history items so dimensions can be derived.
-
-## Questions for sign-off
-
-1. **Shopper multipliers**: OK to size reads at ×10 browse / ×5 product detail / ×3 order-history per order, and demo peak ≈ 1 order/s?
-2. **Search (CAT-12)**: demo with name-prefix/client-side filter, or include OpenSearch (zero-ETL) in scope?
-3. **Cart (SAL-01)**: carts for logged-in customers only, or anonymous session carts too? TTL (e.g. 7 days)?
-4. **Checkout (SAL-02)**: during the live demo SQL stays system of record and DynamoDB is fed only by CDC — so the .NET 10 app (phase 5) writes orders to SQL, or directly to DynamoDB (then CDC direction / dual-write)?
-5. **Order ids**: keep SQL SalesOrderID / SalesOrderNumber as the key for orders created in SQL; what id do orders created natively in DynamoDB get?
-6. **Back-office patterns**: keep in phase-3 key design or mark out-of-scope for the demo? (Inventory INV-02..06, Purchasing PUR-*, HR-*, SAL-05..13, CUS-07/10/11)
-7. **Territory / sales-person lists (SAL-08/09, CUS-10)**: DynamoDB index or Redshift only?
-8. **Consistency**: strong reads required only for login, cart and read-after-checkout — agree?
-9. **Localisation (CAT-13)**: English-only for the demo, or keep all 6 cultures' descriptions?
-10. **Soft vs hard delete** for CDC-02 (e.g. reset-demo deletes): physically delete DynamoDB items, or tombstone so Redshift sees the delete?
+Notes: **CDC-01** Requires every target item to be addressable from its source PK (deterministic key) and to carry the last-applied LSN. **CDC-02** DECIDED (D10): SQL deletes become tombstone items (deleted flag, TTL later) so zero-ETL/Redshift sees the delete; e.g. reset-demo deletes demo orders. **CDC-04** Design keys so a child can be written using only its own source columns (no lookup of the parent required). **DW-01** Needs entityType + plain-named business attributes on every item (not only inside PK/SK). **DW-02** Order/line items must keep: OnlineOrderFlag, CustomerID, StoreID, SalesPersonID, TerritoryID, CurrencyRateID, SpecialOfferID, product standard cost at order date, dates. **DW-03** Keep demographics maps, price/cost history and employee history items so dimensions can be derived.
 
 Legend: ⚠ hard for single-table design (see table above) · 🛒 needed by the shopper pages.
 

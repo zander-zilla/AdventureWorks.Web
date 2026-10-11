@@ -34,7 +34,7 @@ def ap(id, domain, question, actor, inputs, result, freq, rw="R", consistency="e
        source=(), shopper=False, scope="dynamodb", hard=None, notes=""):
     P.append(dict(id=id, domain=domain, question=question, actor=actor, inputs=inputs, result=result,
                   frequency=freq, read_write=rw, consistency=consistency, sort=sort, filter=filter,
-                  source=list(source), shopper_page=shopper, scope=scope, hard=hard, notes=notes, status="draft-for-review"))
+                  source=list(source), shopper_page=shopper, scope=scope, hard=hard, notes=notes, status="approved"))
 
 # ---------------- Catalog ----------------
 D = "Catalog"
@@ -73,11 +73,11 @@ ap("CAT-10", D, "Which special offers apply to this product today?", "Shopper: p
 ap("CAT-11", D, "Show / add reviews for a product", "Shopper", "productId", "reviews newest first", "low (4 reviews exist)",
    rw="R/W", sort="ReviewDate desc", source=["table:Production.ProductReview"], shopper=True)
 ap("CAT-12", D, "Search products by free text (name, description, color)", "Shopper: search box", "text",
-   "matching products ranked", "medium", source=["business"], shopper=True, scope="opensearch-or-defer",
+   "matching products ranked", "medium", source=["business"], shopper=True, scope="dynamodb",
    hard={"why": "ad hoc / free-text search; DynamoDB only supports key-prefix matching",
-         "approach": "Demo: name-prefix via an index on normalized name (begins_with) or client-side filter over the 197 sellable products. Production: OpenSearch fed by DynamoDB Streams (zero-ETL OpenSearch integration)."})
+         "approach": "DECIDED (D2): demo = case-insensitive name-prefix (begins_with on a normalized name key). Later: OpenSearch via DynamoDB zero-ETL for full text."}, notes="Name-prefix only for the demo (D2).")
 ap("CAT-13", D, "Show the culture-specific description (en, fr, es, ...)", "Shopper (localized site)", "productModelId, culture",
-   "description text", "low", source=["table:Production.ProductModelProductDescriptionCulture"], shopper=True)
+   "description text", "low", source=["table:Production.ProductModelProductDescriptionCulture"], shopper=True, notes="All 6 cultures kept (D9).")
 
 # ---------------- Inventory ----------------
 D = "Inventory & Manufacturing"
@@ -106,16 +106,16 @@ ap("INV-07", D, "Daily inventory balance per product (history)", "Analyst", "dat
 D = "Sales"
 ap("SAL-01", D, "Add / change / remove an item in my cart, and show my cart", "Shopper: cart", "cartId (= customer or anonymous session), productId, qty",
    "cart lines with current product name/price", "~10x orders", rw="R/W", consistency="strong (read-your-writes)", sort="date added",
-   source=["table:Sales.ShoppingCartItem", "shopper:cart"], shopper=True, notes="Only 3 rows today; cart is short-lived (TTL). Product name/price read from Catalog at render time.")
+   source=["table:Sales.ShoppingCartItem", "shopper:cart"], shopper=True, notes="Logged-in customers only, cartId = customerId; 7-day TTL (D3). Only 3 rows today. Product name/price read from Catalog at render time.")
 ap("SAL-02", D, "Check out: turn my cart into an order (header + lines) with tax, freight, totals", "Shopper: checkout; demo Shop/Order",
    "customerId, cart, ship-to/bill-to address, ship method, card", "new order id/number", "~28/day historic (31,465 orders / 37 months); demo bursts",
    rw="W", consistency="strong; atomic (transaction)", source=["screen:Shop/Order (demo)", "trigger:Sales.iduSalesOrderDetail (SubTotal)", "table:Sales.SalesOrderHeader", "table:Sales.SalesOrderDetail"],
-   shopper=True, notes="Needs product price/offer (CAT-10), tax rate (REF-02), ship method (REF-04), address/card snapshot (CUS-03). Header SubTotal maintained in the same transaction (replaces trigger). Max 72 lines/order today.")
+   shopper=True, notes="Needs product price/offer (CAT-10), tax rate (REF-02), ship method (REF-04), address/card snapshot (CUS-03). Header SubTotal maintained in the same transaction (replaces trigger). Max 72 lines/order today. The .NET 10 app writes orders directly to DynamoDB; the old app writes SQL and flows via CDC (one-way, side-by-side cutover) (D4). DynamoDB-created orders get ids from a range above SQL's with a source prefix (D5).")
 ap("SAL-03", D, "Show my order history, newest first", "Shopper: My orders", "customerId, page", "orders (number, date, status, total, line summary)",
-   "~3x orders", sort="OrderDate desc", source=["screen:Shop/MyOrders (demo)", "table:Sales.SalesOrderHeader"], shopper=True,
+   "~3x orders", sort="OrderDate desc", consistency="eventual (read-after-checkout uses SAL-04 strong, D8)", source=["screen:Shop/MyOrders (demo)", "table:Sales.SalesOrderHeader"], shopper=True,
    notes="Max 28 orders per customer today; bounded.")
 ap("SAL-04", D, "Show one order with its lines (and sales reasons)", "Shopper; customer service", "salesOrderId or SalesOrderNumber",
-   "header + lines + reasons", "~3x orders", source=["table:Sales.SalesOrderDetail", "table:Sales.SalesOrderHeaderSalesReason"], shopper=True)
+   "header + lines + reasons", "~3x orders", consistency="strong right after checkout (D8), else eventual", source=["table:Sales.SalesOrderDetail", "table:Sales.SalesOrderHeaderSalesReason"], shopper=True)
 ap("SAL-05", D, "Which orders are in status X (e.g. in process / to ship) by date?", "Fulfilment", "status, date range",
    "orders", "low-medium", sort="OrderDate", filter="status", rw="R", source=["fn:dbo.ufnGetSalesOrderStatusText", "business"],
    notes="All 31,465 historical orders are status 5 (shipped) → only new orders are 'open'; sparse.")
@@ -124,9 +124,9 @@ ap("SAL-06", D, "Ship / cancel / revise an order", "Fulfilment; customer service
 ap("SAL-07", D, "Orders for a store / reseller over a date range", "Sales rep; store portal", "customerId (store) , date range",
    "orders", "low", sort="OrderDate desc", source=["dw:FactResellerSales", "table:Sales.SalesOrderHeader"])
 ap("SAL-08", D, "Orders taken by a sales person over a date range", "Sales manager", "salesPersonId, date range", "orders", "low",
-   sort="OrderDate desc", source=["business", "dw:FactResellerSales"])
+   sort="OrderDate desc", source=["business", "dw:FactResellerSales"], scope="redshift", notes="Redshift only (D7).")
 ap("SAL-09", D, "Orders in a territory over a date range", "Sales manager", "territoryId, date range", "orders", "low",
-   sort="OrderDate desc", source=["business"], notes="10 territories → coarse partitions; consider date-bucketed key in phase 3 or Redshift.")
+   sort="OrderDate desc", source=["business"], scope="redshift", notes="Redshift only (D7); 10 territories would be coarse partitions.")
 ap("SAL-10", D, "Sales person profile with quota history and YTD/last-year sales", "Sales manager", "salesPersonId",
    "sales person, territory, quotas by quarter, YTD figures", "low", sort="QuotaDate", source=["view:Sales.vSalesPerson", "table:Sales.SalesPersonQuotaHistory"],
    notes="SalesYTD/SalesLastYear are stored aggregates in SQL → maintain as pre-aggregated counters on order write.")
@@ -160,7 +160,7 @@ ap("CUS-08", D, "Show a person's demographics", "Marketing; DW", "personId", "in
 ap("CUS-09", D, "Add / update my address, email, phone or card", "Shopper: account", "customerId, value", "updated profile", "low",
    rw="W", source=["shopper:account"], shopper=True, notes="Changing an address does not change past orders (orders carry a snapshot).")
 ap("CUS-10", D, "Customers in a territory", "Sales manager", "territoryId", "customers", "low", source=["business"],
-   notes="10 territories x ~2k customers; candidate for Redshift instead of an index.")
+   scope="redshift", notes="Redshift only (D7).")
 ap("CUS-11", D, "Contact info for any business entity (person, store, vendor contact, employee)", "Back office", "businessEntityId",
    "name, job title, type, phone, email", "low", source=["fn:dbo.ufnGetContactInformation", "view:Person.vAdditionalContactInfo"],
    hard={"why": "polymorphic lookup across domains (vendor contacts, employees, store contacts)", "approach": "Customer & Party owns all persons, so keep a person item keyed by businessEntityId; Purchasing/HR keep copies of what they display."})
@@ -216,8 +216,8 @@ ap("CDC-01", D, "Apply a source change (insert/update) to the target item(s), id
    "CDC Lambda (DMS→Kinesis) / Debezium consumer", "source table, source PK, after-image, LSN/commit ts", "target item(s) upserted",
    "every OLTP write (68 tables); demo bursts", rw="W", consistency="conditional on LSN (ignore older)",
    source=["cdc:all 68 tables"], notes="Requires every target item to be addressable from its source PK (deterministic key) and to carry the last-applied LSN.")
-ap("CDC-02", D, "Apply a source delete", "CDC consumer", "source table, PK, LSN", "target item(s) deleted or tombstoned", "low", rw="W",
-   consistency="conditional on LSN", source=["cdc:all 68 tables"], notes="e.g. reset-demo deletes demo orders → must remove them from aw-sales.")
+ap("CDC-02", D, "Apply a source delete", "CDC consumer", "source table, PK, LSN", "target item(s) tombstoned", "low", rw="W",
+   consistency="conditional on LSN", source=["cdc:all 68 tables"], notes="DECIDED (D10): SQL deletes become tombstone items (deleted flag, TTL later) so zero-ETL/Redshift sees the delete; e.g. reset-demo deletes demo orders.")
 ap("CDC-03", D, "Fan out a source change to denormalized copies in other items/domains", "CDC consumer / stream processor",
    "changed entity", "copies refreshed (e.g. product name on catalog listings, person name on employee)", "low-medium", rw="W",
    source=["docs/discovery/domains.md (break/duplicate table)"],
@@ -238,13 +238,26 @@ ap("DW-04", D, "Any aggregate report (sales by period/territory/category, top pr
    "any", "aggregates", "ad hoc", scope="redshift", source=["dw:views", "view:Sales.vSalesPersonSalesByFiscalYears"],
    hard={"why": "large aggregates / ad hoc analytics", "approach": "Redshift + QuickSight only; no GSIs for reporting."})
 
+DECISIONS = [
+ ("D1", "Shopper read multipliers (x10 browse, x5 detail, x3 history per order) and a demo peak of ~1 order/s are accepted for sizing."),
+ ("D2", "Product search (CAT-12): case-insensitive name-prefix in DynamoDB for the demo; OpenSearch (zero-ETL) later."),
+ ("D3", "Carts (SAL-01) only for logged-in customers (cartId = customerId); items expire via TTL after 7 days."),
+ ("D4", "The .NET 10 app writes orders directly to DynamoDB; the old app keeps writing SQL, which flows one-way via CDC (side-by-side cutover)."),
+ ("D5", "DynamoDB-created orders get ids from a range above SQL's, with a source prefix on the order number."),
+ ("D6", "Phase 3 key design covers all 7 domains, including back-office patterns."),
+ ("D7", "Territory and sales-person lists (SAL-08, SAL-09, CUS-10) are served by Redshift only."),
+ ("D8", "Strong consistency only for login (CUS-01), cart (SAL-01) and read-after-checkout (SAL-04 right after SAL-02); everything else eventual."),
+ ("D9", "Product descriptions kept in all 6 cultures (CAT-13)."),
+ ("D10", "SQL deletes become tombstone items in DynamoDB (TTL later) so Redshift sees deletes (CDC-02)."),
+]
+
 def esc(x):
     return str(x).replace("|", "\\|")
 
 def main():
     ids = [p["id"] for p in P]; assert len(ids) == len(set(ids)), "duplicate ids"
     counts = collections.Counter(p["domain"] for p in P)
-    doc = {"version": 1, "phase": 2, "status": "draft-for-review",
+    doc = {"version": 2, "phase": 2, "status": "approved 2026-10-11", "decisions": [{"id": i, "decision": d} for i, d in DECISIONS],
            "legend": {"read_write": "R | W | R/W", "consistency": "eventual | strong | conditional", "scope": "dynamodb = must be served by domain table keys (phase 3); redshift = served by zero-ETL/Redshift, no keys; opensearch-or-defer; out-of-scope",
                       "frequency": "estimated from AdventureWorks2022 row counts (orders 2011-05-31..2014-06-30 = 31,465 orders ≈ 28/day; 27,659 online) plus demo bursts"},
            "domains": [{"name": n, **d, "pattern_count": counts[n]} for n, d in DOMAINS.items()],
@@ -252,7 +265,8 @@ def main():
     json.dump(doc, open(os.path.join(ROOT, "docs/design/access-patterns.json"), "w"), indent=1, ensure_ascii=False)
     L = ["# Access-pattern catalog (phase 2)\n",
          "Generated from `scripts/design/access_patterns.py` (source of truth) together with [`access-patterns.json`](access-patterns.json). "
-         "Status: **draft for John's review** — no key design here (phase 3).\n",
+         "Status: **approved by John (2026-10-11)** with decisions D1–D10 below — no key design here (phase 3).\n",
+         "## Decisions (2026-10-11)\n", "| ID | Decision |", "|---|---|"] + ["| %s | %s |" % d for d in DECISIONS] + ["",
          "Frequency estimates come from AdventureWorks2022 row counts: 31,465 orders over 37 months (2011-05-31 → 2014-06-30) ≈ 28 orders/day "
          "(27,659 online), 121,317 lines (max 72/order), max 28 orders per customer, 19,820 customers, 504 products (197 sellable with the no-discount offer), "
          "4,012 POs, 72,591 work orders. Shopper read multipliers (×10 browse, ×5 detail, ×3 history per order) are assumptions to confirm.\n",
@@ -290,18 +304,6 @@ def main():
         if notes:
             L.append("\nNotes: " + " ".join("**%s** %s" % (p["id"], p["notes"]) for p in notes))
         L.append("")
-    L += ["## Questions for sign-off\n",
-          "1. **Shopper multipliers**: OK to size reads at ×10 browse / ×5 product detail / ×3 order-history per order, and demo peak ≈ 1 order/s?",
-          "2. **Search (CAT-12)**: demo with name-prefix/client-side filter, or include OpenSearch (zero-ETL) in scope?",
-          "3. **Cart (SAL-01)**: carts for logged-in customers only, or anonymous session carts too? TTL (e.g. 7 days)?",
-          "4. **Checkout (SAL-02)**: during the live demo SQL stays system of record and DynamoDB is fed only by CDC — so the .NET 10 app (phase 5) writes orders to SQL, or directly to DynamoDB (then CDC direction / dual-write)?",
-          "5. **Order ids**: keep SQL SalesOrderID / SalesOrderNumber as the key for orders created in SQL; what id do orders created natively in DynamoDB get?",
-          "6. **Back-office patterns**: keep in phase-3 key design or mark out-of-scope for the demo? (Inventory INV-02..06, Purchasing PUR-*, HR-*, SAL-05..13, CUS-07/10/11)",
-          "7. **Territory / sales-person lists (SAL-08/09, CUS-10)**: DynamoDB index or Redshift only?",
-          "8. **Consistency**: strong reads required only for login, cart and read-after-checkout — agree?",
-          "9. **Localisation (CAT-13)**: English-only for the demo, or keep all 6 cultures' descriptions?",
-          "10. **Soft vs hard delete** for CDC-02 (e.g. reset-demo deletes): physically delete DynamoDB items, or tombstone so Redshift sees the delete?",
-          ""]
     L.append("Legend: ⚠ hard for single-table design (see table above) · 🛒 needed by the shopper pages.\n")
     out = L
     open(os.path.join(ROOT, "docs/design/access-patterns.md"), "w").write("\n".join(out) + "\n")

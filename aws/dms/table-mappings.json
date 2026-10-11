@@ -1,0 +1,1840 @@
+{
+ "rules": [
+  {
+   "rule-type": "selection",
+   "rule-id": "1",
+   "rule-name": "include-HumanResources-Department",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "Department"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "2",
+   "rule-name": "include-HumanResources-Employee",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "Employee"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "3",
+   "rule-name": "include-HumanResources-EmployeeDepartmentHistory",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "EmployeeDepartmentHistory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "4",
+   "rule-name": "include-HumanResources-EmployeePayHistory",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "EmployeePayHistory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "5",
+   "rule-name": "include-HumanResources-JobCandidate",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "JobCandidate"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "6",
+   "rule-name": "include-HumanResources-Shift",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "Shift"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "7",
+   "rule-name": "include-Person-Address",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "Address"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "8",
+   "rule-name": "include-Person-AddressType",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "AddressType"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "9",
+   "rule-name": "include-Person-BusinessEntity",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "BusinessEntity"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "10",
+   "rule-name": "include-Person-BusinessEntityAddress",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "BusinessEntityAddress"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "11",
+   "rule-name": "include-Person-BusinessEntityContact",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "BusinessEntityContact"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "12",
+   "rule-name": "include-Person-ContactType",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "ContactType"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "13",
+   "rule-name": "include-Person-CountryRegion",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "CountryRegion"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "14",
+   "rule-name": "include-Person-EmailAddress",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "EmailAddress"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "15",
+   "rule-name": "include-Person-Password",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "Password"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "16",
+   "rule-name": "include-Person-Person",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "Person"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "17",
+   "rule-name": "include-Person-PersonPhone",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "PersonPhone"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "18",
+   "rule-name": "include-Person-PhoneNumberType",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "PhoneNumberType"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "19",
+   "rule-name": "include-Person-StateProvince",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "StateProvince"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "20",
+   "rule-name": "include-Production-BillOfMaterials",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "BillOfMaterials"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "21",
+   "rule-name": "include-Production-Culture",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "Culture"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "22",
+   "rule-name": "include-Production-Document",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "Document"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "23",
+   "rule-name": "include-Production-Illustration",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "Illustration"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "24",
+   "rule-name": "include-Production-Location",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "Location"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "25",
+   "rule-name": "include-Production-Product",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "Product"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "26",
+   "rule-name": "include-Production-ProductCategory",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductCategory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "27",
+   "rule-name": "include-Production-ProductCostHistory",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductCostHistory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "28",
+   "rule-name": "include-Production-ProductDescription",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductDescription"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "29",
+   "rule-name": "include-Production-ProductDocument",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductDocument"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "30",
+   "rule-name": "include-Production-ProductInventory",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductInventory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "31",
+   "rule-name": "include-Production-ProductListPriceHistory",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductListPriceHistory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "32",
+   "rule-name": "include-Production-ProductModel",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductModel"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "33",
+   "rule-name": "include-Production-ProductModelIllustration",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductModelIllustration"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "34",
+   "rule-name": "include-Production-ProductModelProductDescriptionCulture",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductModelProductDescriptionCulture"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "35",
+   "rule-name": "include-Production-ProductPhoto",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductPhoto"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "36",
+   "rule-name": "include-Production-ProductProductPhoto",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductProductPhoto"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "37",
+   "rule-name": "include-Production-ProductReview",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductReview"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "38",
+   "rule-name": "include-Production-ProductSubcategory",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductSubcategory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "39",
+   "rule-name": "include-Production-ScrapReason",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ScrapReason"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "40",
+   "rule-name": "include-Production-TransactionHistory",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "TransactionHistory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "41",
+   "rule-name": "include-Production-TransactionHistoryArchive",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "TransactionHistoryArchive"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "42",
+   "rule-name": "include-Production-UnitMeasure",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "UnitMeasure"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "43",
+   "rule-name": "include-Production-WorkOrder",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "WorkOrder"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "44",
+   "rule-name": "include-Production-WorkOrderRouting",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "WorkOrderRouting"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "45",
+   "rule-name": "include-Purchasing-ProductVendor",
+   "object-locator": {
+    "schema-name": "Purchasing",
+    "table-name": "ProductVendor"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "46",
+   "rule-name": "include-Purchasing-PurchaseOrderDetail",
+   "object-locator": {
+    "schema-name": "Purchasing",
+    "table-name": "PurchaseOrderDetail"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "47",
+   "rule-name": "include-Purchasing-PurchaseOrderHeader",
+   "object-locator": {
+    "schema-name": "Purchasing",
+    "table-name": "PurchaseOrderHeader"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "48",
+   "rule-name": "include-Purchasing-ShipMethod",
+   "object-locator": {
+    "schema-name": "Purchasing",
+    "table-name": "ShipMethod"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "49",
+   "rule-name": "include-Purchasing-Vendor",
+   "object-locator": {
+    "schema-name": "Purchasing",
+    "table-name": "Vendor"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "50",
+   "rule-name": "include-Sales-CountryRegionCurrency",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "CountryRegionCurrency"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "51",
+   "rule-name": "include-Sales-CreditCard",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "CreditCard"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "52",
+   "rule-name": "include-Sales-Currency",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "Currency"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "53",
+   "rule-name": "include-Sales-CurrencyRate",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "CurrencyRate"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "54",
+   "rule-name": "include-Sales-Customer",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "Customer"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "55",
+   "rule-name": "include-Sales-PersonCreditCard",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "PersonCreditCard"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "56",
+   "rule-name": "include-Sales-SalesOrderDetail",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesOrderDetail"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "57",
+   "rule-name": "include-Sales-SalesOrderHeader",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesOrderHeader"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "58",
+   "rule-name": "include-Sales-SalesOrderHeaderSalesReason",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesOrderHeaderSalesReason"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "59",
+   "rule-name": "include-Sales-SalesPerson",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesPerson"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "60",
+   "rule-name": "include-Sales-SalesPersonQuotaHistory",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesPersonQuotaHistory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "61",
+   "rule-name": "include-Sales-SalesReason",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesReason"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "62",
+   "rule-name": "include-Sales-SalesTaxRate",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesTaxRate"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "63",
+   "rule-name": "include-Sales-SalesTerritory",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesTerritory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "64",
+   "rule-name": "include-Sales-SalesTerritoryHistory",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesTerritoryHistory"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "65",
+   "rule-name": "include-Sales-ShoppingCartItem",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "ShoppingCartItem"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "66",
+   "rule-name": "include-Sales-SpecialOffer",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SpecialOffer"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "67",
+   "rule-name": "include-Sales-SpecialOfferProduct",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SpecialOfferProduct"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "selection",
+   "rule-id": "68",
+   "rule-name": "include-Sales-Store",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "Store"
+   },
+   "rule-action": "include"
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "69",
+   "rule-name": "position-HumanResources-Department",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "Department"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "70",
+   "rule-name": "position-HumanResources-Employee",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "Employee"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "71",
+   "rule-name": "position-HumanResources-EmployeeDepartmentHistory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "EmployeeDepartmentHistory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "72",
+   "rule-name": "position-HumanResources-EmployeePayHistory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "EmployeePayHistory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "73",
+   "rule-name": "position-HumanResources-JobCandidate",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "JobCandidate"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "74",
+   "rule-name": "position-HumanResources-Shift",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "HumanResources",
+    "table-name": "Shift"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "75",
+   "rule-name": "position-Person-Address",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "Address"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "76",
+   "rule-name": "position-Person-AddressType",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "AddressType"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "77",
+   "rule-name": "position-Person-BusinessEntity",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "BusinessEntity"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "78",
+   "rule-name": "position-Person-BusinessEntityAddress",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "BusinessEntityAddress"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "79",
+   "rule-name": "position-Person-BusinessEntityContact",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "BusinessEntityContact"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "80",
+   "rule-name": "position-Person-ContactType",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "ContactType"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "81",
+   "rule-name": "position-Person-CountryRegion",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "CountryRegion"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "82",
+   "rule-name": "position-Person-EmailAddress",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "EmailAddress"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "83",
+   "rule-name": "position-Person-Password",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "Password"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "84",
+   "rule-name": "position-Person-Person",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "Person"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "85",
+   "rule-name": "position-Person-PersonPhone",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "PersonPhone"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "86",
+   "rule-name": "position-Person-PhoneNumberType",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "PhoneNumberType"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "87",
+   "rule-name": "position-Person-StateProvince",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Person",
+    "table-name": "StateProvince"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "88",
+   "rule-name": "position-Production-BillOfMaterials",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "BillOfMaterials"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "89",
+   "rule-name": "position-Production-Culture",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "Culture"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "90",
+   "rule-name": "position-Production-Document",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "Document"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "91",
+   "rule-name": "position-Production-Illustration",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "Illustration"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "92",
+   "rule-name": "position-Production-Location",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "Location"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "93",
+   "rule-name": "position-Production-Product",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "Product"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "94",
+   "rule-name": "position-Production-ProductCategory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductCategory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "95",
+   "rule-name": "position-Production-ProductCostHistory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductCostHistory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "96",
+   "rule-name": "position-Production-ProductDescription",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductDescription"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "97",
+   "rule-name": "position-Production-ProductDocument",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductDocument"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "98",
+   "rule-name": "position-Production-ProductInventory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductInventory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "99",
+   "rule-name": "position-Production-ProductListPriceHistory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductListPriceHistory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "100",
+   "rule-name": "position-Production-ProductModel",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductModel"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "101",
+   "rule-name": "position-Production-ProductModelIllustration",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductModelIllustration"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "102",
+   "rule-name": "position-Production-ProductModelProductDescriptionCulture",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductModelProductDescriptionCulture"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "103",
+   "rule-name": "position-Production-ProductPhoto",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductPhoto"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "104",
+   "rule-name": "position-Production-ProductProductPhoto",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductProductPhoto"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "105",
+   "rule-name": "position-Production-ProductReview",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductReview"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "106",
+   "rule-name": "position-Production-ProductSubcategory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ProductSubcategory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "107",
+   "rule-name": "position-Production-ScrapReason",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "ScrapReason"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "108",
+   "rule-name": "position-Production-TransactionHistory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "TransactionHistory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "109",
+   "rule-name": "position-Production-TransactionHistoryArchive",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "TransactionHistoryArchive"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "110",
+   "rule-name": "position-Production-UnitMeasure",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "UnitMeasure"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "111",
+   "rule-name": "position-Production-WorkOrder",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "WorkOrder"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "112",
+   "rule-name": "position-Production-WorkOrderRouting",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Production",
+    "table-name": "WorkOrderRouting"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "113",
+   "rule-name": "position-Purchasing-ProductVendor",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Purchasing",
+    "table-name": "ProductVendor"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "114",
+   "rule-name": "position-Purchasing-PurchaseOrderDetail",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Purchasing",
+    "table-name": "PurchaseOrderDetail"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "115",
+   "rule-name": "position-Purchasing-PurchaseOrderHeader",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Purchasing",
+    "table-name": "PurchaseOrderHeader"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "116",
+   "rule-name": "position-Purchasing-ShipMethod",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Purchasing",
+    "table-name": "ShipMethod"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "117",
+   "rule-name": "position-Purchasing-Vendor",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Purchasing",
+    "table-name": "Vendor"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "118",
+   "rule-name": "position-Sales-CountryRegionCurrency",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "CountryRegionCurrency"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "119",
+   "rule-name": "position-Sales-CreditCard",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "CreditCard"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "120",
+   "rule-name": "position-Sales-Currency",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "Currency"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "121",
+   "rule-name": "position-Sales-CurrencyRate",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "CurrencyRate"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "122",
+   "rule-name": "position-Sales-Customer",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "Customer"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "123",
+   "rule-name": "position-Sales-PersonCreditCard",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "PersonCreditCard"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "124",
+   "rule-name": "position-Sales-SalesOrderDetail",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesOrderDetail"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "125",
+   "rule-name": "position-Sales-SalesOrderHeader",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesOrderHeader"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "126",
+   "rule-name": "position-Sales-SalesOrderHeaderSalesReason",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesOrderHeaderSalesReason"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "127",
+   "rule-name": "position-Sales-SalesPerson",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesPerson"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "128",
+   "rule-name": "position-Sales-SalesPersonQuotaHistory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesPersonQuotaHistory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "129",
+   "rule-name": "position-Sales-SalesReason",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesReason"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "130",
+   "rule-name": "position-Sales-SalesTaxRate",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesTaxRate"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "131",
+   "rule-name": "position-Sales-SalesTerritory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesTerritory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "132",
+   "rule-name": "position-Sales-SalesTerritoryHistory",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SalesTerritoryHistory"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "133",
+   "rule-name": "position-Sales-ShoppingCartItem",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "ShoppingCartItem"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "134",
+   "rule-name": "position-Sales-SpecialOffer",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SpecialOffer"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "135",
+   "rule-name": "position-Sales-SpecialOfferProduct",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "SpecialOfferProduct"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  },
+  {
+   "rule-type": "transformation",
+   "rule-id": "136",
+   "rule-name": "position-Sales-Store",
+   "rule-target": "column",
+   "rule-action": "add-column",
+   "object-locator": {
+    "schema-name": "Sales",
+    "table-name": "Store"
+   },
+   "value": "ar_h_change_seq",
+   "expression": "$AR_H_CHANGE_SEQ",
+   "data-type": {
+    "type": "string",
+    "length": 50
+   }
+  }
+ ]
+}

@@ -72,9 +72,9 @@ def test_cat07_create_product_enforces_unique_name_and_number(db):
     pid = 990000 + int(uuid.uuid4().int % 9999); name = "Test Bike %d" % pid; num = "TB-%d" % pid
     def tx(n, nm):
         c.transact_write_items(TransactItems=[
-            {"Put": {"TableName": "aw-catalog", "Item": {"PK": {"S": "PRODUCT#%06d" % pid}, "SK": {"S": "PRODUCT"}, "type": {"S": "Product"}, "name": {"S": nm}, "src": {"S": "ddb"}, "ver": {"N": "1"}}, "ConditionExpression": "attribute_not_exists(PK)"}},
-            {"Put": {"TableName": "aw-catalog", "Item": {"PK": {"S": "PRODUCTNAMES"}, "SK": {"S": nm.lower()}, "type": {"S": "ProductNameIndex"}, "product_id": {"N": str(pid)}}, "ConditionExpression": "attribute_not_exists(PK)"}},
-            {"Put": {"TableName": "aw-catalog", "Item": {"PK": {"S": "PRODUCTNUMBER#" + n}, "SK": {"S": "PRODUCTNUMBER"}, "type": {"S": "ProductNumberIndex"}, "product_id": {"N": str(pid)}}, "ConditionExpression": "attribute_not_exists(PK)"}}])
+            {"Put": {"TableName": "aw-catalog", "Item": {"PK": "PRODUCT#%06d" % pid, "SK": "PRODUCT", "type": "Product", "name": nm, "src": "ddb", "ver": int("1")}, "ConditionExpression": "attribute_not_exists(PK)"}},
+            {"Put": {"TableName": "aw-catalog", "Item": {"PK": "PRODUCTNAMES", "SK": nm.lower(), "type": "ProductNameIndex", "product_id": int(str(pid))}, "ConditionExpression": "attribute_not_exists(PK)"}},
+            {"Put": {"TableName": "aw-catalog", "Item": {"PK": "PRODUCTNUMBER#" + n, "SK": "PRODUCTNUMBER", "type": "ProductNumberIndex", "product_id": int(str(pid))}, "ConditionExpression": "attribute_not_exists(PK)"}}])
     tx(num, name)
     assert t.get_item(Key={"PK": "PRODUCTNUMBER#" + num, "SK": "PRODUCTNUMBER"})["Item"]["product_id"] == pid
     with pytest.raises(c.exceptions.TransactionCanceledException):
@@ -152,7 +152,7 @@ def test_inv04_bom_explosion(db, sql):
             if e["start_date"] <= d and ("end_date" not in e or e["end_date"] >= d):
                 seen.append((asm, e["component_id"], lvl)); explode(e["component_id"], lvl + 1)
     explode(800, 0)
-    exp = {(r["ProductAssemblyID"], r["ComponentID"], r["ComponentLevel"]) for r in q(sql, "EXEC dbo.uspGetBillOfMaterials @StartProductID = 800, @CheckDate = %s", datetime.datetime(2010, 12, 23))}
+    exp = {(r["ProductAssemblyID"], r["ComponentID"], r["RecursionLevel"]) for r in q(sql, "EXEC dbo.uspGetBillOfMaterials @StartProductID = 800, @CheckDate = %s", datetime.datetime(2010, 12, 23))}
     assert set(seen) == exp
 
 @pattern("INV-05")
@@ -196,8 +196,8 @@ def test_sal02_checkout_native_order(db):
     assert oid > 1000000000 > q_max_sql_order()
     now = iso(datetime.datetime.utcnow())
     c.transact_write_items(TransactItems=[
-        {"Put": {"TableName": "aw-sales", "ConditionExpression": "attribute_not_exists(PK)", "Item": {"PK": {"S": "ORDER#%010d" % oid}, "SK": {"S": "ORDER"}, "type": {"S": "Order"}, "src": {"S": "ddb"}, "sales_order_id": {"N": str(oid)}, "sales_order_number": {"S": "SO-DDB-%d" % oid}, "customer_id": {"N": "29485"}, "status": {"N": "1"}, "order_date": {"S": now}, "sub_total": {"N": "318"}, "GSI1PK": {"S": "CUSTOMER#029485"}, "GSI1SK": {"S": "ORDER#%s#%010d" % (now, oid)}, "GSI2PK": {"S": "ORDERSTATUS#1"}, "GSI2SK": {"S": "%s#%010d" % (now, oid)}, "ver": {"N": "1"}}}},
-        {"Put": {"TableName": "aw-sales", "Item": {"PK": {"S": "ORDER#%010d" % oid}, "SK": {"S": "LINE#0000001"}, "type": {"S": "OrderLine"}, "src": {"S": "ddb"}, "product_id": {"N": "879"}, "order_qty": {"N": "2"}, "unit_price": {"N": "159"}, "ver": {"N": "1"}}}}])
+        {"Put": {"TableName": "aw-sales", "ConditionExpression": "attribute_not_exists(PK)", "Item": {"PK": "ORDER#%010d" % oid, "SK": "ORDER", "type": "Order", "src": "ddb", "sales_order_id": int(str(oid)), "sales_order_number": "SO-DDB-%d" % oid, "customer_id": int("29485"), "status": int("1"), "order_date": now, "sub_total": int("318"), "GSI1PK": "CUSTOMER#029485", "GSI1SK": "ORDER#%s#%010d" % (now, oid), "GSI2PK": "ORDERSTATUS#1", "GSI2SK": "%s#%010d" % (now, oid), "ver": int("1")}}},
+        {"Put": {"TableName": "aw-sales", "Item": {"PK": "ORDER#%010d" % oid, "SK": "LINE#0000001", "type": "OrderLine", "src": "ddb", "product_id": int("879"), "order_qty": int("2"), "unit_price": int("159"), "ver": int("1")}}}])
     got = query_all(t, KeyConditionExpression=Key("PK").eq("ORDER#%010d" % oid), ConsistentRead=True)  # read-after-checkout (D8)
     assert [i["type"] for i in got] == ["OrderLine", "Order"]
     for i in got: t.delete_item(Key={"PK": i["PK"], "SK": i["SK"]})
@@ -242,7 +242,7 @@ def test_sal06_ship_order_conditional(db):
 
 @pattern("SAL-07")
 def test_sal07_store_orders_by_date(db, sql):
-    cid = q(sql, "SELECT TOP 1 CustomerID FROM Sales.Customer WHERE PersonID IS NULL AND StoreID IS NOT NULL AND CustomerID IN (SELECT CustomerID FROM Sales.SalesOrderHeader) ORDER BY CustomerID")[0]["CustomerID"]
+    cid = q(sql, "SELECT TOP 1 CustomerID FROM Sales.Customer WHERE StoreID IS NOT NULL AND CustomerID IN (SELECT CustomerID FROM Sales.SalesOrderHeader) ORDER BY CustomerID")[0]["CustomerID"]
     items = query_all(T(db, "aw-sales"), IndexName="GSI1", KeyConditionExpression=Key("GSI1PK").eq("CUSTOMER#%06d" % cid) & Key("GSI1SK").between("ORDER#2012-01-01", "ORDER#2013-12-31~"))
     assert len(items) == q(sql, "SELECT COUNT(*) n FROM Sales.SalesOrderHeader WHERE CustomerID = %s AND OrderDate BETWEEN '2012-01-01' AND '2013-12-31'", cid)[0]["n"]
 
@@ -306,8 +306,8 @@ def test_cus04_register_unique_email(db):
     c = T(db, "aw-customer").meta.client
     def reg(email, be):
         c.transact_write_items(TransactItems=[
-            {"Put": {"TableName": "aw-customer", "Item": {"PK": {"S": "BE#%06d" % be}, "SK": {"S": "PERSON"}, "type": {"S": "Person"}, "src": {"S": "ddb"}}, "ConditionExpression": "attribute_not_exists(PK)"}},
-            {"Put": {"TableName": "aw-customer", "Item": {"PK": {"S": "EMAIL#" + email}, "SK": {"S": "EMAIL"}, "type": {"S": "EmailLogin"}, "business_entity_id": {"N": str(be)}}, "ConditionExpression": "attribute_not_exists(PK)"}}])
+            {"Put": {"TableName": "aw-customer", "Item": {"PK": "BE#%06d" % be, "SK": "PERSON", "type": "Person", "src": "ddb"}, "ConditionExpression": "attribute_not_exists(PK)"}},
+            {"Put": {"TableName": "aw-customer", "Item": {"PK": "EMAIL#" + email, "SK": "EMAIL", "type": "EmailLogin", "business_entity_id": int(str(be))}, "ConditionExpression": "attribute_not_exists(PK)"}}])
     with pytest.raises(c.exceptions.TransactionCanceledException):
         reg("catherine0@adventure-works.com", 999990)
     reg("new.user@example.com", 999991)
@@ -416,7 +416,7 @@ def test_hr03_org_subtree_and_chain(db, sql):
     mgr = t.get_item(Key={"PK": "EMPLOYEE#000003", "SK": "EMPLOYEE"})["Item"]
     sub = query_all(t, IndexName="GSI2", KeyConditionExpression=Key("GSI2PK").eq("ORG") & Key("GSI2SK").begins_with(mgr["org_path"]))
     exp = {r["BusinessEntityID"] for r in q(sql, "EXEC dbo.uspGetManagerEmployees @BusinessEntityID = 3")}
-    assert {i["business_entity_id"] for i in sub} - {3} == exp
+    assert {i["business_entity_id"] for i in sub} == exp | {3}
     e = t.get_item(Key={"PK": "EMPLOYEE#000017", "SK": "EMPLOYEE"})["Item"]; parts = e["org_path"].strip("/").split("/"); chain = []
     for n in range(len(parts) - 1, 0, -1):
         chain += [i["business_entity_id"] for i in query_all(t, IndexName="GSI2", KeyConditionExpression=Key("GSI2PK").eq("ORG") & Key("GSI2SK").eq("/" + "/".join(parts[:n]) + "/"))]
@@ -478,9 +478,9 @@ def test_cdc01_idempotent_upsert(db, sql):
     m = awmap.load_mapping(); src = m["sources"]["Sales.SalesOrderHeader"]
     row = q(sql, src["source_sql"] + " WHERE h.SalesOrderID = 43659")[0]; pk = sqlsrc.primary_key(sql, "Sales.SalesOrderHeader")
     row = dict(row, Comment="cdc-test")
-    _apply(db, awmap.items_for_row("Sales.SalesOrderHeader", src, row, pk, "0x0002"), "0x0002")
-    _apply(db, awmap.items_for_row("Sales.SalesOrderHeader", src, dict(row, Comment="stale"), pk, "0x0001"), "0x0001")  # older LSN ignored
-    _apply(db, awmap.items_for_row("Sales.SalesOrderHeader", src, row, pk, "0x0002"), "0x0002")  # replay ignored
+    _apply(db, awmap.items_for_row("Sales.SalesOrderHeader", src, row, pk, "0x%020x" % 2), "0x%020x" % 2)
+    _apply(db, awmap.items_for_row("Sales.SalesOrderHeader", src, dict(row, Comment="stale"), pk, "0x%020x" % 1), "0x%020x" % 1)  # older LSN ignored
+    _apply(db, awmap.items_for_row("Sales.SalesOrderHeader", src, row, pk, "0x%020x" % 2), "0x%020x" % 2)  # replay ignored
     assert T(db, "aw-sales").get_item(Key={"PK": "ORDER#0000043659", "SK": "ORDER"})["Item"]["comment"] == "cdc-test"
     orig = q(sql, src["source_sql"] + " WHERE h.SalesOrderID = 43659")[0]
     T(db, "aw-sales").put_item(Item=awmap.items_for_row("Sales.SalesOrderHeader", src, orig, pk)[0][1])
@@ -490,7 +490,7 @@ def test_cdc02_delete_becomes_tombstone(db, sql):
     import sqlsrc
     m = awmap.load_mapping(); src = m["sources"]["Sales.SalesOrderHeader"]
     row = q(sql, src["source_sql"] + " WHERE h.SalesOrderID = 43660")[0]; pk = sqlsrc.primary_key(sql, "Sales.SalesOrderHeader")
-    _apply(db, awmap.tombstones_for_row("Sales.SalesOrderHeader", src, row, pk, "0x0009"), "0x0009")
+    _apply(db, awmap.tombstones_for_row("Sales.SalesOrderHeader", src, row, pk, "0x%020x" % 9), "0x%020x" % 9)
     item = T(db, "aw-sales").get_item(Key={"PK": "ORDER#0000043660", "SK": "ORDER"})["Item"]
     assert item["deleted"] is True and "GSI1PK" not in item
     hist = query_all(T(db, "aw-sales"), IndexName="GSI1", KeyConditionExpression=Key("GSI1PK").eq("CUSTOMER#%06d" % row["CustomerID"]))

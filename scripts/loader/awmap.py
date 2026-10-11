@@ -5,6 +5,8 @@ import yaml
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MAPPING_PATH = os.path.join(ROOT, "design", "mapping", "mapping.yaml")
+# Bulk-load position sorts below every real CDC LSN (10-byte LSN as 20 hex digits).
+LOAD_LSN = "0x" + "0" * 20
 KEYS = ("PK", "SK", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK")
 
 
@@ -127,7 +129,7 @@ def business_attrs(row, spec, src):
     return out
 
 
-def items_for_row(table_name, src, row, pk_cols, lsn="load", now=None):
+def items_for_row(table_name, src, row, pk_cols, lsn=LOAD_LSN, now=None):
     """Return list of (dynamodb_table, item) for one source row."""
     now = now or datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
     result = []

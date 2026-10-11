@@ -5,7 +5,7 @@ import argparse, collections, concurrent.futures as cf, json, os, sys, time
 sys.path.insert(0, os.path.dirname(__file__))
 import awmap, ddb, sqlsrc
 
-def load_table(table, src, lsn="load"):
+def load_table(table, src, lsn=awmap.LOAD_LSN):
     conn = sqlsrc.connect(); pk = sqlsrc.primary_key(conn, table)
     cur = conn.cursor(); cur.execute(sqlsrc.source_query(table, src))
     r = ddb.resource(); writers = {}; counts = collections.Counter(); rows = 0

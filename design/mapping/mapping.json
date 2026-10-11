@@ -16,7 +16,7 @@
    "src": "'sql' (came from SQL via load/CDC) or 'ddb' (created natively by the .NET 10 app)",
    "src_table": "source table, e.g. Sales.SalesOrderHeader (null for ddb-native items)",
    "src_pk": "source primary key as \"Col=val[,Col=val]\" - CDC upsert/delete address",
-   "src_lsn": "last applied CDC LSN / commit position (hex string); \"load\" for bulk load. CDC writes are conditional on src_lsn < new",
+   "src_lsn": "last applied CDC LSN / commit position (hex string); \"0x00000000000000000000\" for bulk load (sorts below any real LSN). Format \"0x\" + 20 hex digits so string order = LSN order. CDC writes are conditional on src_lsn < new",
    "deleted": "true on tombstones (SQL delete -> tombstone, decision D10); GSI attributes are removed so tombstones drop out of indexes",
    "deleted_at": "ISO timestamp of the delete",
    "ttl": "epoch seconds; set on carts (7 days, D3) and later on tombstones",

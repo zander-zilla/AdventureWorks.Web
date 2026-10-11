@@ -1,5 +1,6 @@
 {
-  "_comment": "Proposed domain split (phase 1 draft). One DynamoDB table per domain. Feeds the future mapping file.",
+  "status": "approved 2026-10-11",
+  "_comment": "Domain split. One DynamoDB table per domain. Feeds the future mapping file.",
   "domains": {
     "Catalog": {"table": "aw-catalog", "rationale": "What we sell and how it is described/priced. Read-heavy, shopper-facing, changes rarely.",
       "tables": ["Production.Product","Production.ProductCategory","Production.ProductSubcategory","Production.ProductModel","Production.ProductDescription","Production.ProductModelProductDescriptionCulture","Production.ProductPhoto","Production.ProductProductPhoto","Production.ProductReview","Production.ProductListPriceHistory","Production.ProductCostHistory","Production.Illustration","Production.ProductModelIllustration","Production.Document","Production.ProductDocument","Sales.SpecialOffer","Sales.SpecialOfferProduct"]},

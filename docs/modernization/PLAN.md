@@ -24,6 +24,14 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 - Private reference books are never quoted or committed; designs cite chapter titles/numbers only.
 - Every phase lands as a PR with docs updated.
 
+## Decisions log
+| Date | Decision |
+|---|---|
+| 2026-10-11 | (1) Demo login, shop catalog, order writes and My orders use the full AdventureWorks2022 DB (not LT). Original LT CRUD screens unchanged until phase 5. |
+| 2026-10-11 | (2) The 7 domains are approved: Catalog, Inventory & Manufacturing, Sales, Customer & Party, Purchasing, HR, Reference (docs/discovery/domains.md). |
+| 2026-10-11 | (3) DW finance / call-center / survey (and other no-OLTP-source) tables carry over to Redshift as **static data** (docs/discovery/dw-lineage.md). |
+| 2026-10-11 | (4) CDC on all 68 AdventureWorks2022 business tables; dbo housekeeping (AWBuildVersion, DatabaseLog, ErrorLog) excluded. |
+
 ## Status
 
 | Phase | Status | PR |

@@ -23,7 +23,7 @@ below become `entityType` slices of `aw-*` tables.
 | DimEmployee (296) | employee version (SCD2 on department/pay/territory) | HumanResources.Employee ⨝ Person.Person ⨝ EmployeeDepartmentHistory ⨝ EmployeePayHistory ⨝ Sales.SalesPerson / SalesTerritoryHistory ⨝ EmailAddress/PersonPhone | HR, Sales, Customer & Party | Parent key from OrganizationNode hierarchy |
 | DimCurrency (105) | currency | Sales.Currency | Reference | |
 | DimSalesReason (10) | reason | Sales.SalesReason | Sales | |
-| DimAccount (99), DimOrganization (14), DimDepartmentGroup (7), DimScenario (3) | finance chart of accounts / org | ⚠ none (finance not in OLTP) | – | Carry over as static seed |
+| DimAccount (99), DimOrganization (14), DimDepartmentGroup (7), DimScenario (3) | finance chart of accounts / org | ⚠ none (finance not in OLTP) | – | **Decision: carried over to Redshift as static data** |
 
 ## Facts
 
@@ -35,7 +35,7 @@ below become `entityType` slices of `aw-*` tables.
 | FactSalesQuota (163) | sales person × quarter | Sales.SalesPersonQuotaHistory | Sales | |
 | FactProductInventory (776,286) | product × day | Production.ProductInventory (snapshot) + TransactionHistory(+Archive) movements, daily balances | Inventory | Synthesised daily snapshots; in phase 6 rebuild from inventory transactions |
 | FactCurrencyRate (14,264) | currency × day | Sales.CurrencyRate | Reference | |
-| FactCallCenter (120), FactSurveyResponse (2,727), FactFinance (39,409), FactAdditionalInternationalProductDescription (15,168), NewFactCurrencyRate (50), ProspectiveBuyer (2,059) | | ⚠ none / static (call center, survey, finance, translations, data-mining samples) | – | Out of scope for zero-ETL; load as static seed if needed for QuickSight parity |
+| FactCallCenter (120), FactSurveyResponse (2,727), FactFinance (39,409), FactAdditionalInternationalProductDescription (15,168), NewFactCurrencyRate (50), ProspectiveBuyer (2,059) | | ⚠ none / static (call center, survey, finance, translations, data-mining samples) | – | **Decision: carried over to Redshift as static data** (one-time load from AdventureWorksDW2022, not via zero-ETL) |
 
 ## Views
 `vDMPrep`, `vAssocSeqOrders`, `vAssocSeqLineItems`, `vTargetMail`, `vTimeSeries` are data-mining views over FactInternetSales/DimCustomer/DimProduct — rebuild as Redshift views if QuickSight needs them.
@@ -45,3 +45,11 @@ below become `entityType` slices of `aw-*` tables.
 - Keep price/cost **history** items in Catalog (needed for DimProduct SCD2).
 - Keep `Person.Demographics` / `Store.Demographics` (XML) as maps → DimCustomer/DimReseller attributes.
 - Keep inventory transactions (not just current qty) if FactProductInventory is to be rebuilt.
+
+## Decision: static carry-over (John, 2026-10-11)
+DW tables with no OLTP source are copied **once** from AdventureWorksDW2022 into Redshift as static tables (phase 6, e.g. export to S3 → `COPY`), alongside the zero-ETL-fed tables:
+FactFinance, DimAccount, DimOrganization, DimDepartmentGroup, DimScenario, FactCallCenter, FactSurveyResponse,
+FactAdditionalInternationalProductDescription, NewFactCurrencyRate, ProspectiveBuyer, plus the localised-name columns
+of DimGeography/DimProductCategory/DimProductSubcategory/DimPromotion (kept as static lookup tables joined in).
+DimDate is generated in Redshift. FactSurveyResponse references DimCustomer by key, so DimCustomer surrogate keys
+must be preserved (derive from CustomerID) for it to keep joining.

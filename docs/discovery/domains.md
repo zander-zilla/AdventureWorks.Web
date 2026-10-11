@@ -1,9 +1,9 @@
-# Proposed domain split (phase 1 draft)
+# Domain split — **approved by John (2026-10-11)**
 
 Source of truth: [`domains.json`](domains.json) (machine-readable, feeds the phase-8 mapping file).
 Per-domain ERDs (mermaid) and the full cross-domain FK list are generated into [`domain-diagrams.md`](domain-diagrams.md).
 
-All 71 OLTP tables are assigned: 68 to 7 domains, 3 `dbo` plumbing tables excluded.
+Status: the 7 domains below are approved as proposed. All 71 OLTP tables are assigned: 68 to 7 domains, 3 `dbo` plumbing tables excluded.
 
 | Domain | DynamoDB table | SQL tables | Rows (approx) | Why it is its own domain |
 |---|---|---|---|---|
@@ -68,4 +68,4 @@ The app is built on AdventureWorksLT (`SalesLT` schema). LT is a flattened subse
 | Shop Order / MyOrders (demo) | SalesOrderHeader, SalesOrderDetail, Product | Sales: order + lines for customer |
 | Home/About/Contact/Privacy | – | – |
 
-**Open issue:** the live demo writes LT rows, but the target DynamoDB tables are modelled on the full DB. See open questions in the PR.
+**Resolved (decision 1):** the demo login, shop catalog, order write and My orders now use the full AdventureWorks2022 DB (PR #1), so the live CDC demo writes exactly the tables the DynamoDB domains model. New demo orders get SalesOrderIDs above 75123 — no collision. Only the original LT CRUD screens still read LT; phase 5 moves them to the domain tables.

@@ -23,8 +23,8 @@ Totals: 7 tables, 13 GSIs. Exact item counts per table/entity: [`load-stats.json
 - **PITR:** enabled; on-demand backup before every migration step. *(Operations supp. ch. 5)*
 - **Streams:** `NEW_AND_OLD_IMAGES` — needed by cross-domain refresh (CDC-03: old image tells which copies to fix) and by aggregate maintenance (stock_qty, sales YTD). DynamoDB zero-ETL to Redshift does not use the stream but requires PITR.
 - **TTL attribute:** `ttl` (epoch seconds). Used for carts (7 days, D3) and later for tombstones (D10).
-- **Encryption:** AWS-owned key by default; customer-managed KMS keys for `aw-customer` and `aw-hr` (PII, pay, national id).
-- **Deletion protection** on; **GSI projection ALL** (items are small; keeps the zero-ETL/debug story simple). Revisit KEYS_ONLY/INCLUDE for GSI2 on `aw-customer` if cost matters.
+- **Encryption:** customer-managed KMS keys for `aw-customer` and `aw-hr` (PII, pay, national id); AWS-managed key (`aws/dynamodb`) for the other five tables (decision P3-2).
+- **Deletion protection** on; **GSI projection ALL** (items are small; keeps the zero-ETL/debug story simple). Projection ALL on every GSI for now (decision P3-3); revisit only if GSI storage/write cost matters.
 - **Generic key names** `PK`, `SK`, `GSI1PK/SK`, `GSI2PK/SK` (overloaded) + `type` on every item. *(Book ch. 9 "From modeling to implementation")*
 
 ## Attribute conventions
@@ -49,7 +49,7 @@ Totals: 7 tables, 13 GSIs. Exact item counts per table/entity: [`load-stats.json
 - DynamoDB-native orders: `UpdateItem aw-sales COUNTER/ORDER ADD next_id 1` → ids from **1,000,000,000** up; order number **`SO-DDB-<id>`**; `src = "ddb"`.
   The ranges cannot collide while SQL stays below 10^9 (it would need ~13,000 years at the historical rate). Keys pad to 10 digits, so both sort together.
 - Lines: `LINE#<n>` with n = 1..N within the order (SQL lines keep `SalesOrderDetailID`, 7 digits; native lines use their own sequence within the order partition).
-- The counter partition is a single hot item: at ~1 order/s that is far below the per-partition limit (1,000 WCU/s). For higher rates, hand out id blocks (ADD 100) per app instance.
+- The counter partition is a single hot item: at ~1 order/s that is far below the per-partition limit (1,000 WCU/s). Decision P3-1: one atomic `ADD next_id 1` per native order (no id blocks).
 
 ## Zero-ETL / Redshift considerations
 - DynamoDB zero-ETL lands each table in Redshift with the key attributes as columns and the whole item as a **SUPER** column. Phase 6 builds one view per `(table, type)`, e.g. `sales_order AS SELECT value.sales_order_id::int, ... FROM aw_sales WHERE value.type = 'Order' AND value.deleted IS NULL`.
@@ -58,10 +58,19 @@ Totals: 7 tables, 13 GSIs. Exact item counts per table/entity: [`load-stats.json
 - Facts need on order/line items: online_order_flag, customer_id, sales_person_id, territory_id, currency_rate_id, special_offer_id, dates, and product standard cost at the order date (from CostHistory items) — all present.
 - Native orders have `src='ddb'`; FactInternetSales/FactResellerSales views union both sources.
 
+## Phase 3 decisions (John, 2026-10-11)
+| # | Decision |
+|---|---|
+| P3-1 | One atomic counter increment (`ADD next_id 1`) per DynamoDB-native order; no id blocks. |
+| P3-2 | Customer-managed KMS keys for `aw-customer` and `aw-hr` only; AWS-managed key elsewhere. |
+| P3-3 | GSI projection ALL on every GSI for now. |
+| P3-4 | Tombstone TTL = 7 days after the delete is captured (`ttl = capture time + 604800`). |
+| P3-5 | ~95-line checkout cap (100-action transaction limit incl. cart cleanup) is acceptable. |
+
 ## Hot-partition review
 | Partition | Why it's hot | Risk at demo scale | Mitigation |
 |---|---|---|---|
-| aw-sales `COUNTER/ORDER` | every native order | low (≤ 1 w/s) | id blocks if needed |
+| aw-sales `COUNTER/ORDER` | every native order | low (≤ 1 w/s) | one increment per order (P3-1) |
 | aw-catalog `PRODUCTNAMES`, `CATALOG` | every browse/search | reads only, ≤ a few hundred rps; 3,000 RCU/partition | in-app cache (data changes rarely); DAX if needed |
 | aw-catalog GSI1 `SUBCAT#…` | category pages | read-only, spread over 37 subcategories | cache |
 | aw-customer GSI2 `CUSTOMERS` | admin list | low traffic | fine; Redshift for analytics |

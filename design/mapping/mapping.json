@@ -80,8 +80,11 @@
   "point_in_time_recovery": true,
   "stream": "NEW_AND_OLD_IMAGES",
   "ttl_attribute": "ttl",
-  "encryption": "AWS owned key by default; customer-managed KMS key for aw-hr and aw-customer",
+  "encryption": "customer-managed KMS key for aw-hr and aw-customer; AWS-managed key elsewhere",
   "gsi_projection": "ALL",
+  "tombstone_ttl_seconds": 604800,
+  "native_order_id": "one atomic ADD next_id 1 per order",
+  "checkout_max_lines": 95,
   "deletion_protection": true
  },
  "excluded": [

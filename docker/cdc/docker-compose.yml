@@ -1,0 +1,15 @@
+# CDC stack (local path of Phase 4): Debezium Server reads SQL Server CDC (from the 'before' stack) and posts change events
+# to the awcdc consumer (cdc/consumer/consumer.py, runs on the host) which writes DynamoDB Local (scripts/ddb-local-up.sh).
+# Host networking throughout (no container-to-container networking needed). Use scripts/cdc-up.sh.
+name: aw-cdc
+services:
+  debezium:
+    image: quay.io/debezium/server:3.0.7.Final
+    network_mode: host
+    environment:
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-AdvWorks!2026}"
+    volumes:
+      - ./application.properties:/debezium/config/application.properties:ro
+      - debezium-data:/debezium/data
+volumes:
+  debezium-data:

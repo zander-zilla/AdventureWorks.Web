@@ -1,0 +1,4 @@
+boto3==1.*
+pymssql==2.*
+pytest==8.*
+pyyaml==6.*

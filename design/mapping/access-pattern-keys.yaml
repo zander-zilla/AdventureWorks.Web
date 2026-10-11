@@ -1,0 +1,71 @@
+# Phase 3: every DynamoDB-served Phase 2 access pattern -> exact DynamoDB operation(s).
+# Placeholders in <> are request inputs. Executed by tests/access_patterns (checked against SQL).
+patterns:
+  # ---------------- Catalog (aw-catalog) ----------------
+  - {id: CAT-01, table: aw-catalog, ops: ["Query PK = 'CATALOG'"], result: "4 Category + 37 Subcategory items in one item collection, sorted CAT#c then CAT#c#SUB#s"}
+  - {id: CAT-02, table: aw-catalog, ops: ["Query PK = 'CATALOG' AND begins_with(SK, 'CAT#<cat:04d>')  (category + its subcategories)", "Query GSI1 GSI1PK = 'SUBCAT#<sub:04d>' AND GSI1SK = '#META'  (subcategory by id)", "PutItem/UpdateItem/DeleteItem (ConditionExpression attribute_exists(PK)); delete guarded by app check: Query GSI1 SUBCAT#<sub> begins_with PRODUCT# Limit 1"]}
+  - {id: CAT-03, table: aw-catalog, ops: ["Query GSI1 GSI1PK = 'SUBCAT#<sub:04d>' AND begins_with(GSI1SK, 'PRODUCT#A#')"], sort: "name asc (key order); price sort client-side (<= 43 items per subcategory)", compromise: "price sort and color/size filter done client-side"}
+  - {id: CAT-04, table: aw-catalog, ops: ["Query PK = 'PRODUCT#<p:06d>'  (product, photos, reviews, price/cost history, offers, documents)", "GetItem PK = 'MODEL#<m:04d>', SK = 'DESC#<culture>'"], result: "2 requests; stock_qty is a copied attribute on the product item"}
+  - {id: CAT-05, table: aw-catalog, ops: ["GetItem PK = 'PRODUCTNUMBER#<number>', SK = 'PRODUCTNUMBER'", "GetItem PK = 'PRODUCT#<id:06d>', SK = 'PRODUCT'"]}
+  - {id: CAT-06, table: aw-catalog, ops: ["Query PK = 'PRODUCTNAMES' (paged, Limit + ExclusiveStartKey)"]}
+  - {id: CAT-07, table: aw-catalog, ops: ["TransactWriteItems: Put product (ConditionExpression attribute_not_exists(PK) for create / ver = :v for update) + Put PRODUCTNAMES/<name> (attribute_not_exists) + Put PRODUCTNUMBER#<n> (attribute_not_exists) [+ Delete old name/number items on rename] [+ Put PRICE#<date> history on price change]"]}
+  - {id: CAT-08, table: aw-catalog, ops: ["Query PK = 'MODEL#<m:04d>'  (model, 6 culture descriptions, illustrations)", "Query GSI2 GSI2PK = 'MODEL#<m:04d>' AND begins_with(GSI2SK, 'PRODUCT#')  (variants)"]}
+  - {id: CAT-09, table: aw-catalog, ops: ["Query PK = 'PRODUCT#<p:06d>' AND SK BETWEEN 'PRICE#' AND 'PRICE#<dateIso>', ScanIndexForward=false, Limit=1 (then check end_date)", "same with COST#"]}
+  - {id: CAT-10, table: aw-catalog, ops: ["Query PK = 'PRODUCT#<p:06d>' AND begins_with(SK, 'OFFER#')"], filter: "client-side offer_start <= today <= offer_end (<= 5 offers/product)"}
+  - {id: CAT-11, table: aw-catalog, ops: ["Query PK = 'PRODUCT#<p:06d>' AND begins_with(SK, 'REVIEW#'), ScanIndexForward=false", "PutItem SK = 'REVIEW#<isoDate>#<reviewId>'"]}
+  - {id: CAT-12, table: aw-catalog, ops: ["Query PK = 'PRODUCTNAMES' AND begins_with(SK, '<lower(prefix)>')"], compromise: "prefix only (D2); single partition of 504 small items - cache it in the app"}
+  - {id: CAT-13, table: aw-catalog, ops: ["GetItem PK = 'MODEL#<m:04d>', SK = 'DESC#<culture>'"]}
+  # ---------------- Inventory (aw-inventory) ----------------
+  - {id: INV-01, table: aw-inventory, ops: ["Query PK = 'PRODUCT#<p:06d>' AND SK <= 'PRODUCT'  (INV#<loc> items + PRODUCT copy with stock_qty)"]}
+  - {id: INV-02, table: aw-inventory, ops: ["Query GSI1 GSI1PK = 'REORDER'"], result: "sparse: only products with stock_qty < reorder_point carry GSI1 keys"}
+  - {id: INV-03, table: aw-inventory, ops: ["Query PK = 'PRODUCT#<p:06d>' AND SK BETWEEN 'TXN#<fromIso>' AND 'TXN#<toIso>~', ScanIndexForward=false", "PutItem TXN#<iso>#<id> + UpdateItem ADD quantity on INV#<loc> (TransactWrite)"]}
+  - {id: INV-04, table: aw-inventory, ops: ["Query PK = 'ASSEMBLY#<a:06d>' (repeat per level for children; filter start_date <= d < end_date client-side)"], compromise: "multi-level explosion = one Query per assembly per level (max depth 4)"}
+  - {id: INV-05, table: aw-inventory, ops: ["Query GSI1 GSI1PK = 'COMPONENT#<c:06d>' (repeat upwards per level)"]}
+  - {id: INV-06, table: aw-inventory, ops: ["Query GSI2 GSI2PK = 'WODUE#<yyyy-mm>' AND GSI2SK BETWEEN '<fromIso>' AND '<toIso>~' (one query per month in range)", "FilterExpression attribute_not_exists(end_date) for open only", "Query PK = 'WO#<id:06d>' (work order + routings)"], compromise: "date range spanning months = one Query per month bucket; 'open' is a filter (all historical WOs are closed)"}
+  # ---------------- Sales (aw-sales) ----------------
+  - {id: SAL-01, table: aw-sales, ops: ["Query PK = 'CART#<customerId>' ConsistentRead=true", "PutItem/UpdateItem ITEM#<p:06d> (ttl = now + 7d)", "DeleteItem"], consistency: strong (D8)}
+  - {id: SAL-02, table: aw-sales, ops: ["UpdateItem PK='COUNTER', SK='ORDER' ADD next_id :1 ReturnValues=UPDATED_NEW -> id >= 1,000,000,000 (D5)", "TransactWriteItems: Put ORDER (attribute_not_exists(PK)) + Put LINE#n ... + Delete CART items (<= 100 actions)"], compromise: "orders with > ~95 lines + cart rows exceed the 100-action transaction limit -> split cart cleanup out of the transaction"}
+  - {id: SAL-03, table: aw-sales, ops: ["Query GSI1 GSI1PK = 'CUSTOMER#<c:06d>' AND begins_with(GSI1SK, 'ORDER#'), ScanIndexForward=false"], compromise: "header only (no lines) in the list; GSI is eventually consistent - the app merges the just-placed order from SAL-04"}
+  - {id: SAL-04, table: aw-sales, ops: ["Query PK = 'ORDER#<id:010d>' (ConsistentRead=true right after checkout)", "SalesOrderNumber 'SO<n>' / 'SO-DDB-<n>' -> id = n"]}
+  - {id: SAL-05, table: aw-sales, ops: ["Query GSI2 GSI2PK = 'ORDERSTATUS#<s>' AND GSI2SK BETWEEN '<fromIso>' AND '<toIso>~'"], result: "sparse: statuses 1-3 only; historical orders are all 5 (shipped)"}
+  - {id: SAL-06, table: aw-sales, ops: ["UpdateItem PK='ORDER#<id>', SK='ORDER' SET status, ship_date, revision_number = revision_number + 1, ver = ver + 1 [REMOVE GSI2PK, GSI2SK when leaving status 1-3] ConditionExpression ver = :v AND status = :expected"]}
+  - {id: SAL-07, table: aw-sales, ops: ["Query GSI1 GSI1PK = 'CUSTOMER#<storeCustomerId:06d>' AND GSI1SK BETWEEN 'ORDER#<fromIso>' AND 'ORDER#<toIso>~'"]}
+  - {id: SAL-10, table: aw-sales, ops: ["Query PK = 'SALESPERSON#<id:06d>'  (sales person + QUOTA# items)"]}
+  - {id: SAL-12, table: aw-sales, ops: ["Query PK = 'TERRITORY#<t:02d>' AND begins_with(SK, 'SALESPERSON#')"]}
+  - {id: SAL-13, table: aw-sales, ops: ["Query PK = 'PONUMBER#<po>'  or  Query PK = 'CCAPPROVAL#<code>'", "then Query PK = 'ORDER#<id>'"]}
+  # ---------------- Customer & Party (aw-customer) ----------------
+  - {id: CUS-01, table: aw-customer, ops: ["GetItem PK = 'EMAIL#<lower(email)>', SK = 'EMAIL' ConsistentRead=true", "Query PK = 'BE#<be:06d>' ConsistentRead=true (PERSON, PASSWORD, CUSTOMER#...)"], consistency: strong (D8)}
+  - {id: CUS-02, table: aw-customer, ops: ["Query GSI1 GSI1PK = 'CUSTOMER#<c:06d>'  -> customer item (PK = BE#owner)", "Query PK = 'BE#<owner>'  (person/store, emails, phones, addresses, cards)"]}
+  - {id: CUS-03, table: aw-customer, ops: ["Query PK = 'BE#<owner>' AND begins_with(SK, 'ADDRESS#')", "Query PK = 'BE#<owner>' AND begins_with(SK, 'CARD#')", "store contacts: same on BE#<store_id>"]}
+  - {id: CUS-04, table: aw-customer, ops: ["TransactWriteItems: Put BE#<id>/PERSON + Put BE#<id>/CUSTOMER#<c> + Put EMAIL#<email> (attribute_not_exists(PK)) [+ Put EMAIL#n, PASSWORD]"]}
+  - {id: CUS-05, table: aw-customer, ops: ["Query GSI2 GSI2PK = 'CUSTOMERS' (paged, sorted by last name)"], compromise: "single GSI partition for an admin grid of 19,820 items (low traffic)"}
+  - {id: CUS-06, table: aw-customer, ops: ["AccountNumber 'AW<10 digits>' -> CustomerID (computed column, deterministic)", "Query GSI1 GSI1PK = 'CUSTOMER#<c:06d>'"]}
+  - {id: CUS-07, table: aw-customer, ops: ["Query PK = 'BE#<store:06d>'  (STORE + ADDRESS# + CONTACT#)"]}
+  - {id: CUS-08, table: aw-customer, ops: ["GetItem PK = 'BE#<p:06d>', SK = 'PERSON' ProjectionExpression demographics"]}
+  - {id: CUS-09, table: aw-customer, ops: ["TransactWriteItems in partition BE#<id>: Put/Delete ADDRESS#/PHONE#/EMAIL#/CARD# items (+ EMAIL#<email> marker swap for email changes)"]}
+  - {id: CUS-11, table: aw-customer, ops: ["Query PK = 'BE#<id:06d>'"], compromise: "vendor/employee job data lives in Purchasing/HR; this returns the party data only"}
+  # ---------------- Purchasing (aw-purchasing) ----------------
+  - {id: PUR-01, table: aw-purchasing, ops: ["Query PK = 'VENDOR#<v:06d>' AND SK < 'PRODUCT#'  (VENDOR, ADDRESS#, CONTACT#)"]}
+  - {id: PUR-02, table: aw-purchasing, ops: ["Query GSI1 GSI1PK = 'PRODUCT#<p:06d>' AND begins_with(GSI1SK, 'VENDOR#')"]}
+  - {id: PUR-03, table: aw-purchasing, ops: ["Query PK = 'VENDOR#<v:06d>' AND begins_with(SK, 'PRODUCT#')"]}
+  - {id: PUR-04, table: aw-purchasing, ops: ["TransactWriteItems Put PO + LINE#n items (+ POSTATUS# marker)", "Query PK = 'PO#<id:06d>'"]}
+  - {id: PUR-05, table: aw-purchasing, ops: ["Query GSI1 GSI1PK = 'VENDOR#<v:06d>' AND begins_with(GSI1SK, 'PO#'), ScanIndexForward=false [FilterExpression status = :s]"]}
+  - {id: PUR-06, table: aw-purchasing, ops: ["Query GSI2 GSI2PK = 'EMPLOYEE#<e:06d>' AND begins_with(GSI2SK, 'PO#'), ScanIndexForward=false"]}
+  - {id: PUR-07, table: aw-purchasing, ops: ["Query PK = 'POSTATUS#1'  and  Query PK = 'POSTATUS#2'"]}
+  # ---------------- HR (aw-hr) ----------------
+  - {id: HR-01, table: aw-hr, ops: ["Query PK = 'EMPLOYEE#<e:06d>'  (EMPLOYEE, DEPT#..., PAY#...; current = DEPT# with no end_date, latest PAY#)"]}
+  - {id: HR-02, table: aw-hr, ops: ["Query PK = 'EMPLOYEE#<e:06d>' AND begins_with(SK, 'DEPT#') / begins_with(SK, 'PAY#'), ScanIndexForward=false"]}
+  - {id: HR-03, table: aw-hr, ops: ["Query GSI2 GSI2PK = 'ORG' AND begins_with(GSI2SK, '<manager org_path>')  (whole subtree)", "chain: Query GSI2 GSI2PK = 'ORG' AND GSI2SK = '<ancestor path>' per level"]}
+  - {id: HR-04, table: aw-hr, ops: ["Query GSI1 GSI1PK = 'DEPARTMENT#<d:02d>'"], result: "sparse: only current assignments (end_date null)"}
+  - {id: HR-05, table: aw-hr, ops: ["UpdateItem PK='EMPLOYEE#<e>', SK='EMPLOYEE' SET ... ConditionExpression ver = :v"]}
+  # ---------------- Reference (aw-reference) ----------------
+  - {id: REF-01, table: aw-reference, ops: ["Query PK = 'COUNTRIES'", "Query PK = 'COUNTRY#<code>' AND begins_with(SK, 'STATE#')"]}
+  - {id: REF-02, table: aw-reference, ops: ["Query PK = 'TAX#<stateProvinceId:03d>'"]}
+  - {id: REF-03, table: aw-reference, ops: ["Query PK = 'FX#<from>#<to>' AND SK <= '<dateIso>~', ScanIndexForward=false, Limit=1"]}
+  - {id: REF-04, table: aw-reference, ops: ["Query PK = 'SHIPMETHODS'"]}
+  - {id: REF-05, table: aw-reference, ops: ["Query PK = 'CURRENCIES' / 'UNITS' / 'CULTURES'"]}
+  # ---------------- Cross-cutting ----------------
+  - {id: CDC-01, table: "(all)", ops: ["for each item of mapping.items_for_row(after-image): PutItem ConditionExpression attribute_not_exists(PK) OR src_lsn < :lsn"]}
+  - {id: CDC-02, table: "(all)", ops: ["for each item of mapping.items_for_row(before-image): PutItem tombstone {PK, SK, type, deleted=true, deleted_at, src_*} ConditionExpression attribute_not_exists(PK) OR src_lsn < :lsn (GSI keys dropped)"]}
+  - {id: CDC-03, table: "(all)", ops: ["e.g. Address change: Query aw-customer GSI1 GSI1PK = 'ADDRESS#<id>' -> UpdateItem each PartyAddress copy (+ aw-purchasing VendorAddress); ProductDescription: Query aw-catalog GSI1 'DESCRIPTION#<id>'; SpecialOffer: Query GSI1 'OFFER#<id>'"]}
+  - {id: CDC-04, table: "(all)", ops: ["every item key template references only columns of its own source row -> child items are written without reading the parent"]}

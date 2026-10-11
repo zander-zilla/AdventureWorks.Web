@@ -1,0 +1,5421 @@
+{
+ "version": 1,
+ "conventions": {
+  "key_attributes": [
+   "PK",
+   "SK",
+   "GSI1PK",
+   "GSI1SK",
+   "GSI2PK",
+   "GSI2SK"
+  ],
+  "business_attributes": "snake_case of the SQL column name (SalesOrderID -> sales_order_id); one attribute per column unless omitted/transformed",
+  "meta_attributes": {
+   "type": "entity type name (every item) - zero-ETL/Redshift unpacks overloaded items by this",
+   "ver": "integer version, +1 on every write (optimistic concurrency via ConditionExpression)",
+   "src": "'sql' (came from SQL via load/CDC) or 'ddb' (created natively by the .NET 10 app)",
+   "src_table": "source table, e.g. Sales.SalesOrderHeader (null for ddb-native items)",
+   "src_pk": "source primary key as \"Col=val[,Col=val]\" - CDC upsert/delete address",
+   "src_lsn": "last applied CDC LSN / commit position (hex string); \"0x00000000000000000000\" for bulk load (sorts below any real LSN). Format \"0x\" + 20 hex digits so string order = LSN order. CDC writes are conditional on src_lsn < new",
+   "deleted": "true on tombstones (SQL delete -> tombstone, decision D10); GSI attributes are removed so tombstones drop out of indexes",
+   "deleted_at": "ISO timestamp of the delete",
+   "ttl": "epoch seconds; set on carts (7 days, D3) and later on tombstones",
+   "updated_at": "ISO timestamp of last write"
+  },
+  "derived_items": "items marked derived (lookup/uniqueness/sparse-marker items) are rebuilt from the same source row and tombstoned/deleted with it",
+  "numbers": "decimals and money stored as DynamoDB Number (exact); datetimes as ISO-8601 strings; uniqueidentifier as string; xml as string unless transform xml_map"
+ },
+ "tables": {
+  "aw-catalog": {
+   "domain": "Catalog",
+   "gsis": [
+    "GSI1",
+    "GSI2"
+   ]
+  },
+  "aw-inventory": {
+   "domain": "Inventory & Manufacturing",
+   "gsis": [
+    "GSI1",
+    "GSI2"
+   ]
+  },
+  "aw-sales": {
+   "domain": "Sales",
+   "gsis": [
+    "GSI1",
+    "GSI2"
+   ]
+  },
+  "aw-customer": {
+   "domain": "Customer & Party",
+   "gsis": [
+    "GSI1",
+    "GSI2"
+   ]
+  },
+  "aw-purchasing": {
+   "domain": "Purchasing",
+   "gsis": [
+    "GSI1",
+    "GSI2"
+   ]
+  },
+  "aw-hr": {
+   "domain": "HR",
+   "gsis": [
+    "GSI1",
+    "GSI2"
+   ]
+  },
+  "aw-reference": {
+   "domain": "Reference",
+   "gsis": [
+    "GSI1"
+   ]
+  }
+ },
+ "table_settings": {
+  "billing_mode": "PAY_PER_REQUEST",
+  "point_in_time_recovery": true,
+  "stream": "NEW_AND_OLD_IMAGES",
+  "ttl_attribute": "ttl",
+  "encryption": "customer-managed KMS key for aw-hr and aw-customer; AWS-managed key elsewhere",
+  "gsi_projection": "ALL",
+  "tombstone_ttl_seconds": 604800,
+  "native_order_id": "one atomic ADD next_id 1 per order",
+  "checkout_max_lines": 95,
+  "deletion_protection": true
+ },
+ "excluded": [
+  {
+   "table": "dbo.AWBuildVersion",
+   "reason": "housekeeping"
+  },
+  {
+   "table": "dbo.DatabaseLog",
+   "reason": "housekeeping (DDL log)"
+  },
+  {
+   "table": "dbo.ErrorLog",
+   "reason": "housekeeping (error log)"
+  }
+ ],
+ "native_items": [
+  {
+   "table": "aw-sales",
+   "entity": "OrderIdCounter",
+   "PK": "COUNTER",
+   "SK": "ORDER",
+   "attributes": {
+    "next_id": 1000000000
+   },
+   "purpose": "D5: DynamoDB-native order ids = UpdateItem ADD next_id :1 (starts at 1,000,000,000 > SQL max 75,123); order number 'SO-DDB-<id>', src='ddb'"
+  }
+ ],
+ "dw_lineage": {
+  "DimCustomer": {
+   "from": [
+    "aw-customer/Customer",
+    "aw-customer/Person",
+    "aw-customer/PartyAddress",
+    "aw-customer/EmailAddress",
+    "aw-customer/Phone",
+    "aw-customer/Address"
+   ],
+   "note": "individual customers (store_id null); demographics map"
+  },
+  "DimReseller": {
+   "from": [
+    "aw-customer/Store",
+    "aw-customer/Customer",
+    "aw-customer/PartyAddress"
+   ]
+  },
+  "DimGeography": {
+   "from": [
+    "aw-customer/Address",
+    "aw-reference/StateProvince",
+    "aw-reference/Country",
+    "aw-sales/SalesTerritory"
+   ],
+   "note": "localised names static"
+  },
+  "DimProduct": {
+   "from": [
+    "aw-catalog/Product",
+    "aw-catalog/ProductModel",
+    "aw-catalog/ModelDescription",
+    "aw-catalog/ListPriceHistory",
+    "aw-catalog/CostHistory",
+    "aw-catalog/ProductPhoto"
+   ],
+   "note": "SCD2 from price/cost history"
+  },
+  "DimProductSubcategory": {
+   "from": [
+    "aw-catalog/Subcategory"
+   ]
+  },
+  "DimProductCategory": {
+   "from": [
+    "aw-catalog/Category"
+   ]
+  },
+  "DimPromotion": {
+   "from": [
+    "aw-catalog/SpecialOffer"
+   ]
+  },
+  "DimSalesTerritory": {
+   "from": [
+    "aw-sales/SalesTerritory"
+   ]
+  },
+  "DimEmployee": {
+   "from": [
+    "aw-hr/Employee",
+    "aw-hr/DepartmentAssignment",
+    "aw-hr/PayRate",
+    "aw-sales/SalesPerson",
+    "aw-sales/TerritoryAssignment"
+   ]
+  },
+  "DimCurrency": {
+   "from": [
+    "aw-reference/Currency"
+   ]
+  },
+  "DimSalesReason": {
+   "from": [
+    "aw-sales/SalesReason"
+   ]
+  },
+  "DimDate": {
+   "from": [],
+   "note": "generated in Redshift"
+  },
+  "FactInternetSales": {
+   "from": [
+    "aw-sales/Order",
+    "aw-sales/OrderLine",
+    "aw-catalog/CostHistory"
+   ],
+   "filter": "online_order_flag = true"
+  },
+  "FactResellerSales": {
+   "from": [
+    "aw-sales/Order",
+    "aw-sales/OrderLine",
+    "aw-catalog/CostHistory"
+   ],
+   "filter": "online_order_flag = false"
+  },
+  "FactInternetSalesReason": {
+   "from": [
+    "aw-sales/OrderSalesReason",
+    "aw-sales/OrderLine"
+   ]
+  },
+  "FactSalesQuota": {
+   "from": [
+    "aw-sales/SalesQuota"
+   ]
+  },
+  "FactProductInventory": {
+   "from": [
+    "aw-inventory/InventoryTransaction",
+    "aw-inventory/ProductInventory"
+   ]
+  },
+  "FactCurrencyRate": {
+   "from": [
+    "aw-reference/CurrencyRate"
+   ]
+  },
+  "static_carry_over": {
+   "from": [],
+   "tables": [
+    "FactFinance",
+    "DimAccount",
+    "DimOrganization",
+    "DimDepartmentGroup",
+    "DimScenario",
+    "FactCallCenter",
+    "FactSurveyResponse",
+    "FactAdditionalInternationalProductDescription",
+    "NewFactCurrencyRate",
+    "ProspectiveBuyer"
+   ],
+   "note": "decision 3: one-time static load from AdventureWorksDW2022"
+  }
+ },
+ "generated_from": "design/mapping/mapping.yaml",
+ "sources": {
+  "Production.ProductCategory": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductCategoryID"
+   ],
+   "row_count": 4,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ProductCategoryID",
+     "sql_type": "int",
+     "attribute": "product_category_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "Category",
+     "PK": "CATALOG",
+     "SK": "CAT#{ProductCategoryID:04d}"
+    }
+   ]
+  },
+  "Production.ProductSubcategory": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductSubcategoryID"
+   ],
+   "row_count": 37,
+   "source_sql": "SELECT s.*, c.Name AS category_name FROM Production.ProductSubcategory s JOIN Production.ProductCategory c ON c.ProductCategoryID = s.ProductCategoryID",
+   "columns": [
+    {
+     "column": "ProductSubcategoryID",
+     "sql_type": "int",
+     "attribute": "product_subcategory_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductCategoryID",
+     "sql_type": "int",
+     "attribute": "product_category_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "category_name"
+   ],
+   "snapshots": [
+    {
+     "attrs": [
+      "category_name"
+     ],
+     "from": "Production.ProductCategory",
+     "owner": "Catalog",
+     "refresh": "catalog stream on category rename"
+    }
+   ],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "Subcategory",
+     "PK": "CATALOG",
+     "SK": "CAT#{ProductCategoryID:04d}#SUB#{ProductSubcategoryID:04d}",
+     "GSI1PK": "SUBCAT#{ProductSubcategoryID:04d}",
+     "GSI1SK": "#META"
+    }
+   ]
+  },
+  "Production.Product": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductID"
+   ],
+   "row_count": 504,
+   "source_sql": "SELECT p.*, s.Name AS subcategory_name, s.ProductCategoryID AS category_id, c.Name AS category_name, m.Name AS model_name,\n       (SELECT ISNULL(SUM(i.Quantity),0) FROM Production.ProductInventory i WHERE i.ProductID = p.ProductID) AS stock_qty,\n       CASE WHEN p.SellEndDate IS NULL AND p.DiscontinuedDate IS NULL THEN 'A' ELSE 'X' END AS x_active,\n       LOWER(LTRIM(RTRIM(p.Name))) AS x_name_lower\nFROM Production.Product p LEFT JOIN Production.ProductSubcategory s ON s.ProductSubcategoryID = p.ProductSubcategoryID LEFT JOIN Production.ProductCategory c ON c.ProductCategoryID = s.ProductCategoryID LEFT JOIN Production.ProductModel m ON m.ProductModelID = p.ProductModelID",
+   "columns": [
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductNumber",
+     "sql_type": "nvarchar",
+     "attribute": "product_number",
+     "transform": "copy"
+    },
+    {
+     "column": "MakeFlag",
+     "sql_type": "Flag",
+     "attribute": "make_flag",
+     "transform": "copy"
+    },
+    {
+     "column": "FinishedGoodsFlag",
+     "sql_type": "Flag",
+     "attribute": "finished_goods_flag",
+     "transform": "copy"
+    },
+    {
+     "column": "Color",
+     "sql_type": "nvarchar",
+     "attribute": "color",
+     "transform": "copy"
+    },
+    {
+     "column": "SafetyStockLevel",
+     "sql_type": "smallint",
+     "attribute": "safety_stock_level",
+     "transform": "copy"
+    },
+    {
+     "column": "ReorderPoint",
+     "sql_type": "smallint",
+     "attribute": "reorder_point",
+     "transform": "copy"
+    },
+    {
+     "column": "StandardCost",
+     "sql_type": "money",
+     "attribute": "standard_cost",
+     "transform": "copy"
+    },
+    {
+     "column": "ListPrice",
+     "sql_type": "money",
+     "attribute": "list_price",
+     "transform": "copy"
+    },
+    {
+     "column": "Size",
+     "sql_type": "nvarchar",
+     "attribute": "size",
+     "transform": "copy"
+    },
+    {
+     "column": "SizeUnitMeasureCode",
+     "sql_type": "nchar",
+     "attribute": "size_unit_measure_code",
+     "transform": "copy"
+    },
+    {
+     "column": "WeightUnitMeasureCode",
+     "sql_type": "nchar",
+     "attribute": "weight_unit_measure_code",
+     "transform": "copy"
+    },
+    {
+     "column": "Weight",
+     "sql_type": "decimal",
+     "attribute": "weight",
+     "transform": "copy"
+    },
+    {
+     "column": "DaysToManufacture",
+     "sql_type": "int",
+     "attribute": "days_to_manufacture",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductLine",
+     "sql_type": "nchar",
+     "attribute": "product_line",
+     "transform": "copy"
+    },
+    {
+     "column": "Class",
+     "sql_type": "nchar",
+     "attribute": "class",
+     "transform": "copy"
+    },
+    {
+     "column": "Style",
+     "sql_type": "nchar",
+     "attribute": "style",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductSubcategoryID",
+     "sql_type": "int",
+     "attribute": "product_subcategory_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductModelID",
+     "sql_type": "int",
+     "attribute": "product_model_id",
+     "transform": "copy"
+    },
+    {
+     "column": "SellStartDate",
+     "sql_type": "datetime",
+     "attribute": "sell_start_date",
+     "transform": "copy"
+    },
+    {
+     "column": "SellEndDate",
+     "sql_type": "datetime",
+     "attribute": "sell_end_date",
+     "transform": "copy"
+    },
+    {
+     "column": "DiscontinuedDate",
+     "sql_type": "datetime",
+     "attribute": "discontinued_date",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "subcategory_name",
+    "category_id",
+    "category_name",
+    "model_name",
+    "stock_qty"
+   ],
+   "snapshots": [
+    {
+     "attrs": [
+      "subcategory_name",
+      "category_id",
+      "category_name",
+      "model_name"
+     ],
+     "from": "Production.ProductSubcategory/ProductCategory/ProductModel",
+     "owner": "Catalog",
+     "refresh": "catalog stream"
+    },
+    {
+     "attrs": [
+      "stock_qty"
+     ],
+     "from": "Production.ProductInventory",
+     "owner": "Inventory & Manufacturing",
+     "refresh": "inventory stream publishes total per product"
+    }
+   ],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "Product",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "PRODUCT",
+     "GSI1PK": "SUBCAT#{ProductSubcategoryID:04d}",
+     "GSI1SK": "PRODUCT#{x_active}#{x_name_lower}#{ProductID:06d}",
+     "gsi1_when": {
+      "col": "ProductSubcategoryID",
+      "op": "not_null"
+     },
+     "GSI2PK": "MODEL#{ProductModelID:04d}",
+     "GSI2SK": "PRODUCT#{ProductID:06d}",
+     "gsi2_when": {
+      "col": "ProductModelID",
+      "op": "not_null"
+     },
+     "extra": {
+      "active": "{x_active}"
+     }
+    },
+    {
+     "table": "aw-catalog",
+     "entity": "ProductNameIndex",
+     "derived": true,
+     "PK": "PRODUCTNAMES",
+     "SK": "{x_name_lower}",
+     "attributes": [
+      "ProductID",
+      "Name",
+      "ProductNumber",
+      "ListPrice",
+      "ProductSubcategoryID"
+     ],
+     "extra": {
+      "active": "{x_active}"
+     },
+     "purpose": "name-prefix search (CAT-12), admin list (CAT-06), name uniqueness (attribute_not_exists)",
+     "attribute_list": [
+      "product_id",
+      "name",
+      "product_number",
+      "list_price",
+      "product_subcategory_id"
+     ]
+    },
+    {
+     "table": "aw-catalog",
+     "entity": "ProductNumberIndex",
+     "derived": true,
+     "PK": "PRODUCTNUMBER#{ProductNumber}",
+     "SK": "PRODUCTNUMBER",
+     "attributes": [
+      "ProductID"
+     ],
+     "purpose": "lookup by SKU (CAT-05) + uniqueness",
+     "attribute_list": [
+      "product_id"
+     ]
+    },
+    {
+     "table": "aw-inventory",
+     "entity": "InventoryProduct",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "PRODUCT",
+     "copy_of": "Catalog",
+     "attributes": [
+      "ProductID",
+      "Name",
+      "ProductNumber",
+      "SafetyStockLevel",
+      "ReorderPoint",
+      "stock_qty"
+     ],
+     "GSI1PK": "REORDER",
+     "GSI1SK": "PRODUCT#{ProductID:06d}",
+     "gsi1_when": {
+      "col": "stock_qty",
+      "op": "lt_col",
+      "value": "ReorderPoint"
+     },
+     "purpose": "inventory-side product copy; sparse REORDER index (INV-02)",
+     "attribute_list": [
+      "product_id",
+      "name",
+      "product_number",
+      "safety_stock_level",
+      "reorder_point",
+      "stock_qty"
+     ]
+    }
+   ]
+  },
+  "Production.ProductModel": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductModelID"
+   ],
+   "row_count": 128,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ProductModelID",
+     "sql_type": "int",
+     "attribute": "product_model_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "CatalogDescription",
+     "sql_type": "xml",
+     "attribute": "catalog_description",
+     "transform": "copy"
+    },
+    {
+     "column": "Instructions",
+     "sql_type": "xml",
+     "attribute": "instructions",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "ProductModel",
+     "PK": "MODEL#{ProductModelID:04d}",
+     "SK": "MODEL"
+    }
+   ]
+  },
+  "Production.ProductDescription": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductDescriptionID"
+   ],
+   "row_count": 762,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ProductDescriptionID",
+     "sql_type": "int",
+     "attribute": "product_description_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Description",
+     "sql_type": "nvarchar",
+     "attribute": "description",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "ProductDescription",
+     "PK": "DESCRIPTION#{ProductDescriptionID:05d}",
+     "SK": "DESCRIPTION"
+    }
+   ]
+  },
+  "Production.ProductModelProductDescriptionCulture": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductModelID",
+    "ProductDescriptionID",
+    "CultureID"
+   ],
+   "row_count": 762,
+   "source_sql": "SELECT x.*, d.Description AS description FROM Production.ProductModelProductDescriptionCulture x JOIN Production.ProductDescription d ON d.ProductDescriptionID = x.ProductDescriptionID",
+   "columns": [
+    {
+     "column": "ProductModelID",
+     "sql_type": "int",
+     "attribute": "product_model_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductDescriptionID",
+     "sql_type": "int",
+     "attribute": "product_description_id",
+     "transform": "copy"
+    },
+    {
+     "column": "CultureID",
+     "sql_type": "nchar",
+     "attribute": "culture_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "description"
+   ],
+   "snapshots": [
+    {
+     "attrs": [
+      "description"
+     ],
+     "from": "Production.ProductDescription",
+     "owner": "Catalog",
+     "refresh": "catalog stream: on DESCRIPTION change, Query GSI1 DESCRIPTION#id and update copies"
+    }
+   ],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "ModelDescription",
+     "PK": "MODEL#{ProductModelID:04d}",
+     "SK": "DESC#{CultureID:trim}",
+     "GSI1PK": "DESCRIPTION#{ProductDescriptionID:05d}",
+     "GSI1SK": "MODEL#{ProductModelID:04d}#{CultureID:trim}"
+    }
+   ]
+  },
+  "Production.ProductPhoto": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductPhotoID"
+   ],
+   "row_count": 101,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ProductPhotoID",
+     "sql_type": "int",
+     "attribute": "product_photo_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ThumbNailPhoto",
+     "sql_type": "varbinary",
+     "attribute": "thumb_nail_photo",
+     "transform": "copy"
+    },
+    {
+     "column": "ThumbnailPhotoFileName",
+     "sql_type": "nvarchar",
+     "attribute": "thumbnail_photo_file_name",
+     "transform": "copy"
+    },
+    {
+     "column": "LargePhoto",
+     "sql_type": "varbinary",
+     "attribute": "large_photo",
+     "transform": "copy"
+    },
+    {
+     "column": "LargePhotoFileName",
+     "sql_type": "nvarchar",
+     "attribute": "large_photo_file_name",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "ProductPhoto",
+     "PK": "PHOTO#{ProductPhotoID:04d}",
+     "SK": "PHOTO"
+    }
+   ]
+  },
+  "Production.ProductProductPhoto": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductID",
+    "ProductPhotoID"
+   ],
+   "row_count": 504,
+   "source_sql": "SELECT x.*, p.ThumbnailPhotoFileName AS thumbnail_file_name FROM Production.ProductProductPhoto x JOIN Production.ProductPhoto p ON p.ProductPhotoID = x.ProductPhotoID",
+   "columns": [
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductPhotoID",
+     "sql_type": "int",
+     "attribute": "product_photo_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Primary",
+     "sql_type": "Flag",
+     "attribute": "primary",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "thumbnail_file_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "ProductPhotoLink",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "PHOTO#{ProductPhotoID:04d}"
+    }
+   ]
+  },
+  "Production.ProductReview": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductReviewID"
+   ],
+   "row_count": 4,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ProductReviewID",
+     "sql_type": "int",
+     "attribute": "product_review_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ReviewerName",
+     "sql_type": "Name",
+     "attribute": "reviewer_name",
+     "transform": "copy"
+    },
+    {
+     "column": "ReviewDate",
+     "sql_type": "datetime",
+     "attribute": "review_date",
+     "transform": "copy"
+    },
+    {
+     "column": "EmailAddress",
+     "sql_type": "nvarchar",
+     "attribute": "email_address",
+     "transform": "copy"
+    },
+    {
+     "column": "Rating",
+     "sql_type": "int",
+     "attribute": "rating",
+     "transform": "copy"
+    },
+    {
+     "column": "Comments",
+     "sql_type": "nvarchar",
+     "attribute": "comments",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "ProductReview",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "REVIEW#{ReviewDate:iso}#{ProductReviewID:05d}"
+    }
+   ]
+  },
+  "Production.ProductListPriceHistory": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductID",
+    "StartDate"
+   ],
+   "row_count": 395,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "StartDate",
+     "sql_type": "datetime",
+     "attribute": "start_date",
+     "transform": "copy"
+    },
+    {
+     "column": "EndDate",
+     "sql_type": "datetime",
+     "attribute": "end_date",
+     "transform": "copy"
+    },
+    {
+     "column": "ListPrice",
+     "sql_type": "money",
+     "attribute": "list_price",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "ListPriceHistory",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "PRICE#{StartDate:iso}"
+    }
+   ]
+  },
+  "Production.ProductCostHistory": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductID",
+    "StartDate"
+   ],
+   "row_count": 395,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "StartDate",
+     "sql_type": "datetime",
+     "attribute": "start_date",
+     "transform": "copy"
+    },
+    {
+     "column": "EndDate",
+     "sql_type": "datetime",
+     "attribute": "end_date",
+     "transform": "copy"
+    },
+    {
+     "column": "StandardCost",
+     "sql_type": "money",
+     "attribute": "standard_cost",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "CostHistory",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "COST#{StartDate:iso}"
+    }
+   ]
+  },
+  "Production.Illustration": {
+   "domain": "Catalog",
+   "primary_key": [
+    "IllustrationID"
+   ],
+   "row_count": 5,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "IllustrationID",
+     "sql_type": "int",
+     "attribute": "illustration_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Diagram",
+     "sql_type": "xml",
+     "attribute": "diagram",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "Illustration",
+     "PK": "ILLUSTRATION#{IllustrationID:04d}",
+     "SK": "ILLUSTRATION"
+    }
+   ]
+  },
+  "Production.ProductModelIllustration": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductModelID",
+    "IllustrationID"
+   ],
+   "row_count": 7,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ProductModelID",
+     "sql_type": "int",
+     "attribute": "product_model_id",
+     "transform": "copy"
+    },
+    {
+     "column": "IllustrationID",
+     "sql_type": "int",
+     "attribute": "illustration_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "ModelIllustration",
+     "PK": "MODEL#{ProductModelID:04d}",
+     "SK": "ILLUSTRATION#{IllustrationID:04d}"
+    }
+   ]
+  },
+  "Production.Document": {
+   "domain": "Catalog",
+   "primary_key": [
+    "DocumentNode"
+   ],
+   "row_count": 13,
+   "source_sql": "SELECT d.*, d.DocumentNode.ToString() AS x_node, d.DocumentNode.ToString() AS document_path FROM Production.Document d",
+   "columns": [
+    {
+     "column": "DocumentNode",
+     "sql_type": "hierarchyid",
+     "attribute": null,
+     "transform": "omitted"
+    },
+    {
+     "column": "DocumentLevel",
+     "sql_type": "smallint",
+     "attribute": "document_level",
+     "transform": "copy"
+    },
+    {
+     "column": "Title",
+     "sql_type": "nvarchar",
+     "attribute": "title",
+     "transform": "copy"
+    },
+    {
+     "column": "Owner",
+     "sql_type": "int",
+     "attribute": "owner",
+     "transform": "copy"
+    },
+    {
+     "column": "FolderFlag",
+     "sql_type": "bit",
+     "attribute": "folder_flag",
+     "transform": "copy"
+    },
+    {
+     "column": "FileName",
+     "sql_type": "nvarchar",
+     "attribute": "file_name",
+     "transform": "copy"
+    },
+    {
+     "column": "FileExtension",
+     "sql_type": "nvarchar",
+     "attribute": "file_extension",
+     "transform": "copy"
+    },
+    {
+     "column": "Revision",
+     "sql_type": "nchar",
+     "attribute": "revision",
+     "transform": "copy"
+    },
+    {
+     "column": "ChangeNumber",
+     "sql_type": "int",
+     "attribute": "change_number",
+     "transform": "copy"
+    },
+    {
+     "column": "Status",
+     "sql_type": "tinyint",
+     "attribute": "status",
+     "transform": "copy"
+    },
+    {
+     "column": "DocumentSummary",
+     "sql_type": "nvarchar",
+     "attribute": "document_summary",
+     "transform": "copy"
+    },
+    {
+     "column": "Document",
+     "sql_type": "varbinary",
+     "attribute": "document",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "document_path"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "Document",
+     "PK": "DOCUMENT#{x_node}",
+     "SK": "DOCUMENT"
+    }
+   ]
+  },
+  "Production.ProductDocument": {
+   "domain": "Catalog",
+   "primary_key": [
+    "ProductID",
+    "DocumentNode"
+   ],
+   "row_count": 32,
+   "source_sql": "SELECT x.*, x.DocumentNode.ToString() AS x_node, x.DocumentNode.ToString() AS document_path FROM Production.ProductDocument x",
+   "columns": [
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "DocumentNode",
+     "sql_type": "hierarchyid",
+     "attribute": null,
+     "transform": "omitted"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "document_path"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "ProductDocumentLink",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "DOCUMENT#{x_node}"
+    }
+   ]
+  },
+  "Sales.SpecialOffer": {
+   "domain": "Catalog",
+   "primary_key": [
+    "SpecialOfferID"
+   ],
+   "row_count": 16,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "SpecialOfferID",
+     "sql_type": "int",
+     "attribute": "special_offer_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Description",
+     "sql_type": "nvarchar",
+     "attribute": "description",
+     "transform": "copy"
+    },
+    {
+     "column": "DiscountPct",
+     "sql_type": "smallmoney",
+     "attribute": "discount_pct",
+     "transform": "copy"
+    },
+    {
+     "column": "Type",
+     "sql_type": "nvarchar",
+     "attribute": "type",
+     "transform": "copy"
+    },
+    {
+     "column": "Category",
+     "sql_type": "nvarchar",
+     "attribute": "category",
+     "transform": "copy"
+    },
+    {
+     "column": "StartDate",
+     "sql_type": "datetime",
+     "attribute": "start_date",
+     "transform": "copy"
+    },
+    {
+     "column": "EndDate",
+     "sql_type": "datetime",
+     "attribute": "end_date",
+     "transform": "copy"
+    },
+    {
+     "column": "MinQty",
+     "sql_type": "int",
+     "attribute": "min_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "MaxQty",
+     "sql_type": "int",
+     "attribute": "max_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "SpecialOffer",
+     "PK": "OFFER#{SpecialOfferID:03d}",
+     "SK": "OFFER"
+    }
+   ]
+  },
+  "Sales.SpecialOfferProduct": {
+   "domain": "Catalog",
+   "primary_key": [
+    "SpecialOfferID",
+    "ProductID"
+   ],
+   "row_count": 538,
+   "source_sql": "SELECT x.*, o.Description AS offer_description, o.DiscountPct AS discount_pct, o.Type AS offer_type, o.Category AS offer_category,\n       o.StartDate AS offer_start, o.EndDate AS offer_end, o.MinQty AS min_qty, o.MaxQty AS max_qty\nFROM Sales.SpecialOfferProduct x JOIN Sales.SpecialOffer o ON o.SpecialOfferID = x.SpecialOfferID",
+   "columns": [
+    {
+     "column": "SpecialOfferID",
+     "sql_type": "int",
+     "attribute": "special_offer_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "offer_description",
+    "discount_pct",
+    "offer_type",
+    "offer_category",
+    "offer_start",
+    "offer_end",
+    "min_qty",
+    "max_qty"
+   ],
+   "snapshots": [
+    {
+     "attrs": [
+      "offer_description",
+      "discount_pct",
+      "offer_type",
+      "offer_category",
+      "offer_start",
+      "offer_end",
+      "min_qty",
+      "max_qty"
+     ],
+     "from": "Sales.SpecialOffer",
+     "owner": "Catalog",
+     "refresh": "catalog stream: on OFFER change, Query GSI1 OFFER#id"
+    }
+   ],
+   "items": [
+    {
+     "table": "aw-catalog",
+     "entity": "ProductOffer",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "OFFER#{SpecialOfferID:03d}",
+     "GSI1PK": "OFFER#{SpecialOfferID:03d}",
+     "GSI1SK": "PRODUCT#{ProductID:06d}"
+    }
+   ]
+  },
+  "Production.Location": {
+   "domain": "Inventory & Manufacturing",
+   "primary_key": [
+    "LocationID"
+   ],
+   "row_count": 14,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "LocationID",
+     "sql_type": "smallint",
+     "attribute": "location_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "CostRate",
+     "sql_type": "smallmoney",
+     "attribute": "cost_rate",
+     "transform": "copy"
+    },
+    {
+     "column": "Availability",
+     "sql_type": "decimal",
+     "attribute": "availability",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-inventory",
+     "entity": "Location",
+     "PK": "LOCATION",
+     "SK": "{LocationID:03d}"
+    }
+   ]
+  },
+  "Production.ProductInventory": {
+   "domain": "Inventory & Manufacturing",
+   "primary_key": [
+    "ProductID",
+    "LocationID"
+   ],
+   "row_count": 1069,
+   "source_sql": "SELECT i.*, l.Name AS location_name FROM Production.ProductInventory i JOIN Production.Location l ON l.LocationID = i.LocationID",
+   "columns": [
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "LocationID",
+     "sql_type": "smallint",
+     "attribute": "location_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Shelf",
+     "sql_type": "nvarchar",
+     "attribute": "shelf",
+     "transform": "copy"
+    },
+    {
+     "column": "Bin",
+     "sql_type": "tinyint",
+     "attribute": "bin",
+     "transform": "copy"
+    },
+    {
+     "column": "Quantity",
+     "sql_type": "smallint",
+     "attribute": "quantity",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "location_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-inventory",
+     "entity": "ProductInventory",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "INV#{LocationID:03d}"
+    }
+   ]
+  },
+  "Production.TransactionHistory": {
+   "domain": "Inventory & Manufacturing",
+   "primary_key": [
+    "TransactionID"
+   ],
+   "row_count": 113443,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "TransactionID",
+     "sql_type": "int",
+     "attribute": "transaction_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ReferenceOrderID",
+     "sql_type": "int",
+     "attribute": "reference_order_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ReferenceOrderLineID",
+     "sql_type": "int",
+     "attribute": "reference_order_line_id",
+     "transform": "copy"
+    },
+    {
+     "column": "TransactionDate",
+     "sql_type": "datetime",
+     "attribute": "transaction_date",
+     "transform": "copy"
+    },
+    {
+     "column": "TransactionType",
+     "sql_type": "nchar",
+     "attribute": "transaction_type",
+     "transform": "copy"
+    },
+    {
+     "column": "Quantity",
+     "sql_type": "int",
+     "attribute": "quantity",
+     "transform": "copy"
+    },
+    {
+     "column": "ActualCost",
+     "sql_type": "money",
+     "attribute": "actual_cost",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-inventory",
+     "entity": "InventoryTransaction",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "TXN#{TransactionDate:iso}#{TransactionID:06d}",
+     "extra": {
+      "archived": false
+     }
+    }
+   ]
+  },
+  "Production.TransactionHistoryArchive": {
+   "domain": "Inventory & Manufacturing",
+   "primary_key": [
+    "TransactionID"
+   ],
+   "row_count": 89253,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "TransactionID",
+     "sql_type": "int",
+     "attribute": "transaction_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ReferenceOrderID",
+     "sql_type": "int",
+     "attribute": "reference_order_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ReferenceOrderLineID",
+     "sql_type": "int",
+     "attribute": "reference_order_line_id",
+     "transform": "copy"
+    },
+    {
+     "column": "TransactionDate",
+     "sql_type": "datetime",
+     "attribute": "transaction_date",
+     "transform": "copy"
+    },
+    {
+     "column": "TransactionType",
+     "sql_type": "nchar",
+     "attribute": "transaction_type",
+     "transform": "copy"
+    },
+    {
+     "column": "Quantity",
+     "sql_type": "int",
+     "attribute": "quantity",
+     "transform": "copy"
+    },
+    {
+     "column": "ActualCost",
+     "sql_type": "money",
+     "attribute": "actual_cost",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-inventory",
+     "entity": "InventoryTransaction",
+     "PK": "PRODUCT#{ProductID:06d}",
+     "SK": "TXN#{TransactionDate:iso}#{TransactionID:06d}",
+     "extra": {
+      "archived": true
+     }
+    }
+   ]
+  },
+  "Production.BillOfMaterials": {
+   "domain": "Inventory & Manufacturing",
+   "primary_key": [
+    "BillOfMaterialsID"
+   ],
+   "row_count": 2679,
+   "source_sql": "SELECT b.*, ISNULL(RIGHT('000000' + CAST(b.ProductAssemblyID AS varchar(10)), 6), 'ROOT') AS x_assembly, p.Name AS component_name FROM Production.BillOfMaterials b JOIN Production.Product p ON p.ProductID = b.ComponentID",
+   "columns": [
+    {
+     "column": "BillOfMaterialsID",
+     "sql_type": "int",
+     "attribute": "bill_of_materials_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductAssemblyID",
+     "sql_type": "int",
+     "attribute": "product_assembly_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ComponentID",
+     "sql_type": "int",
+     "attribute": "component_id",
+     "transform": "copy"
+    },
+    {
+     "column": "StartDate",
+     "sql_type": "datetime",
+     "attribute": "start_date",
+     "transform": "copy"
+    },
+    {
+     "column": "EndDate",
+     "sql_type": "datetime",
+     "attribute": "end_date",
+     "transform": "copy"
+    },
+    {
+     "column": "UnitMeasureCode",
+     "sql_type": "nchar",
+     "attribute": "unit_measure_code",
+     "transform": "copy"
+    },
+    {
+     "column": "BOMLevel",
+     "sql_type": "smallint",
+     "attribute": "bomlevel",
+     "transform": "copy"
+    },
+    {
+     "column": "PerAssemblyQty",
+     "sql_type": "decimal",
+     "attribute": "per_assembly_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "varchar",
+    "component_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-inventory",
+     "entity": "BomEdge",
+     "PK": "ASSEMBLY#{x_assembly}",
+     "SK": "COMPONENT#{ComponentID:06d}#{StartDate:iso}",
+     "GSI1PK": "COMPONENT#{ComponentID:06d}",
+     "GSI1SK": "ASSEMBLY#{x_assembly}#{StartDate:iso}"
+    }
+   ]
+  },
+  "Production.WorkOrder": {
+   "domain": "Inventory & Manufacturing",
+   "primary_key": [
+    "WorkOrderID"
+   ],
+   "row_count": 72591,
+   "source_sql": "SELECT w.*, p.Name AS product_name FROM Production.WorkOrder w JOIN Production.Product p ON p.ProductID = w.ProductID",
+   "columns": [
+    {
+     "column": "WorkOrderID",
+     "sql_type": "int",
+     "attribute": "work_order_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "OrderQty",
+     "sql_type": "int",
+     "attribute": "order_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "StockedQty",
+     "sql_type": "int",
+     "attribute": "stocked_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "ScrappedQty",
+     "sql_type": "smallint",
+     "attribute": "scrapped_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "StartDate",
+     "sql_type": "datetime",
+     "attribute": "start_date",
+     "transform": "copy"
+    },
+    {
+     "column": "EndDate",
+     "sql_type": "datetime",
+     "attribute": "end_date",
+     "transform": "copy"
+    },
+    {
+     "column": "DueDate",
+     "sql_type": "datetime",
+     "attribute": "due_date",
+     "transform": "copy"
+    },
+    {
+     "column": "ScrapReasonID",
+     "sql_type": "smallint",
+     "attribute": "scrap_reason_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "product_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-inventory",
+     "entity": "WorkOrder",
+     "PK": "WO#{WorkOrderID:06d}",
+     "SK": "WO",
+     "GSI2PK": "WODUE#{DueDate:ym}",
+     "GSI2SK": "{DueDate:iso}#{WorkOrderID:06d}"
+    }
+   ]
+  },
+  "Production.WorkOrderRouting": {
+   "domain": "Inventory & Manufacturing",
+   "primary_key": [
+    "WorkOrderID",
+    "ProductID",
+    "OperationSequence"
+   ],
+   "row_count": 67131,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "WorkOrderID",
+     "sql_type": "int",
+     "attribute": "work_order_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "OperationSequence",
+     "sql_type": "smallint",
+     "attribute": "operation_sequence",
+     "transform": "copy"
+    },
+    {
+     "column": "LocationID",
+     "sql_type": "smallint",
+     "attribute": "location_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ScheduledStartDate",
+     "sql_type": "datetime",
+     "attribute": "scheduled_start_date",
+     "transform": "copy"
+    },
+    {
+     "column": "ScheduledEndDate",
+     "sql_type": "datetime",
+     "attribute": "scheduled_end_date",
+     "transform": "copy"
+    },
+    {
+     "column": "ActualStartDate",
+     "sql_type": "datetime",
+     "attribute": "actual_start_date",
+     "transform": "copy"
+    },
+    {
+     "column": "ActualEndDate",
+     "sql_type": "datetime",
+     "attribute": "actual_end_date",
+     "transform": "copy"
+    },
+    {
+     "column": "ActualResourceHrs",
+     "sql_type": "decimal",
+     "attribute": "actual_resource_hrs",
+     "transform": "copy"
+    },
+    {
+     "column": "PlannedCost",
+     "sql_type": "money",
+     "attribute": "planned_cost",
+     "transform": "copy"
+    },
+    {
+     "column": "ActualCost",
+     "sql_type": "money",
+     "attribute": "actual_cost",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-inventory",
+     "entity": "WorkOrderRouting",
+     "PK": "WO#{WorkOrderID:06d}",
+     "SK": "ROUTING#{OperationSequence:03d}#{LocationID:03d}"
+    }
+   ]
+  },
+  "Production.ScrapReason": {
+   "domain": "Inventory & Manufacturing",
+   "primary_key": [
+    "ScrapReasonID"
+   ],
+   "row_count": 16,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ScrapReasonID",
+     "sql_type": "smallint",
+     "attribute": "scrap_reason_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-inventory",
+     "entity": "ScrapReason",
+     "PK": "SCRAPREASON",
+     "SK": "{ScrapReasonID:03d}"
+    }
+   ]
+  },
+  "Sales.SalesOrderHeader": {
+   "domain": "Sales",
+   "primary_key": [
+    "SalesOrderID"
+   ],
+   "row_count": 31465,
+   "source_sql": "SELECT h.*, c.AccountNumber AS customer_account_number,\n       COALESCE(p.FirstName + ' ' + p.LastName, s.Name) AS customer_name, s.Name AS store_name,\n       sm.Name AS ship_method_name,\n       sa.AddressLine1 AS ship_to_line1, sa.AddressLine2 AS ship_to_line2, sa.City AS ship_to_city, ssp.StateProvinceCode AS ship_to_state, sa.PostalCode AS ship_to_postal_code, ssp.CountryRegionCode AS ship_to_country,\n       ba.AddressLine1 AS bill_to_line1, ba.AddressLine2 AS bill_to_line2, ba.City AS bill_to_city, bsp.StateProvinceCode AS bill_to_state, ba.PostalCode AS bill_to_postal_code, bsp.CountryRegionCode AS bill_to_country,\n       cc.CardType AS card_type, RIGHT(cc.CardNumber, 4) AS card_last4,\n       cr.FromCurrencyCode AS currency_from, cr.ToCurrencyCode AS currency_to, cr.AverageRate AS currency_average_rate\nFROM Sales.SalesOrderHeader h JOIN Sales.Customer c ON c.CustomerID = h.CustomerID LEFT JOIN Person.Person p ON p.BusinessEntityID = c.PersonID LEFT JOIN Sales.Store s ON s.BusinessEntityID = c.StoreID JOIN Purchasing.ShipMethod sm ON sm.ShipMethodID = h.ShipMethodID JOIN Person.Address sa ON sa.AddressID = h.ShipToAddressID JOIN Person.StateProvince ssp ON ssp.StateProvinceID = sa.StateProvinceID JOIN Person.Address ba ON ba.AddressID = h.BillToAddressID JOIN Person.StateProvince bsp ON bsp.StateProvinceID = ba.StateProvinceID LEFT JOIN Sales.CreditCard cc ON cc.CreditCardID = h.CreditCardID LEFT JOIN Sales.CurrencyRate cr ON cr.CurrencyRateID = h.CurrencyRateID",
+   "columns": [
+    {
+     "column": "SalesOrderID",
+     "sql_type": "int",
+     "attribute": "sales_order_id",
+     "transform": "copy"
+    },
+    {
+     "column": "RevisionNumber",
+     "sql_type": "tinyint",
+     "attribute": "revision_number",
+     "transform": "copy"
+    },
+    {
+     "column": "OrderDate",
+     "sql_type": "datetime",
+     "attribute": "order_date",
+     "transform": "copy"
+    },
+    {
+     "column": "DueDate",
+     "sql_type": "datetime",
+     "attribute": "due_date",
+     "transform": "copy"
+    },
+    {
+     "column": "ShipDate",
+     "sql_type": "datetime",
+     "attribute": "ship_date",
+     "transform": "copy"
+    },
+    {
+     "column": "Status",
+     "sql_type": "tinyint",
+     "attribute": "status",
+     "transform": "copy"
+    },
+    {
+     "column": "OnlineOrderFlag",
+     "sql_type": "Flag",
+     "attribute": "online_order_flag",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesOrderNumber",
+     "sql_type": "nvarchar",
+     "attribute": "sales_order_number",
+     "transform": "copy"
+    },
+    {
+     "column": "PurchaseOrderNumber",
+     "sql_type": "OrderNumber",
+     "attribute": "purchase_order_number",
+     "transform": "copy"
+    },
+    {
+     "column": "AccountNumber",
+     "sql_type": "AccountNumber",
+     "attribute": "account_number",
+     "transform": "copy"
+    },
+    {
+     "column": "CustomerID",
+     "sql_type": "int",
+     "attribute": "customer_id",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesPersonID",
+     "sql_type": "int",
+     "attribute": "sales_person_id",
+     "transform": "copy"
+    },
+    {
+     "column": "TerritoryID",
+     "sql_type": "int",
+     "attribute": "territory_id",
+     "transform": "copy"
+    },
+    {
+     "column": "BillToAddressID",
+     "sql_type": "int",
+     "attribute": "bill_to_address_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ShipToAddressID",
+     "sql_type": "int",
+     "attribute": "ship_to_address_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ShipMethodID",
+     "sql_type": "int",
+     "attribute": "ship_method_id",
+     "transform": "copy"
+    },
+    {
+     "column": "CreditCardID",
+     "sql_type": "int",
+     "attribute": "credit_card_id",
+     "transform": "copy"
+    },
+    {
+     "column": "CreditCardApprovalCode",
+     "sql_type": "varchar",
+     "attribute": "credit_card_approval_code",
+     "transform": "copy"
+    },
+    {
+     "column": "CurrencyRateID",
+     "sql_type": "int",
+     "attribute": "currency_rate_id",
+     "transform": "copy"
+    },
+    {
+     "column": "SubTotal",
+     "sql_type": "money",
+     "attribute": "sub_total",
+     "transform": "copy"
+    },
+    {
+     "column": "TaxAmt",
+     "sql_type": "money",
+     "attribute": "tax_amt",
+     "transform": "copy"
+    },
+    {
+     "column": "Freight",
+     "sql_type": "money",
+     "attribute": "freight",
+     "transform": "copy"
+    },
+    {
+     "column": "TotalDue",
+     "sql_type": "money",
+     "attribute": "total_due",
+     "transform": "copy"
+    },
+    {
+     "column": "Comment",
+     "sql_type": "nvarchar",
+     "attribute": "comment",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "customer_account_number",
+    "customer_name",
+    "store_name",
+    "ship_method_name",
+    "ship_to_line1",
+    "ship_to_line2",
+    "ship_to_city",
+    "ship_to_state",
+    "ship_to_postal_code",
+    "ship_to_country",
+    "bill_to_line1",
+    "bill_to_line2",
+    "bill_to_city",
+    "bill_to_state",
+    "bill_to_postal_code",
+    "bill_to_country",
+    "card_type",
+    "card_last4",
+    "currency_from",
+    "currency_to",
+    "currency_average_rate"
+   ],
+   "snapshots": [
+    {
+     "attrs": [
+      "customer_account_number",
+      "customer_name",
+      "store_name"
+     ],
+     "from": "Sales.Customer/Person.Person/Sales.Store",
+     "owner": "Sales",
+     "refresh": "immutable at order time (CDC transform enriches from aw-customer)"
+    },
+    {
+     "attrs": [
+      "ship_to_*",
+      "bill_to_*"
+     ],
+     "from": "Person.Address",
+     "owner": "Sales",
+     "refresh": "immutable: address as at order time"
+    },
+    {
+     "attrs": [
+      "ship_method_name",
+      "currency_from",
+      "currency_to",
+      "currency_average_rate"
+     ],
+     "from": "Reference",
+     "owner": "Sales",
+     "refresh": "immutable"
+    },
+    {
+     "attrs": [
+      "card_type",
+      "card_last4"
+     ],
+     "from": "Sales.CreditCard",
+     "owner": "Sales",
+     "refresh": "immutable; full card number never copied"
+    }
+   ],
+   "items": [
+    {
+     "table": "aw-sales",
+     "entity": "Order",
+     "PK": "ORDER#{SalesOrderID:010d}",
+     "SK": "ORDER",
+     "GSI1PK": "CUSTOMER#{CustomerID:06d}",
+     "GSI1SK": "ORDER#{OrderDate:iso}#{SalesOrderID:010d}",
+     "GSI2PK": "ORDERSTATUS#{Status}",
+     "GSI2SK": "{OrderDate:iso}#{SalesOrderID:010d}",
+     "gsi2_when": {
+      "col": "Status",
+      "op": "in",
+      "value": [
+       1,
+       2,
+       3
+      ]
+     }
+    },
+    {
+     "table": "aw-sales",
+     "entity": "OrderByPurchaseOrderNumber",
+     "derived": true,
+     "PK": "PONUMBER#{PurchaseOrderNumber}",
+     "SK": "ORDER#{SalesOrderID:010d}",
+     "when": {
+      "col": "PurchaseOrderNumber",
+      "op": "not_null"
+     },
+     "attributes": [
+      "SalesOrderID",
+      "SalesOrderNumber",
+      "CustomerID",
+      "OrderDate"
+     ],
+     "attribute_list": [
+      "sales_order_id",
+      "sales_order_number",
+      "customer_id",
+      "order_date"
+     ]
+    },
+    {
+     "table": "aw-sales",
+     "entity": "OrderByApprovalCode",
+     "derived": true,
+     "PK": "CCAPPROVAL#{CreditCardApprovalCode}",
+     "SK": "ORDER#{SalesOrderID:010d}",
+     "when": {
+      "col": "CreditCardApprovalCode",
+      "op": "not_null"
+     },
+     "attributes": [
+      "SalesOrderID",
+      "SalesOrderNumber",
+      "CustomerID",
+      "OrderDate"
+     ],
+     "attribute_list": [
+      "sales_order_id",
+      "sales_order_number",
+      "customer_id",
+      "order_date"
+     ]
+    }
+   ]
+  },
+  "Sales.SalesOrderDetail": {
+   "domain": "Sales",
+   "primary_key": [
+    "SalesOrderID",
+    "SalesOrderDetailID"
+   ],
+   "row_count": 121317,
+   "source_sql": "SELECT d.*, p.Name AS product_name, p.ProductNumber AS product_number FROM Sales.SalesOrderDetail d JOIN Production.Product p ON p.ProductID = d.ProductID",
+   "columns": [
+    {
+     "column": "SalesOrderID",
+     "sql_type": "int",
+     "attribute": "sales_order_id",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesOrderDetailID",
+     "sql_type": "int",
+     "attribute": "sales_order_detail_id",
+     "transform": "copy"
+    },
+    {
+     "column": "CarrierTrackingNumber",
+     "sql_type": "nvarchar",
+     "attribute": "carrier_tracking_number",
+     "transform": "copy"
+    },
+    {
+     "column": "OrderQty",
+     "sql_type": "smallint",
+     "attribute": "order_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "SpecialOfferID",
+     "sql_type": "int",
+     "attribute": "special_offer_id",
+     "transform": "copy"
+    },
+    {
+     "column": "UnitPrice",
+     "sql_type": "money",
+     "attribute": "unit_price",
+     "transform": "copy"
+    },
+    {
+     "column": "UnitPriceDiscount",
+     "sql_type": "money",
+     "attribute": "unit_price_discount",
+     "transform": "copy"
+    },
+    {
+     "column": "LineTotal",
+     "sql_type": "numeric",
+     "attribute": "line_total",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "product_name",
+    "product_number"
+   ],
+   "snapshots": [
+    {
+     "attrs": [
+      "product_name",
+      "product_number"
+     ],
+     "from": "Production.Product",
+     "owner": "Sales",
+     "refresh": "immutable at order time (CDC transform enriches from aw-catalog)"
+    }
+   ],
+   "items": [
+    {
+     "table": "aw-sales",
+     "entity": "OrderLine",
+     "PK": "ORDER#{SalesOrderID:010d}",
+     "SK": "LINE#{SalesOrderDetailID:07d}"
+    }
+   ]
+  },
+  "Sales.SalesOrderHeaderSalesReason": {
+   "domain": "Sales",
+   "primary_key": [
+    "SalesOrderID",
+    "SalesReasonID"
+   ],
+   "row_count": 27647,
+   "source_sql": "SELECT x.*, r.Name AS reason_name, r.ReasonType AS reason_type FROM Sales.SalesOrderHeaderSalesReason x JOIN Sales.SalesReason r ON r.SalesReasonID = x.SalesReasonID",
+   "columns": [
+    {
+     "column": "SalesOrderID",
+     "sql_type": "int",
+     "attribute": "sales_order_id",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesReasonID",
+     "sql_type": "int",
+     "attribute": "sales_reason_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "reason_name",
+    "reason_type"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-sales",
+     "entity": "OrderSalesReason",
+     "PK": "ORDER#{SalesOrderID:010d}",
+     "SK": "REASON#{SalesReasonID:02d}"
+    }
+   ]
+  },
+  "Sales.SalesReason": {
+   "domain": "Sales",
+   "primary_key": [
+    "SalesReasonID"
+   ],
+   "row_count": 10,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "SalesReasonID",
+     "sql_type": "int",
+     "attribute": "sales_reason_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "ReasonType",
+     "sql_type": "Name",
+     "attribute": "reason_type",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-sales",
+     "entity": "SalesReason",
+     "PK": "SALESREASON",
+     "SK": "{SalesReasonID:02d}"
+    }
+   ]
+  },
+  "Sales.ShoppingCartItem": {
+   "domain": "Sales",
+   "primary_key": [
+    "ShoppingCartItemID"
+   ],
+   "row_count": 3,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ShoppingCartItemID",
+     "sql_type": "int",
+     "attribute": "shopping_cart_item_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ShoppingCartID",
+     "sql_type": "nvarchar",
+     "attribute": "shopping_cart_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Quantity",
+     "sql_type": "int",
+     "attribute": "quantity",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "DateCreated",
+     "sql_type": "datetime",
+     "attribute": "date_created",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-sales",
+     "entity": "CartItem",
+     "PK": "CART#{ShoppingCartID:trim}",
+     "SK": "ITEM#{ProductID:06d}",
+     "ttl_from": {
+      "col": "ModifiedDate",
+      "days": 7
+     }
+    }
+   ]
+  },
+  "Sales.SalesPerson": {
+   "domain": "Sales",
+   "primary_key": [
+    "BusinessEntityID"
+   ],
+   "row_count": 17,
+   "source_sql": "SELECT sp.*, p.FirstName + ' ' + p.LastName AS sales_person_name, t.Name AS territory_name FROM Sales.SalesPerson sp JOIN Person.Person p ON p.BusinessEntityID = sp.BusinessEntityID LEFT JOIN Sales.SalesTerritory t ON t.TerritoryID = sp.TerritoryID",
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "TerritoryID",
+     "sql_type": "int",
+     "attribute": "territory_id",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesQuota",
+     "sql_type": "money",
+     "attribute": "sales_quota",
+     "transform": "copy"
+    },
+    {
+     "column": "Bonus",
+     "sql_type": "money",
+     "attribute": "bonus",
+     "transform": "copy"
+    },
+    {
+     "column": "CommissionPct",
+     "sql_type": "smallmoney",
+     "attribute": "commission_pct",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesYTD",
+     "sql_type": "money",
+     "attribute": "sales_ytd",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesLastYear",
+     "sql_type": "money",
+     "attribute": "sales_last_year",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "sales_person_name",
+    "territory_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-sales",
+     "entity": "SalesPerson",
+     "PK": "SALESPERSON#{BusinessEntityID:06d}",
+     "SK": "SALESPERSON"
+    }
+   ]
+  },
+  "Sales.SalesPersonQuotaHistory": {
+   "domain": "Sales",
+   "primary_key": [
+    "BusinessEntityID",
+    "QuotaDate"
+   ],
+   "row_count": 163,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "QuotaDate",
+     "sql_type": "datetime",
+     "attribute": "quota_date",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesQuota",
+     "sql_type": "money",
+     "attribute": "sales_quota",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-sales",
+     "entity": "SalesQuota",
+     "PK": "SALESPERSON#{BusinessEntityID:06d}",
+     "SK": "QUOTA#{QuotaDate:iso}"
+    }
+   ]
+  },
+  "Sales.SalesTerritory": {
+   "domain": "Sales",
+   "primary_key": [
+    "TerritoryID"
+   ],
+   "row_count": 10,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "TerritoryID",
+     "sql_type": "int",
+     "attribute": "territory_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "CountryRegionCode",
+     "sql_type": "nvarchar",
+     "attribute": "country_region_code",
+     "transform": "copy"
+    },
+    {
+     "column": "Group",
+     "sql_type": "nvarchar",
+     "attribute": "group",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesYTD",
+     "sql_type": "money",
+     "attribute": "sales_ytd",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesLastYear",
+     "sql_type": "money",
+     "attribute": "sales_last_year",
+     "transform": "copy"
+    },
+    {
+     "column": "CostYTD",
+     "sql_type": "money",
+     "attribute": "cost_ytd",
+     "transform": "copy"
+    },
+    {
+     "column": "CostLastYear",
+     "sql_type": "money",
+     "attribute": "cost_last_year",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-sales",
+     "entity": "SalesTerritory",
+     "PK": "TERRITORY#{TerritoryID:02d}",
+     "SK": "TERRITORY"
+    }
+   ]
+  },
+  "Sales.SalesTerritoryHistory": {
+   "domain": "Sales",
+   "primary_key": [
+    "BusinessEntityID",
+    "StartDate",
+    "TerritoryID"
+   ],
+   "row_count": 17,
+   "source_sql": "SELECT h.*, p.FirstName + ' ' + p.LastName AS sales_person_name FROM Sales.SalesTerritoryHistory h JOIN Person.Person p ON p.BusinessEntityID = h.BusinessEntityID",
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "TerritoryID",
+     "sql_type": "int",
+     "attribute": "territory_id",
+     "transform": "copy"
+    },
+    {
+     "column": "StartDate",
+     "sql_type": "datetime",
+     "attribute": "start_date",
+     "transform": "copy"
+    },
+    {
+     "column": "EndDate",
+     "sql_type": "datetime",
+     "attribute": "end_date",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "sales_person_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-sales",
+     "entity": "TerritoryAssignment",
+     "PK": "TERRITORY#{TerritoryID:02d}",
+     "SK": "SALESPERSON#{StartDate:iso}#{BusinessEntityID:06d}"
+    }
+   ]
+  },
+  "Person.BusinessEntity": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "BusinessEntityID"
+   ],
+   "row_count": 20777,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "BusinessEntity",
+     "PK": "BE#{BusinessEntityID:06d}",
+     "SK": "BE"
+    }
+   ]
+  },
+  "Person.Person": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "BusinessEntityID"
+   ],
+   "row_count": 19972,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "PersonType",
+     "sql_type": "nchar",
+     "attribute": "person_type",
+     "transform": "copy"
+    },
+    {
+     "column": "NameStyle",
+     "sql_type": "NameStyle",
+     "attribute": "name_style",
+     "transform": "copy"
+    },
+    {
+     "column": "Title",
+     "sql_type": "nvarchar",
+     "attribute": "title",
+     "transform": "copy"
+    },
+    {
+     "column": "FirstName",
+     "sql_type": "Name",
+     "attribute": "first_name",
+     "transform": "copy"
+    },
+    {
+     "column": "MiddleName",
+     "sql_type": "Name",
+     "attribute": "middle_name",
+     "transform": "copy"
+    },
+    {
+     "column": "LastName",
+     "sql_type": "Name",
+     "attribute": "last_name",
+     "transform": "copy"
+    },
+    {
+     "column": "Suffix",
+     "sql_type": "nvarchar",
+     "attribute": "suffix",
+     "transform": "copy"
+    },
+    {
+     "column": "EmailPromotion",
+     "sql_type": "int",
+     "attribute": "email_promotion",
+     "transform": "copy"
+    },
+    {
+     "column": "AdditionalContactInfo",
+     "sql_type": "xml",
+     "attribute": "additional_contact_info",
+     "transform": "copy"
+    },
+    {
+     "column": "Demographics",
+     "sql_type": "xml",
+     "attribute": "demographics",
+     "transform": "xml_map"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "Person",
+     "PK": "BE#{BusinessEntityID:06d}",
+     "SK": "PERSON"
+    }
+   ]
+  },
+  "Person.Password": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "BusinessEntityID"
+   ],
+   "row_count": 19972,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "PasswordHash",
+     "sql_type": "varchar",
+     "attribute": "password_hash",
+     "transform": "copy"
+    },
+    {
+     "column": "PasswordSalt",
+     "sql_type": "varchar",
+     "attribute": "password_salt",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "Password",
+     "PK": "BE#{BusinessEntityID:06d}",
+     "SK": "PASSWORD"
+    }
+   ]
+  },
+  "Person.EmailAddress": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "BusinessEntityID",
+    "EmailAddressID"
+   ],
+   "row_count": 19972,
+   "source_sql": "SELECT e.*, LOWER(LTRIM(RTRIM(e.EmailAddress))) AS x_email_lower FROM Person.EmailAddress e",
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "EmailAddressID",
+     "sql_type": "int",
+     "attribute": "email_address_id",
+     "transform": "copy"
+    },
+    {
+     "column": "EmailAddress",
+     "sql_type": "nvarchar",
+     "attribute": "email_address",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "EmailAddress",
+     "PK": "BE#{BusinessEntityID:06d}",
+     "SK": "EMAIL#{EmailAddressID:06d}"
+    },
+    {
+     "table": "aw-customer",
+     "entity": "EmailLogin",
+     "derived": true,
+     "PK": "EMAIL#{x_email_lower}",
+     "SK": "EMAIL",
+     "attributes": [
+      "BusinessEntityID",
+      "EmailAddressID"
+     ],
+     "purpose": "login by email (CUS-01, strong read) + uniqueness",
+     "attribute_list": [
+      "business_entity_id",
+      "email_address_id"
+     ]
+    }
+   ]
+  },
+  "Person.PersonPhone": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "BusinessEntityID",
+    "PhoneNumber",
+    "PhoneNumberTypeID"
+   ],
+   "row_count": 19972,
+   "source_sql": "SELECT x.*, t.Name AS phone_type FROM Person.PersonPhone x JOIN Person.PhoneNumberType t ON t.PhoneNumberTypeID = x.PhoneNumberTypeID",
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "PhoneNumber",
+     "sql_type": "Phone",
+     "attribute": "phone_number",
+     "transform": "copy"
+    },
+    {
+     "column": "PhoneNumberTypeID",
+     "sql_type": "int",
+     "attribute": "phone_number_type_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "phone_type"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "Phone",
+     "PK": "BE#{BusinessEntityID:06d}",
+     "SK": "PHONE#{PhoneNumberTypeID:02d}#{PhoneNumber}"
+    }
+   ]
+  },
+  "Person.PhoneNumberType": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "PhoneNumberTypeID"
+   ],
+   "row_count": 3,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "PhoneNumberTypeID",
+     "sql_type": "int",
+     "attribute": "phone_number_type_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "PhoneNumberType",
+     "PK": "LOOKUP#PHONETYPE",
+     "SK": "{PhoneNumberTypeID:02d}"
+    }
+   ]
+  },
+  "Person.AddressType": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "AddressTypeID"
+   ],
+   "row_count": 6,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "AddressTypeID",
+     "sql_type": "int",
+     "attribute": "address_type_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "AddressType",
+     "PK": "LOOKUP#ADDRESSTYPE",
+     "SK": "{AddressTypeID:02d}"
+    }
+   ]
+  },
+  "Person.ContactType": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "ContactTypeID"
+   ],
+   "row_count": 20,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ContactTypeID",
+     "sql_type": "int",
+     "attribute": "contact_type_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "ContactType",
+     "PK": "LOOKUP#CONTACTTYPE",
+     "SK": "{ContactTypeID:02d}"
+    }
+   ]
+  },
+  "Person.Address": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "AddressID"
+   ],
+   "row_count": 19614,
+   "source_sql": "SELECT a.*, sp.StateProvinceCode AS state_province_code, sp.Name AS state_province_name, sp.CountryRegionCode AS country_region_code,\n       a.SpatialLocation.Lat AS latitude, a.SpatialLocation.Long AS longitude\nFROM Person.Address a JOIN Person.StateProvince sp ON sp.StateProvinceID = a.StateProvinceID",
+   "columns": [
+    {
+     "column": "AddressID",
+     "sql_type": "int",
+     "attribute": "address_id",
+     "transform": "copy"
+    },
+    {
+     "column": "AddressLine1",
+     "sql_type": "nvarchar",
+     "attribute": "address_line1",
+     "transform": "copy"
+    },
+    {
+     "column": "AddressLine2",
+     "sql_type": "nvarchar",
+     "attribute": "address_line2",
+     "transform": "copy"
+    },
+    {
+     "column": "City",
+     "sql_type": "nvarchar",
+     "attribute": "city",
+     "transform": "copy"
+    },
+    {
+     "column": "StateProvinceID",
+     "sql_type": "int",
+     "attribute": "state_province_id",
+     "transform": "copy"
+    },
+    {
+     "column": "PostalCode",
+     "sql_type": "nvarchar",
+     "attribute": "postal_code",
+     "transform": "copy"
+    },
+    {
+     "column": "SpatialLocation",
+     "sql_type": "geography",
+     "attribute": null,
+     "transform": "omitted"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "state_province_code",
+    "state_province_name",
+    "country_region_code",
+    "latitude",
+    "longitude"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "Address",
+     "PK": "ADDRESS#{AddressID:06d}",
+     "SK": "ADDRESS"
+    }
+   ]
+  },
+  "Person.BusinessEntityAddress": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "BusinessEntityID",
+    "AddressID",
+    "AddressTypeID"
+   ],
+   "row_count": 19614,
+   "source_sql": "SELECT x.*, CASE WHEN EXISTS (SELECT 1 FROM Purchasing.Vendor v WHERE v.BusinessEntityID = x.BusinessEntityID) THEN 1 ELSE 0 END AS x_is_vendor,\n       t.Name AS address_type, a.AddressLine1 AS address_line1, a.AddressLine2 AS address_line2, a.City AS city,\n       sp.StateProvinceCode AS state_province_code, a.PostalCode AS postal_code, sp.CountryRegionCode AS country_region_code\nFROM Person.BusinessEntityAddress x JOIN Person.AddressType t ON t.AddressTypeID = x.AddressTypeID JOIN Person.Address a ON a.AddressID = x.AddressID JOIN Person.StateProvince sp ON sp.StateProvinceID = a.StateProvinceID",
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "AddressID",
+     "sql_type": "int",
+     "attribute": "address_id",
+     "transform": "copy"
+    },
+    {
+     "column": "AddressTypeID",
+     "sql_type": "int",
+     "attribute": "address_type_id",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "address_type",
+    "address_line1",
+    "address_line2",
+    "city",
+    "state_province_code",
+    "postal_code",
+    "country_region_code"
+   ],
+   "snapshots": [
+    {
+     "attrs": [
+      "address_line1",
+      "address_line2",
+      "city",
+      "state_province_code",
+      "postal_code",
+      "country_region_code"
+     ],
+     "from": "Person.Address",
+     "owner": "Customer & Party",
+     "refresh": "customer stream: on ADDRESS change, Query GSI1 ADDRESS#id and update links (+ Purchasing vendor copies)"
+    }
+   ],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "PartyAddress",
+     "PK": "BE#{BusinessEntityID:06d}",
+     "SK": "ADDRESS#{AddressTypeID:02d}#{AddressID:06d}",
+     "GSI1PK": "ADDRESS#{AddressID:06d}",
+     "GSI1SK": "BE#{BusinessEntityID:06d}"
+    },
+    {
+     "table": "aw-purchasing",
+     "entity": "VendorAddress",
+     "copy_of": "Customer & Party",
+     "PK": "VENDOR#{BusinessEntityID:06d}",
+     "SK": "ADDRESS#{AddressTypeID:02d}#{AddressID:06d}",
+     "when": {
+      "col": "x_is_vendor",
+      "op": "in",
+      "value": [
+       1
+      ]
+     }
+    }
+   ]
+  },
+  "Person.BusinessEntityContact": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "BusinessEntityID",
+    "PersonID",
+    "ContactTypeID"
+   ],
+   "row_count": 909,
+   "source_sql": "SELECT x.*, CASE WHEN EXISTS (SELECT 1 FROM Purchasing.Vendor v WHERE v.BusinessEntityID = x.BusinessEntityID) THEN 1 ELSE 0 END AS x_is_vendor,\n       p.FirstName + ' ' + p.LastName AS contact_name, t.Name AS contact_type\nFROM Person.BusinessEntityContact x JOIN Person.Person p ON p.BusinessEntityID = x.PersonID JOIN Person.ContactType t ON t.ContactTypeID = x.ContactTypeID",
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "PersonID",
+     "sql_type": "int",
+     "attribute": "person_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ContactTypeID",
+     "sql_type": "int",
+     "attribute": "contact_type_id",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "contact_name",
+    "contact_type"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "PartyContact",
+     "PK": "BE#{BusinessEntityID:06d}",
+     "SK": "CONTACT#{PersonID:06d}#{ContactTypeID:02d}",
+     "GSI1PK": "BE#{PersonID:06d}",
+     "GSI1SK": "CONTACTOF#{BusinessEntityID:06d}#{ContactTypeID:02d}"
+    },
+    {
+     "table": "aw-purchasing",
+     "entity": "VendorContact",
+     "copy_of": "Customer & Party",
+     "PK": "VENDOR#{BusinessEntityID:06d}",
+     "SK": "CONTACT#{PersonID:06d}#{ContactTypeID:02d}",
+     "when": {
+      "col": "x_is_vendor",
+      "op": "in",
+      "value": [
+       1
+      ]
+     }
+    }
+   ]
+  },
+  "Sales.Customer": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "CustomerID"
+   ],
+   "row_count": 19820,
+   "source_sql": "SELECT c.*, RIGHT('000000' + CAST(COALESCE(c.PersonID, c.StoreID) AS varchar(10)), 6) AS x_owner,\n       COALESCE(p.FirstName + ' ' + p.LastName, s.Name) AS display_name, s.Name AS store_name, t.Name AS territory_name,\n       UPPER(COALESCE(p.LastName + ', ' + p.FirstName, s.Name)) AS x_sort_name\nFROM Sales.Customer c LEFT JOIN Person.Person p ON p.BusinessEntityID = c.PersonID LEFT JOIN Sales.Store s ON s.BusinessEntityID = c.StoreID LEFT JOIN Sales.SalesTerritory t ON t.TerritoryID = c.TerritoryID",
+   "columns": [
+    {
+     "column": "CustomerID",
+     "sql_type": "int",
+     "attribute": "customer_id",
+     "transform": "copy"
+    },
+    {
+     "column": "PersonID",
+     "sql_type": "int",
+     "attribute": "person_id",
+     "transform": "copy"
+    },
+    {
+     "column": "StoreID",
+     "sql_type": "int",
+     "attribute": "store_id",
+     "transform": "copy"
+    },
+    {
+     "column": "TerritoryID",
+     "sql_type": "int",
+     "attribute": "territory_id",
+     "transform": "copy"
+    },
+    {
+     "column": "AccountNumber",
+     "sql_type": "varchar",
+     "attribute": "account_number",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "varchar",
+    "display_name",
+    "store_name",
+    "territory_name"
+   ],
+   "snapshots": [
+    {
+     "attrs": [
+      "display_name",
+      "store_name",
+      "territory_name"
+     ],
+     "from": "Person.Person/Sales.Store/Sales.SalesTerritory",
+     "owner": "Customer & Party",
+     "refresh": "customer stream (person/store rename); Sales events (territory rename)"
+    }
+   ],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "Customer",
+     "PK": "BE#{x_owner}",
+     "SK": "CUSTOMER#{CustomerID:06d}",
+     "GSI1PK": "CUSTOMER#{CustomerID:06d}",
+     "GSI1SK": "CUSTOMER",
+     "GSI2PK": "CUSTOMERS",
+     "GSI2SK": "{x_sort_name}#{CustomerID:06d}"
+    }
+   ]
+  },
+  "Sales.Store": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "BusinessEntityID"
+   ],
+   "row_count": 701,
+   "source_sql": "SELECT s.*, p.FirstName + ' ' + p.LastName AS sales_person_name FROM Sales.Store s LEFT JOIN Person.Person p ON p.BusinessEntityID = s.SalesPersonID",
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "SalesPersonID",
+     "sql_type": "int",
+     "attribute": "sales_person_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Demographics",
+     "sql_type": "xml",
+     "attribute": "demographics",
+     "transform": "xml_map"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "sales_person_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "Store",
+     "PK": "BE#{BusinessEntityID:06d}",
+     "SK": "STORE"
+    }
+   ]
+  },
+  "Sales.CreditCard": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "CreditCardID"
+   ],
+   "row_count": 19118,
+   "source_sql": "SELECT c.*, RIGHT(c.CardNumber, 4) AS card_last4 FROM Sales.CreditCard c",
+   "columns": [
+    {
+     "column": "CreditCardID",
+     "sql_type": "int",
+     "attribute": "credit_card_id",
+     "transform": "copy"
+    },
+    {
+     "column": "CardType",
+     "sql_type": "nvarchar",
+     "attribute": "card_type",
+     "transform": "copy"
+    },
+    {
+     "column": "CardNumber",
+     "sql_type": "nvarchar",
+     "attribute": null,
+     "transform": "omitted"
+    },
+    {
+     "column": "ExpMonth",
+     "sql_type": "tinyint",
+     "attribute": "exp_month",
+     "transform": "copy"
+    },
+    {
+     "column": "ExpYear",
+     "sql_type": "smallint",
+     "attribute": "exp_year",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "card_last4"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "CreditCard",
+     "PK": "CARD#{CreditCardID:06d}",
+     "SK": "CARD"
+    }
+   ]
+  },
+  "Sales.PersonCreditCard": {
+   "domain": "Customer & Party",
+   "primary_key": [
+    "BusinessEntityID",
+    "CreditCardID"
+   ],
+   "row_count": 19118,
+   "source_sql": "SELECT x.*, c.CardType AS card_type, RIGHT(c.CardNumber, 4) AS card_last4, c.ExpMonth AS exp_month, c.ExpYear AS exp_year FROM Sales.PersonCreditCard x JOIN Sales.CreditCard c ON c.CreditCardID = x.CreditCardID",
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "CreditCardID",
+     "sql_type": "int",
+     "attribute": "credit_card_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "card_type",
+    "card_last4",
+    "exp_month",
+    "exp_year"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-customer",
+     "entity": "PartyCard",
+     "PK": "BE#{BusinessEntityID:06d}",
+     "SK": "CARD#{CreditCardID:06d}"
+    }
+   ]
+  },
+  "Purchasing.Vendor": {
+   "domain": "Purchasing",
+   "primary_key": [
+    "BusinessEntityID"
+   ],
+   "row_count": 104,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "AccountNumber",
+     "sql_type": "AccountNumber",
+     "attribute": "account_number",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "CreditRating",
+     "sql_type": "tinyint",
+     "attribute": "credit_rating",
+     "transform": "copy"
+    },
+    {
+     "column": "PreferredVendorStatus",
+     "sql_type": "Flag",
+     "attribute": "preferred_vendor_status",
+     "transform": "copy"
+    },
+    {
+     "column": "ActiveFlag",
+     "sql_type": "Flag",
+     "attribute": "active_flag",
+     "transform": "copy"
+    },
+    {
+     "column": "PurchasingWebServiceURL",
+     "sql_type": "nvarchar",
+     "attribute": "purchasing_web_service_url",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-purchasing",
+     "entity": "Vendor",
+     "PK": "VENDOR#{BusinessEntityID:06d}",
+     "SK": "VENDOR"
+    }
+   ]
+  },
+  "Purchasing.ProductVendor": {
+   "domain": "Purchasing",
+   "primary_key": [
+    "ProductID",
+    "BusinessEntityID"
+   ],
+   "row_count": 460,
+   "source_sql": "SELECT x.*, p.Name AS product_name, p.ProductNumber AS product_number, v.Name AS vendor_name FROM Purchasing.ProductVendor x JOIN Production.Product p ON p.ProductID = x.ProductID JOIN Purchasing.Vendor v ON v.BusinessEntityID = x.BusinessEntityID",
+   "columns": [
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "AverageLeadTime",
+     "sql_type": "int",
+     "attribute": "average_lead_time",
+     "transform": "copy"
+    },
+    {
+     "column": "StandardPrice",
+     "sql_type": "money",
+     "attribute": "standard_price",
+     "transform": "copy"
+    },
+    {
+     "column": "LastReceiptCost",
+     "sql_type": "money",
+     "attribute": "last_receipt_cost",
+     "transform": "copy"
+    },
+    {
+     "column": "LastReceiptDate",
+     "sql_type": "datetime",
+     "attribute": "last_receipt_date",
+     "transform": "copy"
+    },
+    {
+     "column": "MinOrderQty",
+     "sql_type": "int",
+     "attribute": "min_order_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "MaxOrderQty",
+     "sql_type": "int",
+     "attribute": "max_order_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "OnOrderQty",
+     "sql_type": "int",
+     "attribute": "on_order_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "UnitMeasureCode",
+     "sql_type": "nchar",
+     "attribute": "unit_measure_code",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "product_name",
+    "product_number",
+    "vendor_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-purchasing",
+     "entity": "VendorProduct",
+     "PK": "VENDOR#{BusinessEntityID:06d}",
+     "SK": "PRODUCT#{ProductID:06d}",
+     "GSI1PK": "PRODUCT#{ProductID:06d}",
+     "GSI1SK": "VENDOR#{BusinessEntityID:06d}"
+    }
+   ]
+  },
+  "Purchasing.PurchaseOrderHeader": {
+   "domain": "Purchasing",
+   "primary_key": [
+    "PurchaseOrderID"
+   ],
+   "row_count": 4012,
+   "source_sql": "SELECT h.*, v.Name AS vendor_name, p.FirstName + ' ' + p.LastName AS employee_name, sm.Name AS ship_method_name FROM Purchasing.PurchaseOrderHeader h JOIN Purchasing.Vendor v ON v.BusinessEntityID = h.VendorID JOIN Person.Person p ON p.BusinessEntityID = h.EmployeeID JOIN Purchasing.ShipMethod sm ON sm.ShipMethodID = h.ShipMethodID",
+   "columns": [
+    {
+     "column": "PurchaseOrderID",
+     "sql_type": "int",
+     "attribute": "purchase_order_id",
+     "transform": "copy"
+    },
+    {
+     "column": "RevisionNumber",
+     "sql_type": "tinyint",
+     "attribute": "revision_number",
+     "transform": "copy"
+    },
+    {
+     "column": "Status",
+     "sql_type": "tinyint",
+     "attribute": "status",
+     "transform": "copy"
+    },
+    {
+     "column": "EmployeeID",
+     "sql_type": "int",
+     "attribute": "employee_id",
+     "transform": "copy"
+    },
+    {
+     "column": "VendorID",
+     "sql_type": "int",
+     "attribute": "vendor_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ShipMethodID",
+     "sql_type": "int",
+     "attribute": "ship_method_id",
+     "transform": "copy"
+    },
+    {
+     "column": "OrderDate",
+     "sql_type": "datetime",
+     "attribute": "order_date",
+     "transform": "copy"
+    },
+    {
+     "column": "ShipDate",
+     "sql_type": "datetime",
+     "attribute": "ship_date",
+     "transform": "copy"
+    },
+    {
+     "column": "SubTotal",
+     "sql_type": "money",
+     "attribute": "sub_total",
+     "transform": "copy"
+    },
+    {
+     "column": "TaxAmt",
+     "sql_type": "money",
+     "attribute": "tax_amt",
+     "transform": "copy"
+    },
+    {
+     "column": "Freight",
+     "sql_type": "money",
+     "attribute": "freight",
+     "transform": "copy"
+    },
+    {
+     "column": "TotalDue",
+     "sql_type": "money",
+     "attribute": "total_due",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "vendor_name",
+    "employee_name",
+    "ship_method_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-purchasing",
+     "entity": "PurchaseOrder",
+     "PK": "PO#{PurchaseOrderID:06d}",
+     "SK": "PO",
+     "GSI1PK": "VENDOR#{VendorID:06d}",
+     "GSI1SK": "PO#{OrderDate:iso}#{PurchaseOrderID:06d}",
+     "GSI2PK": "EMPLOYEE#{EmployeeID:06d}",
+     "GSI2SK": "PO#{OrderDate:iso}#{PurchaseOrderID:06d}"
+    },
+    {
+     "table": "aw-purchasing",
+     "entity": "OpenPurchaseOrder",
+     "derived": true,
+     "PK": "POSTATUS#{Status}",
+     "SK": "{OrderDate:iso}#{PurchaseOrderID:06d}",
+     "when": {
+      "col": "Status",
+      "op": "in",
+      "value": [
+       1,
+       2
+      ]
+     },
+     "attributes": [
+      "PurchaseOrderID",
+      "VendorID",
+      "vendor_name",
+      "Status",
+      "OrderDate",
+      "TotalDue"
+     ],
+     "purpose": "sparse open-PO list (PUR-07) without a third GSI",
+     "attribute_list": [
+      "purchase_order_id",
+      "vendor_id",
+      "vendor_name",
+      "status",
+      "order_date",
+      "total_due"
+     ]
+    }
+   ]
+  },
+  "Purchasing.PurchaseOrderDetail": {
+   "domain": "Purchasing",
+   "primary_key": [
+    "PurchaseOrderID",
+    "PurchaseOrderDetailID"
+   ],
+   "row_count": 8845,
+   "source_sql": "SELECT d.*, p.Name AS product_name FROM Purchasing.PurchaseOrderDetail d JOIN Production.Product p ON p.ProductID = d.ProductID",
+   "columns": [
+    {
+     "column": "PurchaseOrderID",
+     "sql_type": "int",
+     "attribute": "purchase_order_id",
+     "transform": "copy"
+    },
+    {
+     "column": "PurchaseOrderDetailID",
+     "sql_type": "int",
+     "attribute": "purchase_order_detail_id",
+     "transform": "copy"
+    },
+    {
+     "column": "DueDate",
+     "sql_type": "datetime",
+     "attribute": "due_date",
+     "transform": "copy"
+    },
+    {
+     "column": "OrderQty",
+     "sql_type": "smallint",
+     "attribute": "order_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "ProductID",
+     "sql_type": "int",
+     "attribute": "product_id",
+     "transform": "copy"
+    },
+    {
+     "column": "UnitPrice",
+     "sql_type": "money",
+     "attribute": "unit_price",
+     "transform": "copy"
+    },
+    {
+     "column": "LineTotal",
+     "sql_type": "money",
+     "attribute": "line_total",
+     "transform": "copy"
+    },
+    {
+     "column": "ReceivedQty",
+     "sql_type": "decimal",
+     "attribute": "received_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "RejectedQty",
+     "sql_type": "decimal",
+     "attribute": "rejected_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "StockedQty",
+     "sql_type": "decimal",
+     "attribute": "stocked_qty",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "product_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-purchasing",
+     "entity": "PurchaseOrderLine",
+     "PK": "PO#{PurchaseOrderID:06d}",
+     "SK": "LINE#{PurchaseOrderDetailID:06d}"
+    }
+   ]
+  },
+  "HumanResources.Employee": {
+   "domain": "HR",
+   "primary_key": [
+    "BusinessEntityID"
+   ],
+   "row_count": 290,
+   "source_sql": "SELECT e.*, ISNULL(e.OrganizationNode.ToString(), '/') AS x_org_path, ISNULL(e.OrganizationNode.ToString(), '/') AS org_path,\n       p.FirstName AS first_name, p.LastName AS last_name\nFROM HumanResources.Employee e JOIN Person.Person p ON p.BusinessEntityID = e.BusinessEntityID",
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "NationalIDNumber",
+     "sql_type": "nvarchar",
+     "attribute": "national_id_number",
+     "transform": "copy"
+    },
+    {
+     "column": "LoginID",
+     "sql_type": "nvarchar",
+     "attribute": "login_id",
+     "transform": "copy"
+    },
+    {
+     "column": "OrganizationNode",
+     "sql_type": "hierarchyid",
+     "attribute": null,
+     "transform": "omitted"
+    },
+    {
+     "column": "OrganizationLevel",
+     "sql_type": "smallint",
+     "attribute": "organization_level",
+     "transform": "copy"
+    },
+    {
+     "column": "JobTitle",
+     "sql_type": "nvarchar",
+     "attribute": "job_title",
+     "transform": "copy"
+    },
+    {
+     "column": "BirthDate",
+     "sql_type": "date",
+     "attribute": "birth_date",
+     "transform": "copy"
+    },
+    {
+     "column": "MaritalStatus",
+     "sql_type": "nchar",
+     "attribute": "marital_status",
+     "transform": "copy"
+    },
+    {
+     "column": "Gender",
+     "sql_type": "nchar",
+     "attribute": "gender",
+     "transform": "copy"
+    },
+    {
+     "column": "HireDate",
+     "sql_type": "date",
+     "attribute": "hire_date",
+     "transform": "copy"
+    },
+    {
+     "column": "SalariedFlag",
+     "sql_type": "Flag",
+     "attribute": "salaried_flag",
+     "transform": "copy"
+    },
+    {
+     "column": "VacationHours",
+     "sql_type": "smallint",
+     "attribute": "vacation_hours",
+     "transform": "copy"
+    },
+    {
+     "column": "SickLeaveHours",
+     "sql_type": "smallint",
+     "attribute": "sick_leave_hours",
+     "transform": "copy"
+    },
+    {
+     "column": "CurrentFlag",
+     "sql_type": "Flag",
+     "attribute": "current_flag",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "org_path",
+    "first_name",
+    "last_name"
+   ],
+   "snapshots": [
+    {
+     "attrs": [
+      "first_name",
+      "last_name"
+     ],
+     "from": "Person.Person",
+     "owner": "HR",
+     "refresh": "customer stream event PersonChanged -> HR updates its copy"
+    }
+   ],
+   "items": [
+    {
+     "table": "aw-hr",
+     "entity": "Employee",
+     "PK": "EMPLOYEE#{BusinessEntityID:06d}",
+     "SK": "EMPLOYEE",
+     "GSI2PK": "ORG",
+     "GSI2SK": "{x_org_path}"
+    }
+   ]
+  },
+  "HumanResources.EmployeeDepartmentHistory": {
+   "domain": "HR",
+   "primary_key": [
+    "BusinessEntityID",
+    "StartDate",
+    "DepartmentID",
+    "ShiftID"
+   ],
+   "row_count": 296,
+   "source_sql": "SELECT h.*, d.Name AS department_name, s.Name AS shift_name FROM HumanResources.EmployeeDepartmentHistory h JOIN HumanResources.Department d ON d.DepartmentID = h.DepartmentID JOIN HumanResources.Shift s ON s.ShiftID = h.ShiftID",
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "DepartmentID",
+     "sql_type": "smallint",
+     "attribute": "department_id",
+     "transform": "copy"
+    },
+    {
+     "column": "ShiftID",
+     "sql_type": "tinyint",
+     "attribute": "shift_id",
+     "transform": "copy"
+    },
+    {
+     "column": "StartDate",
+     "sql_type": "date",
+     "attribute": "start_date",
+     "transform": "copy"
+    },
+    {
+     "column": "EndDate",
+     "sql_type": "date",
+     "attribute": "end_date",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "department_name",
+    "shift_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-hr",
+     "entity": "DepartmentAssignment",
+     "PK": "EMPLOYEE#{BusinessEntityID:06d}",
+     "SK": "DEPT#{StartDate:iso}#{DepartmentID:02d}#{ShiftID}",
+     "GSI1PK": "DEPARTMENT#{DepartmentID:02d}",
+     "GSI1SK": "EMPLOYEE#{BusinessEntityID:06d}",
+     "gsi1_when": {
+      "col": "EndDate",
+      "op": "is_null"
+     }
+    }
+   ]
+  },
+  "HumanResources.EmployeePayHistory": {
+   "domain": "HR",
+   "primary_key": [
+    "BusinessEntityID",
+    "RateChangeDate"
+   ],
+   "row_count": 316,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "RateChangeDate",
+     "sql_type": "datetime",
+     "attribute": "rate_change_date",
+     "transform": "copy"
+    },
+    {
+     "column": "Rate",
+     "sql_type": "money",
+     "attribute": "rate",
+     "transform": "copy"
+    },
+    {
+     "column": "PayFrequency",
+     "sql_type": "tinyint",
+     "attribute": "pay_frequency",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-hr",
+     "entity": "PayRate",
+     "PK": "EMPLOYEE#{BusinessEntityID:06d}",
+     "SK": "PAY#{RateChangeDate:iso}"
+    }
+   ]
+  },
+  "HumanResources.Department": {
+   "domain": "HR",
+   "primary_key": [
+    "DepartmentID"
+   ],
+   "row_count": 16,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "DepartmentID",
+     "sql_type": "smallint",
+     "attribute": "department_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "GroupName",
+     "sql_type": "Name",
+     "attribute": "group_name",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-hr",
+     "entity": "Department",
+     "PK": "DEPARTMENT#{DepartmentID:02d}",
+     "SK": "DEPARTMENT"
+    }
+   ]
+  },
+  "HumanResources.Shift": {
+   "domain": "HR",
+   "primary_key": [
+    "ShiftID"
+   ],
+   "row_count": 3,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ShiftID",
+     "sql_type": "tinyint",
+     "attribute": "shift_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "StartTime",
+     "sql_type": "time",
+     "attribute": "start_time",
+     "transform": "copy"
+    },
+    {
+     "column": "EndTime",
+     "sql_type": "time",
+     "attribute": "end_time",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-hr",
+     "entity": "Shift",
+     "PK": "SHIFT",
+     "SK": "{ShiftID}"
+    }
+   ]
+  },
+  "HumanResources.JobCandidate": {
+   "domain": "HR",
+   "primary_key": [
+    "JobCandidateID"
+   ],
+   "row_count": 13,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "JobCandidateID",
+     "sql_type": "int",
+     "attribute": "job_candidate_id",
+     "transform": "copy"
+    },
+    {
+     "column": "BusinessEntityID",
+     "sql_type": "int",
+     "attribute": "business_entity_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Resume",
+     "sql_type": "xml",
+     "attribute": "resume",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-hr",
+     "entity": "JobCandidate",
+     "PK": "CANDIDATE#{JobCandidateID:03d}",
+     "SK": "CANDIDATE"
+    }
+   ]
+  },
+  "Person.CountryRegion": {
+   "domain": "Reference",
+   "primary_key": [
+    "CountryRegionCode"
+   ],
+   "row_count": 238,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "CountryRegionCode",
+     "sql_type": "nvarchar",
+     "attribute": "country_region_code",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-reference",
+     "entity": "Country",
+     "PK": "COUNTRIES",
+     "SK": "COUNTRY#{CountryRegionCode}"
+    }
+   ]
+  },
+  "Person.StateProvince": {
+   "domain": "Reference",
+   "primary_key": [
+    "StateProvinceID"
+   ],
+   "row_count": 181,
+   "source_sql": "SELECT s.*, c.Name AS country_name FROM Person.StateProvince s JOIN Person.CountryRegion c ON c.CountryRegionCode = s.CountryRegionCode",
+   "columns": [
+    {
+     "column": "StateProvinceID",
+     "sql_type": "int",
+     "attribute": "state_province_id",
+     "transform": "copy"
+    },
+    {
+     "column": "StateProvinceCode",
+     "sql_type": "nchar",
+     "attribute": "state_province_code",
+     "transform": "copy"
+    },
+    {
+     "column": "CountryRegionCode",
+     "sql_type": "nvarchar",
+     "attribute": "country_region_code",
+     "transform": "copy"
+    },
+    {
+     "column": "IsOnlyStateProvinceFlag",
+     "sql_type": "Flag",
+     "attribute": "is_only_state_province_flag",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "TerritoryID",
+     "sql_type": "int",
+     "attribute": "territory_id",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [
+    "country_name"
+   ],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-reference",
+     "entity": "StateProvince",
+     "PK": "COUNTRY#{CountryRegionCode}",
+     "SK": "STATE#{StateProvinceCode:trim}",
+     "GSI1PK": "STATE#{StateProvinceID:03d}",
+     "GSI1SK": "STATE"
+    }
+   ]
+  },
+  "Sales.SalesTaxRate": {
+   "domain": "Reference",
+   "primary_key": [
+    "SalesTaxRateID"
+   ],
+   "row_count": 29,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "SalesTaxRateID",
+     "sql_type": "int",
+     "attribute": "sales_tax_rate_id",
+     "transform": "copy"
+    },
+    {
+     "column": "StateProvinceID",
+     "sql_type": "int",
+     "attribute": "state_province_id",
+     "transform": "copy"
+    },
+    {
+     "column": "TaxType",
+     "sql_type": "tinyint",
+     "attribute": "tax_type",
+     "transform": "copy"
+    },
+    {
+     "column": "TaxRate",
+     "sql_type": "smallmoney",
+     "attribute": "tax_rate",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-reference",
+     "entity": "SalesTaxRate",
+     "PK": "TAX#{StateProvinceID:03d}",
+     "SK": "TAX#{TaxType}#{SalesTaxRateID:03d}"
+    }
+   ]
+  },
+  "Sales.Currency": {
+   "domain": "Reference",
+   "primary_key": [
+    "CurrencyCode"
+   ],
+   "row_count": 105,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "CurrencyCode",
+     "sql_type": "nchar",
+     "attribute": "currency_code",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-reference",
+     "entity": "Currency",
+     "PK": "CURRENCIES",
+     "SK": "CURRENCY#{CurrencyCode}"
+    }
+   ]
+  },
+  "Sales.CountryRegionCurrency": {
+   "domain": "Reference",
+   "primary_key": [
+    "CountryRegionCode",
+    "CurrencyCode"
+   ],
+   "row_count": 109,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "CountryRegionCode",
+     "sql_type": "nvarchar",
+     "attribute": "country_region_code",
+     "transform": "copy"
+    },
+    {
+     "column": "CurrencyCode",
+     "sql_type": "nchar",
+     "attribute": "currency_code",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-reference",
+     "entity": "CountryCurrency",
+     "PK": "COUNTRY#{CountryRegionCode}",
+     "SK": "CURRENCY#{CurrencyCode}"
+    }
+   ]
+  },
+  "Sales.CurrencyRate": {
+   "domain": "Reference",
+   "primary_key": [
+    "CurrencyRateID"
+   ],
+   "row_count": 13532,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "CurrencyRateID",
+     "sql_type": "int",
+     "attribute": "currency_rate_id",
+     "transform": "copy"
+    },
+    {
+     "column": "CurrencyRateDate",
+     "sql_type": "datetime",
+     "attribute": "currency_rate_date",
+     "transform": "copy"
+    },
+    {
+     "column": "FromCurrencyCode",
+     "sql_type": "nchar",
+     "attribute": "from_currency_code",
+     "transform": "copy"
+    },
+    {
+     "column": "ToCurrencyCode",
+     "sql_type": "nchar",
+     "attribute": "to_currency_code",
+     "transform": "copy"
+    },
+    {
+     "column": "AverageRate",
+     "sql_type": "money",
+     "attribute": "average_rate",
+     "transform": "copy"
+    },
+    {
+     "column": "EndOfDayRate",
+     "sql_type": "money",
+     "attribute": "end_of_day_rate",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-reference",
+     "entity": "CurrencyRate",
+     "PK": "FX#{FromCurrencyCode}#{ToCurrencyCode}",
+     "SK": "{CurrencyRateDate:iso}#{CurrencyRateID:05d}",
+     "GSI1PK": "FXRATE#{CurrencyRateID:05d}",
+     "GSI1SK": "FXRATE"
+    }
+   ]
+  },
+  "Purchasing.ShipMethod": {
+   "domain": "Reference",
+   "primary_key": [
+    "ShipMethodID"
+   ],
+   "row_count": 5,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "ShipMethodID",
+     "sql_type": "int",
+     "attribute": "ship_method_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "ShipBase",
+     "sql_type": "money",
+     "attribute": "ship_base",
+     "transform": "copy"
+    },
+    {
+     "column": "ShipRate",
+     "sql_type": "money",
+     "attribute": "ship_rate",
+     "transform": "copy"
+    },
+    {
+     "column": "rowguid",
+     "sql_type": "uniqueidentifier",
+     "attribute": "rowguid",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-reference",
+     "entity": "ShipMethod",
+     "PK": "SHIPMETHODS",
+     "SK": "SHIPMETHOD#{ShipMethodID:02d}"
+    }
+   ]
+  },
+  "Production.UnitMeasure": {
+   "domain": "Reference",
+   "primary_key": [
+    "UnitMeasureCode"
+   ],
+   "row_count": 38,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "UnitMeasureCode",
+     "sql_type": "nchar",
+     "attribute": "unit_measure_code",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-reference",
+     "entity": "UnitMeasure",
+     "PK": "UNITS",
+     "SK": "UNIT#{UnitMeasureCode:trim}"
+    }
+   ]
+  },
+  "Production.Culture": {
+   "domain": "Reference",
+   "primary_key": [
+    "CultureID"
+   ],
+   "row_count": 8,
+   "source_sql": null,
+   "columns": [
+    {
+     "column": "CultureID",
+     "sql_type": "nchar",
+     "attribute": "culture_id",
+     "transform": "copy"
+    },
+    {
+     "column": "Name",
+     "sql_type": "Name",
+     "attribute": "name",
+     "transform": "copy"
+    },
+    {
+     "column": "ModifiedDate",
+     "sql_type": "datetime",
+     "attribute": "modified_date",
+     "transform": "copy"
+    }
+   ],
+   "derived_attributes": [],
+   "snapshots": [],
+   "items": [
+    {
+     "table": "aw-reference",
+     "entity": "Culture",
+     "PK": "CULTURES",
+     "SK": "CULTURE#{CultureID:trim}"
+    }
+   ]
+  }
+ },
+ "access_patterns": [
+  {
+   "id": "CAT-01",
+   "table": "aw-catalog",
+   "ops": [
+    "Query PK = 'CATALOG'"
+   ],
+   "result": "4 Category + 37 Subcategory items in one item collection, sorted CAT#c then CAT#c#SUB#s"
+  },
+  {
+   "id": "CAT-02",
+   "table": "aw-catalog",
+   "ops": [
+    "Query PK = 'CATALOG' AND begins_with(SK, 'CAT#<cat:04d>')  (category + its subcategories)",
+    "Query GSI1 GSI1PK = 'SUBCAT#<sub:04d>' AND GSI1SK = '#META'  (subcategory by id)",
+    "PutItem/UpdateItem/DeleteItem (ConditionExpression attribute_exists(PK)); delete guarded by app check: Query GSI1 SUBCAT#<sub> begins_with PRODUCT# Limit 1"
+   ]
+  },
+  {
+   "id": "CAT-03",
+   "table": "aw-catalog",
+   "ops": [
+    "Query GSI1 GSI1PK = 'SUBCAT#<sub:04d>' AND begins_with(GSI1SK, 'PRODUCT#A#')"
+   ],
+   "sort": "name asc (key order); price sort client-side (<= 43 items per subcategory)",
+   "compromise": "price sort and color/size filter done client-side"
+  },
+  {
+   "id": "CAT-04",
+   "table": "aw-catalog",
+   "ops": [
+    "Query PK = 'PRODUCT#<p:06d>'  (product, photos, reviews, price/cost history, offers, documents)",
+    "GetItem PK = 'MODEL#<m:04d>', SK = 'DESC#<culture>'"
+   ],
+   "result": "2 requests; stock_qty is a copied attribute on the product item"
+  },
+  {
+   "id": "CAT-05",
+   "table": "aw-catalog",
+   "ops": [
+    "GetItem PK = 'PRODUCTNUMBER#<number>', SK = 'PRODUCTNUMBER'",
+    "GetItem PK = 'PRODUCT#<id:06d>', SK = 'PRODUCT'"
+   ]
+  },
+  {
+   "id": "CAT-06",
+   "table": "aw-catalog",
+   "ops": [
+    "Query PK = 'PRODUCTNAMES' (paged, Limit + ExclusiveStartKey)"
+   ]
+  },
+  {
+   "id": "CAT-07",
+   "table": "aw-catalog",
+   "ops": [
+    "TransactWriteItems: Put product (ConditionExpression attribute_not_exists(PK) for create / ver = :v for update) + Put PRODUCTNAMES/<name> (attribute_not_exists) + Put PRODUCTNUMBER#<n> (attribute_not_exists) [+ Delete old name/number items on rename] [+ Put PRICE#<date> history on price change]"
+   ]
+  },
+  {
+   "id": "CAT-08",
+   "table": "aw-catalog",
+   "ops": [
+    "Query PK = 'MODEL#<m:04d>'  (model, 6 culture descriptions, illustrations)",
+    "Query GSI2 GSI2PK = 'MODEL#<m:04d>' AND begins_with(GSI2SK, 'PRODUCT#')  (variants)"
+   ]
+  },
+  {
+   "id": "CAT-09",
+   "table": "aw-catalog",
+   "ops": [
+    "Query PK = 'PRODUCT#<p:06d>' AND SK BETWEEN 'PRICE#' AND 'PRICE#<dateIso>', ScanIndexForward=false, Limit=1 (then check end_date)",
+    "same with COST#"
+   ]
+  },
+  {
+   "id": "CAT-10",
+   "table": "aw-catalog",
+   "ops": [
+    "Query PK = 'PRODUCT#<p:06d>' AND begins_with(SK, 'OFFER#')"
+   ],
+   "filter": "client-side offer_start <= today <= offer_end (<= 5 offers/product)"
+  },
+  {
+   "id": "CAT-11",
+   "table": "aw-catalog",
+   "ops": [
+    "Query PK = 'PRODUCT#<p:06d>' AND begins_with(SK, 'REVIEW#'), ScanIndexForward=false",
+    "PutItem SK = 'REVIEW#<isoDate>#<reviewId>'"
+   ]
+  },
+  {
+   "id": "CAT-12",
+   "table": "aw-catalog",
+   "ops": [
+    "Query PK = 'PRODUCTNAMES' AND begins_with(SK, '<lower(prefix)>')"
+   ],
+   "compromise": "prefix only (D2); single partition of 504 small items - cache it in the app"
+  },
+  {
+   "id": "CAT-13",
+   "table": "aw-catalog",
+   "ops": [
+    "GetItem PK = 'MODEL#<m:04d>', SK = 'DESC#<culture>'"
+   ]
+  },
+  {
+   "id": "INV-01",
+   "table": "aw-inventory",
+   "ops": [
+    "Query PK = 'PRODUCT#<p:06d>' AND SK <= 'PRODUCT'  (INV#<loc> items + PRODUCT copy with stock_qty)"
+   ]
+  },
+  {
+   "id": "INV-02",
+   "table": "aw-inventory",
+   "ops": [
+    "Query GSI1 GSI1PK = 'REORDER'"
+   ],
+   "result": "sparse: only products with stock_qty < reorder_point carry GSI1 keys"
+  },
+  {
+   "id": "INV-03",
+   "table": "aw-inventory",
+   "ops": [
+    "Query PK = 'PRODUCT#<p:06d>' AND SK BETWEEN 'TXN#<fromIso>' AND 'TXN#<toIso>~', ScanIndexForward=false",
+    "PutItem TXN#<iso>#<id> + UpdateItem ADD quantity on INV#<loc> (TransactWrite)"
+   ]
+  },
+  {
+   "id": "INV-04",
+   "table": "aw-inventory",
+   "ops": [
+    "Query PK = 'ASSEMBLY#<a:06d>' (repeat per level for children; filter start_date <= d < end_date client-side)"
+   ],
+   "compromise": "multi-level explosion = one Query per assembly per level (max depth 4)"
+  },
+  {
+   "id": "INV-05",
+   "table": "aw-inventory",
+   "ops": [
+    "Query GSI1 GSI1PK = 'COMPONENT#<c:06d>' (repeat upwards per level)"
+   ]
+  },
+  {
+   "id": "INV-06",
+   "table": "aw-inventory",
+   "ops": [
+    "Query GSI2 GSI2PK = 'WODUE#<yyyy-mm>' AND GSI2SK BETWEEN '<fromIso>' AND '<toIso>~' (one query per month in range)",
+    "FilterExpression attribute_not_exists(end_date) for open only",
+    "Query PK = 'WO#<id:06d>' (work order + routings)"
+   ],
+   "compromise": "date range spanning months = one Query per month bucket; 'open' is a filter (all historical WOs are closed)"
+  },
+  {
+   "id": "SAL-01",
+   "table": "aw-sales",
+   "ops": [
+    "Query PK = 'CART#<customerId>' ConsistentRead=true",
+    "PutItem/UpdateItem ITEM#<p:06d> (ttl = now + 7d)",
+    "DeleteItem"
+   ],
+   "consistency": "strong (D8)"
+  },
+  {
+   "id": "SAL-02",
+   "table": "aw-sales",
+   "ops": [
+    "UpdateItem PK='COUNTER', SK='ORDER' ADD next_id :1 ReturnValues=UPDATED_NEW -> id >= 1,000,000,000 (D5)",
+    "TransactWriteItems: Put ORDER (attribute_not_exists(PK)) + Put LINE#n ... + Delete CART items (<= 100 actions)"
+   ],
+   "compromise": "orders with > ~95 lines + cart rows exceed the 100-action transaction limit -> split cart cleanup out of the transaction"
+  },
+  {
+   "id": "SAL-03",
+   "table": "aw-sales",
+   "ops": [
+    "Query GSI1 GSI1PK = 'CUSTOMER#<c:06d>' AND begins_with(GSI1SK, 'ORDER#'), ScanIndexForward=false"
+   ],
+   "compromise": "header only (no lines) in the list; GSI is eventually consistent - the app merges the just-placed order from SAL-04"
+  },
+  {
+   "id": "SAL-04",
+   "table": "aw-sales",
+   "ops": [
+    "Query PK = 'ORDER#<id:010d>' (ConsistentRead=true right after checkout)",
+    "SalesOrderNumber 'SO<n>' / 'SO-DDB-<n>' -> id = n"
+   ]
+  },
+  {
+   "id": "SAL-05",
+   "table": "aw-sales",
+   "ops": [
+    "Query GSI2 GSI2PK = 'ORDERSTATUS#<s>' AND GSI2SK BETWEEN '<fromIso>' AND '<toIso>~'"
+   ],
+   "result": "sparse: statuses 1-3 only; historical orders are all 5 (shipped)"
+  },
+  {
+   "id": "SAL-06",
+   "table": "aw-sales",
+   "ops": [
+    "UpdateItem PK='ORDER#<id>', SK='ORDER' SET status, ship_date, revision_number = revision_number + 1, ver = ver + 1 [REMOVE GSI2PK, GSI2SK when leaving status 1-3] ConditionExpression ver = :v AND status = :expected"
+   ]
+  },
+  {
+   "id": "SAL-07",
+   "table": "aw-sales",
+   "ops": [
+    "Query GSI1 GSI1PK = 'CUSTOMER#<storeCustomerId:06d>' AND GSI1SK BETWEEN 'ORDER#<fromIso>' AND 'ORDER#<toIso>~'"
+   ]
+  },
+  {
+   "id": "SAL-10",
+   "table": "aw-sales",
+   "ops": [
+    "Query PK = 'SALESPERSON#<id:06d>'  (sales person + QUOTA# items)"
+   ]
+  },
+  {
+   "id": "SAL-12",
+   "table": "aw-sales",
+   "ops": [
+    "Query PK = 'TERRITORY#<t:02d>' AND begins_with(SK, 'SALESPERSON#')"
+   ]
+  },
+  {
+   "id": "SAL-13",
+   "table": "aw-sales",
+   "ops": [
+    "Query PK = 'PONUMBER#<po>'  or  Query PK = 'CCAPPROVAL#<code>'",
+    "then Query PK = 'ORDER#<id>'"
+   ]
+  },
+  {
+   "id": "CUS-01",
+   "table": "aw-customer",
+   "ops": [
+    "GetItem PK = 'EMAIL#<lower(email)>', SK = 'EMAIL' ConsistentRead=true",
+    "Query PK = 'BE#<be:06d>' ConsistentRead=true (PERSON, PASSWORD, CUSTOMER#...)"
+   ],
+   "consistency": "strong (D8)"
+  },
+  {
+   "id": "CUS-02",
+   "table": "aw-customer",
+   "ops": [
+    "Query GSI1 GSI1PK = 'CUSTOMER#<c:06d>'  -> customer item (PK = BE#owner)",
+    "Query PK = 'BE#<owner>'  (person/store, emails, phones, addresses, cards)"
+   ]
+  },
+  {
+   "id": "CUS-03",
+   "table": "aw-customer",
+   "ops": [
+    "Query PK = 'BE#<owner>' AND begins_with(SK, 'ADDRESS#')",
+    "Query PK = 'BE#<owner>' AND begins_with(SK, 'CARD#')",
+    "store contacts: same on BE#<store_id>"
+   ]
+  },
+  {
+   "id": "CUS-04",
+   "table": "aw-customer",
+   "ops": [
+    "TransactWriteItems: Put BE#<id>/PERSON + Put BE#<id>/CUSTOMER#<c> + Put EMAIL#<email> (attribute_not_exists(PK)) [+ Put EMAIL#n, PASSWORD]"
+   ]
+  },
+  {
+   "id": "CUS-05",
+   "table": "aw-customer",
+   "ops": [
+    "Query GSI2 GSI2PK = 'CUSTOMERS' (paged, sorted by last name)"
+   ],
+   "compromise": "single GSI partition for an admin grid of 19,820 items (low traffic)"
+  },
+  {
+   "id": "CUS-06",
+   "table": "aw-customer",
+   "ops": [
+    "AccountNumber 'AW<10 digits>' -> CustomerID (computed column, deterministic)",
+    "Query GSI1 GSI1PK = 'CUSTOMER#<c:06d>'"
+   ]
+  },
+  {
+   "id": "CUS-07",
+   "table": "aw-customer",
+   "ops": [
+    "Query PK = 'BE#<store:06d>'  (STORE + ADDRESS# + CONTACT#)"
+   ]
+  },
+  {
+   "id": "CUS-08",
+   "table": "aw-customer",
+   "ops": [
+    "GetItem PK = 'BE#<p:06d>', SK = 'PERSON' ProjectionExpression demographics"
+   ]
+  },
+  {
+   "id": "CUS-09",
+   "table": "aw-customer",
+   "ops": [
+    "TransactWriteItems in partition BE#<id>: Put/Delete ADDRESS#/PHONE#/EMAIL#/CARD# items (+ EMAIL#<email> marker swap for email changes)"
+   ]
+  },
+  {
+   "id": "CUS-11",
+   "table": "aw-customer",
+   "ops": [
+    "Query PK = 'BE#<id:06d>'"
+   ],
+   "compromise": "vendor/employee job data lives in Purchasing/HR; this returns the party data only"
+  },
+  {
+   "id": "PUR-01",
+   "table": "aw-purchasing",
+   "ops": [
+    "Query PK = 'VENDOR#<v:06d>' AND SK < 'PRODUCT#'  (VENDOR, ADDRESS#, CONTACT#)"
+   ]
+  },
+  {
+   "id": "PUR-02",
+   "table": "aw-purchasing",
+   "ops": [
+    "Query GSI1 GSI1PK = 'PRODUCT#<p:06d>' AND begins_with(GSI1SK, 'VENDOR#')"
+   ]
+  },
+  {
+   "id": "PUR-03",
+   "table": "aw-purchasing",
+   "ops": [
+    "Query PK = 'VENDOR#<v:06d>' AND begins_with(SK, 'PRODUCT#')"
+   ]
+  },
+  {
+   "id": "PUR-04",
+   "table": "aw-purchasing",
+   "ops": [
+    "TransactWriteItems Put PO + LINE#n items (+ POSTATUS# marker)",
+    "Query PK = 'PO#<id:06d>'"
+   ]
+  },
+  {
+   "id": "PUR-05",
+   "table": "aw-purchasing",
+   "ops": [
+    "Query GSI1 GSI1PK = 'VENDOR#<v:06d>' AND begins_with(GSI1SK, 'PO#'), ScanIndexForward=false [FilterExpression status = :s]"
+   ]
+  },
+  {
+   "id": "PUR-06",
+   "table": "aw-purchasing",
+   "ops": [
+    "Query GSI2 GSI2PK = 'EMPLOYEE#<e:06d>' AND begins_with(GSI2SK, 'PO#'), ScanIndexForward=false"
+   ]
+  },
+  {
+   "id": "PUR-07",
+   "table": "aw-purchasing",
+   "ops": [
+    "Query PK = 'POSTATUS#1'  and  Query PK = 'POSTATUS#2'"
+   ]
+  },
+  {
+   "id": "HR-01",
+   "table": "aw-hr",
+   "ops": [
+    "Query PK = 'EMPLOYEE#<e:06d>'  (EMPLOYEE, DEPT#..., PAY#...; current = DEPT# with no end_date, latest PAY#)"
+   ]
+  },
+  {
+   "id": "HR-02",
+   "table": "aw-hr",
+   "ops": [
+    "Query PK = 'EMPLOYEE#<e:06d>' AND begins_with(SK, 'DEPT#') / begins_with(SK, 'PAY#'), ScanIndexForward=false"
+   ]
+  },
+  {
+   "id": "HR-03",
+   "table": "aw-hr",
+   "ops": [
+    "Query GSI2 GSI2PK = 'ORG' AND begins_with(GSI2SK, '<manager org_path>')  (whole subtree)",
+    "chain: Query GSI2 GSI2PK = 'ORG' AND GSI2SK = '<ancestor path>' per level"
+   ]
+  },
+  {
+   "id": "HR-04",
+   "table": "aw-hr",
+   "ops": [
+    "Query GSI1 GSI1PK = 'DEPARTMENT#<d:02d>'"
+   ],
+   "result": "sparse: only current assignments (end_date null)"
+  },
+  {
+   "id": "HR-05",
+   "table": "aw-hr",
+   "ops": [
+    "UpdateItem PK='EMPLOYEE#<e>', SK='EMPLOYEE' SET ... ConditionExpression ver = :v"
+   ]
+  },
+  {
+   "id": "REF-01",
+   "table": "aw-reference",
+   "ops": [
+    "Query PK = 'COUNTRIES'",
+    "Query PK = 'COUNTRY#<code>' AND begins_with(SK, 'STATE#')"
+   ]
+  },
+  {
+   "id": "REF-02",
+   "table": "aw-reference",
+   "ops": [
+    "Query PK = 'TAX#<stateProvinceId:03d>'"
+   ]
+  },
+  {
+   "id": "REF-03",
+   "table": "aw-reference",
+   "ops": [
+    "Query PK = 'FX#<from>#<to>' AND SK <= '<dateIso>~', ScanIndexForward=false, Limit=1"
+   ]
+  },
+  {
+   "id": "REF-04",
+   "table": "aw-reference",
+   "ops": [
+    "Query PK = 'SHIPMETHODS'"
+   ]
+  },
+  {
+   "id": "REF-05",
+   "table": "aw-reference",
+   "ops": [
+    "Query PK = 'CURRENCIES' / 'UNITS' / 'CULTURES'"
+   ]
+  },
+  {
+   "id": "CDC-01",
+   "table": "(all)",
+   "ops": [
+    "for each item of mapping.items_for_row(after-image): PutItem ConditionExpression attribute_not_exists(PK) OR src_lsn < :lsn"
+   ]
+  },
+  {
+   "id": "CDC-02",
+   "table": "(all)",
+   "ops": [
+    "for each item of mapping.items_for_row(before-image): PutItem tombstone {PK, SK, type, deleted=true, deleted_at, src_*} ConditionExpression attribute_not_exists(PK) OR src_lsn < :lsn (GSI keys dropped)"
+   ]
+  },
+  {
+   "id": "CDC-03",
+   "table": "(all)",
+   "ops": [
+    "e.g. Address change: Query aw-customer GSI1 GSI1PK = 'ADDRESS#<id>' -> UpdateItem each PartyAddress copy (+ aw-purchasing VendorAddress); ProductDescription: Query aw-catalog GSI1 'DESCRIPTION#<id>'; SpecialOffer: Query GSI1 'OFFER#<id>'"
+   ]
+  },
+  {
+   "id": "CDC-04",
+   "table": "(all)",
+   "ops": [
+    "every item key template references only columns of its own source row -> child items are written without reading the parent"
+   ]
+  }
+ ]
+}

@@ -23,6 +23,7 @@ fi
 # CDC capture job polls every 5 s by default; 1 s makes the demo snappier.
 "${SQLCMD[@]}" -d AdventureWorks2022 -Q "EXEC sys.sp_cdc_change_job @job_type = N'capture', @pollinginterval = 1; EXEC sys.sp_cdc_stop_job N'capture'; EXEC sys.sp_cdc_start_job N'capture';" || true
 
+for p in 8001 8002 8003 8004 8005 8006 8007; do docker rm -f aw-ddb-$p >/dev/null 2>&1 || true; done  # fresh JVMs (recreate on a loaded one is slow)
 scripts/ddb-local-up.sh
 $PY -c "import sys; sys.path.insert(0,'scripts/loader'); import ddb, awmap; ddb.create_tables(awmap.load_mapping(), recreate=True)"
 

@@ -1,0 +1,42 @@
+name: before-stack
+on:
+  push:
+    branches: [ "phase-*", master ]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build-app:
+    runs-on: ubuntu-22.04
+    env:
+      DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "2.1.818"
+      - run: dotnet build -c Release AdventureWorks.Web.csproj
+  before-stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache AdventureWorks backups
+        uses: actions/cache@v4
+        with:
+          path: docker/before/baks
+          key: aw-baks-2022-v1
+      - name: Bring up before stack (restore OLTP/DW/LT, enable CDC, start app)
+        run: scripts/before-up.sh
+      - name: Smoke HTTP check (pages + demo login + order)
+        run: scripts/smoke.sh
+      - name: Verify CDC captured the demo order
+        run: |
+          sleep 10
+          docker exec aw-before-sqlserver-1 /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'AdvWorks!2026' -b -W -d AdventureWorksLT2022 \
+            -Q "SET NOCOUNT ON; IF (SELECT COUNT(*) FROM cdc.SalesLT_SalesOrderHeader_CT) = 0 THROW 50000, 'no CDC rows', 1; SELECT COUNT(*) cdc_rows FROM cdc.SalesLT_SalesOrderHeader_CT"
+      - name: Reset demo data
+        run: docker exec -i aw-before-sqlserver-1 /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'AdvWorks!2026' -b -W < scripts/reset-demo.sql
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f docker/before/docker-compose.yml logs --tail 200

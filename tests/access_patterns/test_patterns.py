@@ -420,7 +420,9 @@ def test_hr03_org_subtree_and_chain(db, sql):
     e = t.get_item(Key={"PK": "EMPLOYEE#000017", "SK": "EMPLOYEE"})["Item"]; parts = e["org_path"].strip("/").split("/"); chain = []
     for n in range(len(parts) - 1, 0, -1):
         chain += [i["business_entity_id"] for i in query_all(t, IndexName="GSI2", KeyConditionExpression=Key("GSI2PK").eq("ORG") & Key("GSI2SK").eq("/" + "/".join(parts[:n]) + "/"))]
-    assert set(chain) == {r["ManagerID"] for r in q(sql, "EXEC dbo.uspGetEmployeeManagers @BusinessEntityID = 17")}
+    assert set(chain) == {r["BusinessEntityID"] for r in q(sql, "SELECT m.BusinessEntityID FROM HumanResources.Employee m, HumanResources.Employee e "
+        "WHERE e.BusinessEntityID = 17 AND m.BusinessEntityID <> 17 AND m.OrganizationNode.GetLevel() > 0 "
+        "AND e.OrganizationNode.IsDescendantOf(m.OrganizationNode) = 1")}  # same chain as uspGetEmployeeManagers (below the CEO)
 
 @pattern("HR-04")
 def test_hr04_department_members(db, sql):

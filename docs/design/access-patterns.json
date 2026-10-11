@@ -1,0 +1,1634 @@
+{
+ "version": 1,
+ "phase": 2,
+ "status": "draft-for-review",
+ "legend": {
+  "read_write": "R | W | R/W",
+  "consistency": "eventual | strong | conditional",
+  "scope": "dynamodb = must be served by domain table keys (phase 3); redshift = served by zero-ETL/Redshift, no keys; opensearch-or-defer; out-of-scope",
+  "frequency": "estimated from AdventureWorks2022 row counts (orders 2011-05-31..2014-06-30 = 31,465 orders ≈ 28/day; 27,659 online) plus demo bursts"
+ },
+ "domains": [
+  {
+   "name": "Catalog",
+   "table": "aw-catalog",
+   "owner": "Merchandising",
+   "summary": "Everything a shopper browses: categories, products, models, descriptions, photos, reviews, price history and offers. Read-dominated (browse/detail pages) with rare admin writes; must serve the shopper pages with one request per page.",
+   "pattern_count": 13
+  },
+  {
+   "name": "Inventory & Manufacturing",
+   "table": "aw-inventory",
+   "owner": "Operations",
+   "summary": "Stock per location, inventory movements, bills of materials and work orders. Write-heavy back-office data; only 'is it in stock' reaches the shopper, as a pre-aggregated copy on the product.",
+   "pattern_count": 7
+  },
+  {
+   "name": "Sales",
+   "table": "aw-sales",
+   "owner": "Sales",
+   "summary": "Carts, checkout, orders and lines, and the sales organisation (sales people, quotas, territories). Hot path of the live demo: the order a test customer places flows SQL -> CDC -> DynamoDB here.",
+   "pattern_count": 13
+  },
+  {
+   "name": "Customer & Party",
+   "table": "aw-customer",
+   "owner": "Customer service",
+   "summary": "Identity and profile: persons, stores, logins, emails, phones, addresses, payment cards, store contacts. Serves login, checkout address/card selection and the customer screens.",
+   "pattern_count": 11
+  },
+  {
+   "name": "Purchasing",
+   "table": "aw-purchasing",
+   "owner": "Procurement",
+   "summary": "Vendors, which products they supply, and purchase orders. Low volume back-office workload.",
+   "pattern_count": 7
+  },
+  {
+   "name": "HR",
+   "table": "aw-hr",
+   "owner": "HR",
+   "summary": "Employees, departments, shifts, pay history, org chart, candidates. Small but sensitive; isolated table and IAM.",
+   "pattern_count": 6
+  },
+  {
+   "name": "Reference",
+   "table": "aw-reference",
+   "owner": "Platform",
+   "summary": "Shared lookups: countries, states, currencies and FX rates, tax rates, ship methods, units, cultures. Read-mostly, cached by apps and copied into other domains' items.",
+   "pattern_count": 5
+  },
+  {
+   "name": "Cross-cutting",
+   "table": "(all)",
+   "owner": "Platform",
+   "summary": "Patterns every domain must support for replication and analytics: idempotent CDC upserts/deletes and the zero-ETL feed to Redshift.",
+   "pattern_count": 8
+  }
+ ],
+ "patterns": [
+  {
+   "id": "CAT-01",
+   "domain": "Catalog",
+   "question": "What product categories (and their subcategories) can I shop?",
+   "actor": "Shopper: browse nav; App: ProductCategories Index",
+   "inputs": "–",
+   "result": "4 categories, 37 subcategories with names",
+   "frequency": "every page view (cacheable); data changes ~never",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "by name",
+   "filter": "",
+   "source": [
+    "screen:ProductCategories/Index",
+    "screen:Shop (nav)",
+    "table:Production.ProductCategory",
+    "table:Production.ProductSubcategory"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-02",
+   "domain": "Catalog",
+   "question": "Show / create / edit / delete a category or subcategory",
+   "actor": "Admin: ProductCategories CRUD",
+   "inputs": "categoryId | subcategoryId",
+   "result": "one category/subcategory",
+   "frequency": "rare (<10/day)",
+   "read_write": "R/W",
+   "consistency": "strong after write",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "screen:ProductCategories/Details|Create|Edit|Delete"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Delete must be refused while products reference it (was an FK).",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-03",
+   "domain": "Catalog",
+   "question": "Which products are in this subcategory that I can buy now?",
+   "actor": "Shopper: browse by category",
+   "inputs": "subcategoryId, page",
+   "result": "products (name, number, color, size, list price, thumbnail, in-stock flag), ~5–40 per subcategory",
+   "frequency": "high: most frequent shopper read (~10x orders)",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "name or list price asc/desc",
+   "filter": "sellable now (SellEndDate null / not discontinued); optional color/size",
+   "source": [
+    "screen:Shop/Index",
+    "screen:Products/Index",
+    "table:Production.Product"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "504 products total, 197 currently sellable with a no-discount offer. Price sort needs a second ordering.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-04",
+   "domain": "Catalog",
+   "question": "Show me everything about this product",
+   "actor": "Shopper: product detail; App: Products Details",
+   "inputs": "productId (or product number)",
+   "result": "product + model + description (culture) + photos + active offers + review summary + stock flag",
+   "frequency": "high (~5x orders)",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "reviews newest first",
+   "filter": "",
+   "source": [
+    "screen:Products/Details",
+    "view:Production.vProductAndDescription",
+    "fn:dbo.ufnGetProductListPrice",
+    "fn:dbo.ufnGetStock"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Pre-join: model/description/photos/offers fetched with the product in one request; stock is a copied value from Inventory.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-05",
+   "domain": "Catalog",
+   "question": "Find a product by its product number (SKU)",
+   "actor": "Back office, CDC, order entry",
+   "inputs": "productNumber",
+   "result": "product",
+   "frequency": "medium",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "table:Production.Product (AK_Product_ProductNumber)"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "ProductNumber and Name are unique in SQL; uniqueness must be enforced on write.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-06",
+   "domain": "Catalog",
+   "question": "List all products (admin grid)",
+   "actor": "Admin: Products Index",
+   "inputs": "page",
+   "result": "products with category + model name",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "name",
+   "filter": "",
+   "source": [
+    "screen:Products/Index"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "504 items: paged full listing; fine as a scan of a small type or an index over all products.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-07",
+   "domain": "Catalog",
+   "question": "Create / update / retire a product",
+   "actor": "Admin: Products CRUD",
+   "inputs": "product fields",
+   "result": "product written; name & number unique",
+   "frequency": "rare",
+   "read_write": "W",
+   "consistency": "strong (conditional write for uniqueness)",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "screen:Products/Create|Edit|Delete",
+    "trigger:none"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Price change must also append a list-price history record (CAT-09).",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-08",
+   "domain": "Catalog",
+   "question": "What products belong to this model, and what is the model's catalog description/instructions?",
+   "actor": "Shopper (variants: colors/sizes); Admin",
+   "inputs": "productModelId",
+   "result": "model + its products (variants)",
+   "frequency": "medium",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "size/color",
+   "filter": "",
+   "source": [
+    "view:Production.vProductModelCatalogDescription",
+    "view:Production.vProductModelInstructions",
+    "table:Production.ProductModel"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-09",
+   "domain": "Catalog",
+   "question": "What was this product's list price / standard cost on a given date?",
+   "actor": "Order pricing audit; DW DimProduct SCD2",
+   "inputs": "productId, date",
+   "result": "price/cost effective on that date",
+   "frequency": "low online; bulk in analytics",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "by start date",
+   "filter": "",
+   "source": [
+    "fn:dbo.ufnGetProductListPrice",
+    "fn:dbo.ufnGetProductStandardCost",
+    "dw:DimProduct"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "395 list + 395 cost history rows.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-10",
+   "domain": "Catalog",
+   "question": "Which special offers apply to this product today?",
+   "actor": "Shopper: product detail / cart pricing",
+   "inputs": "productId, date",
+   "result": "active offers (discount %, min/max qty)",
+   "frequency": "high (with CAT-04 / checkout)",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "StartDate <= today <= EndDate",
+   "source": [
+    "table:Sales.SpecialOffer",
+    "table:Sales.SpecialOfferProduct",
+    "fn:dbo.ufnGetProductDealerPrice"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-11",
+   "domain": "Catalog",
+   "question": "Show / add reviews for a product",
+   "actor": "Shopper",
+   "inputs": "productId",
+   "result": "reviews newest first",
+   "frequency": "low (4 reviews exist)",
+   "read_write": "R/W",
+   "consistency": "eventual",
+   "sort": "ReviewDate desc",
+   "filter": "",
+   "source": [
+    "table:Production.ProductReview"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-12",
+   "domain": "Catalog",
+   "question": "Search products by free text (name, description, color)",
+   "actor": "Shopper: search box",
+   "inputs": "text",
+   "result": "matching products ranked",
+   "frequency": "medium",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "business"
+   ],
+   "shopper_page": true,
+   "scope": "opensearch-or-defer",
+   "hard": {
+    "why": "ad hoc / free-text search; DynamoDB only supports key-prefix matching",
+    "approach": "Demo: name-prefix via an index on normalized name (begins_with) or client-side filter over the 197 sellable products. Production: OpenSearch fed by DynamoDB Streams (zero-ETL OpenSearch integration)."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CAT-13",
+   "domain": "Catalog",
+   "question": "Show the culture-specific description (en, fr, es, ...)",
+   "actor": "Shopper (localized site)",
+   "inputs": "productModelId, culture",
+   "result": "description text",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "table:Production.ProductModelProductDescriptionCulture"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "INV-01",
+   "domain": "Inventory & Manufacturing",
+   "question": "How many units of this product are on hand, per location and in total?",
+   "actor": "Back office; feeds Catalog stock flag",
+   "inputs": "productId",
+   "result": "qty per location (14 locations), total",
+   "frequency": "medium; on every inventory change for the copy",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "fn:dbo.ufnGetStock",
+    "table:Production.ProductInventory"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "1,069 rows. Total is pushed to Catalog (CAT-04/03) as a denormalized copy via Streams.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "INV-02",
+   "domain": "Inventory & Manufacturing",
+   "question": "Which products are below their reorder point / safety stock?",
+   "actor": "Planner (daily)",
+   "inputs": "–",
+   "result": "products needing reorder",
+   "frequency": "low (daily)",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "total qty < ReorderPoint",
+   "source": [
+    "business",
+    "table:Production.Product.ReorderPoint"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": {
+    "why": "filter across all products comparing two values",
+    "approach": "Sparse 'needs reorder' marker maintained when stock changes (written by the same stream that updates totals); or Redshift report."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "INV-03",
+   "domain": "Inventory & Manufacturing",
+   "question": "Record a stock movement and list movements for a product over a date range",
+   "actor": "Warehouse, order fulfilment (trigger today), DW",
+   "inputs": "productId, date range",
+   "result": "transactions newest first",
+   "frequency": "~370/day writes (113k + 89k archive rows / ~16 months)",
+   "read_write": "R/W",
+   "consistency": "eventual",
+   "sort": "TransactionDate desc",
+   "filter": "",
+   "source": [
+    "table:Production.TransactionHistory",
+    "table:Production.TransactionHistoryArchive",
+    "trigger:Sales.iduSalesOrderDetail",
+    "dw:FactProductInventory"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "In SQL the order-detail trigger writes a TransactionHistory row per order line; in the target this becomes an event from Sales, not a cross-table write.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "INV-04",
+   "domain": "Inventory & Manufacturing",
+   "question": "Explode the bill of materials for an assembly (all levels, as of a date)",
+   "actor": "Engineering",
+   "inputs": "productAssemblyId, date",
+   "result": "component tree with quantities",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "proc:dbo.uspGetBillOfMaterials",
+    "table:Production.BillOfMaterials"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": {
+    "why": "recursive (multi-level) traversal",
+    "approach": "Store BOM edges per assembly; app iterates levels (max depth ~4, 2,679 edges) or keep a materialized flattened tree per top-level assembly, rebuilt on change."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "INV-05",
+   "domain": "Inventory & Manufacturing",
+   "question": "Where is this component used?",
+   "actor": "Engineering",
+   "inputs": "componentId, date",
+   "result": "assemblies using it (multi-level)",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "proc:dbo.uspGetWhereUsedProductID"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": {
+    "why": "reverse recursive traversal",
+    "approach": "Inverted index on BOM edges (component -> assembly), iterate levels in app."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "INV-06",
+   "domain": "Inventory & Manufacturing",
+   "question": "Which work orders are open / due, and what are a work order's routing steps?",
+   "actor": "Production planner",
+   "inputs": "date range | workOrderId",
+   "result": "work orders by due date; one WO with routings",
+   "frequency": "~66 WOs/day (72,591 over 3 years)",
+   "read_write": "R/W",
+   "consistency": "eventual",
+   "sort": "DueDate",
+   "filter": "not finished (EndDate null)",
+   "source": [
+    "table:Production.WorkOrder",
+    "table:Production.WorkOrderRouting",
+    "trigger:iWorkOrder/uWorkOrder"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "INV-07",
+   "domain": "Inventory & Manufacturing",
+   "question": "Daily inventory balance per product (history)",
+   "actor": "Analyst",
+   "inputs": "date range",
+   "result": "product x day quantities",
+   "frequency": "batch",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "dw:FactProductInventory (776,286 rows)"
+   ],
+   "shopper_page": false,
+   "scope": "redshift",
+   "hard": {
+    "why": "large aggregate over time",
+    "approach": "Redshift: rebuild from zero-ETL'd transaction history (phase 6). No DynamoDB keys."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-01",
+   "domain": "Sales",
+   "question": "Add / change / remove an item in my cart, and show my cart",
+   "actor": "Shopper: cart",
+   "inputs": "cartId (= customer or anonymous session), productId, qty",
+   "result": "cart lines with current product name/price",
+   "frequency": "~10x orders",
+   "read_write": "R/W",
+   "consistency": "strong (read-your-writes)",
+   "sort": "date added",
+   "filter": "",
+   "source": [
+    "table:Sales.ShoppingCartItem",
+    "shopper:cart"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Only 3 rows today; cart is short-lived (TTL). Product name/price read from Catalog at render time.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-02",
+   "domain": "Sales",
+   "question": "Check out: turn my cart into an order (header + lines) with tax, freight, totals",
+   "actor": "Shopper: checkout; demo Shop/Order",
+   "inputs": "customerId, cart, ship-to/bill-to address, ship method, card",
+   "result": "new order id/number",
+   "frequency": "~28/day historic (31,465 orders / 37 months); demo bursts",
+   "read_write": "W",
+   "consistency": "strong; atomic (transaction)",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "screen:Shop/Order (demo)",
+    "trigger:Sales.iduSalesOrderDetail (SubTotal)",
+    "table:Sales.SalesOrderHeader",
+    "table:Sales.SalesOrderDetail"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Needs product price/offer (CAT-10), tax rate (REF-02), ship method (REF-04), address/card snapshot (CUS-03). Header SubTotal maintained in the same transaction (replaces trigger). Max 72 lines/order today.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-03",
+   "domain": "Sales",
+   "question": "Show my order history, newest first",
+   "actor": "Shopper: My orders",
+   "inputs": "customerId, page",
+   "result": "orders (number, date, status, total, line summary)",
+   "frequency": "~3x orders",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "OrderDate desc",
+   "filter": "",
+   "source": [
+    "screen:Shop/MyOrders (demo)",
+    "table:Sales.SalesOrderHeader"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Max 28 orders per customer today; bounded.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-04",
+   "domain": "Sales",
+   "question": "Show one order with its lines (and sales reasons)",
+   "actor": "Shopper; customer service",
+   "inputs": "salesOrderId or SalesOrderNumber",
+   "result": "header + lines + reasons",
+   "frequency": "~3x orders",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "table:Sales.SalesOrderDetail",
+    "table:Sales.SalesOrderHeaderSalesReason"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-05",
+   "domain": "Sales",
+   "question": "Which orders are in status X (e.g. in process / to ship) by date?",
+   "actor": "Fulfilment",
+   "inputs": "status, date range",
+   "result": "orders",
+   "frequency": "low-medium",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "OrderDate",
+   "filter": "status",
+   "source": [
+    "fn:dbo.ufnGetSalesOrderStatusText",
+    "business"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "All 31,465 historical orders are status 5 (shipped) → only new orders are 'open'; sparse.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-06",
+   "domain": "Sales",
+   "question": "Ship / cancel / revise an order",
+   "actor": "Fulfilment; customer service",
+   "inputs": "salesOrderId",
+   "result": "order updated (status, ship date, revision)",
+   "frequency": "~orders",
+   "read_write": "W",
+   "consistency": "strong; conditional on current status/revision",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "trigger:Sales.uSalesOrderHeader (RevisionNumber/ModifiedDate)"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-07",
+   "domain": "Sales",
+   "question": "Orders for a store / reseller over a date range",
+   "actor": "Sales rep; store portal",
+   "inputs": "customerId (store) , date range",
+   "result": "orders",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "OrderDate desc",
+   "filter": "",
+   "source": [
+    "dw:FactResellerSales",
+    "table:Sales.SalesOrderHeader"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-08",
+   "domain": "Sales",
+   "question": "Orders taken by a sales person over a date range",
+   "actor": "Sales manager",
+   "inputs": "salesPersonId, date range",
+   "result": "orders",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "OrderDate desc",
+   "filter": "",
+   "source": [
+    "business",
+    "dw:FactResellerSales"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-09",
+   "domain": "Sales",
+   "question": "Orders in a territory over a date range",
+   "actor": "Sales manager",
+   "inputs": "territoryId, date range",
+   "result": "orders",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "OrderDate desc",
+   "filter": "",
+   "source": [
+    "business"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "10 territories → coarse partitions; consider date-bucketed key in phase 3 or Redshift.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-10",
+   "domain": "Sales",
+   "question": "Sales person profile with quota history and YTD/last-year sales",
+   "actor": "Sales manager",
+   "inputs": "salesPersonId",
+   "result": "sales person, territory, quotas by quarter, YTD figures",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "QuotaDate",
+   "filter": "",
+   "source": [
+    "view:Sales.vSalesPerson",
+    "table:Sales.SalesPersonQuotaHistory"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "SalesYTD/SalesLastYear are stored aggregates in SQL → maintain as pre-aggregated counters on order write.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-11",
+   "domain": "Sales",
+   "question": "Sales by sales person by fiscal year",
+   "actor": "Sales manager",
+   "inputs": "–",
+   "result": "pivot of sales per person per FY",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "view:Sales.vSalesPersonSalesByFiscalYears"
+   ],
+   "shopper_page": false,
+   "scope": "redshift",
+   "hard": {
+    "why": "large aggregate / pivot across all orders",
+    "approach": "Redshift view over zero-ETL data (phase 6); not a DynamoDB key."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-12",
+   "domain": "Sales",
+   "question": "Which sales people cover a territory (now and historically)?",
+   "actor": "Sales manager",
+   "inputs": "territoryId",
+   "result": "sales people with start/end",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "StartDate",
+   "filter": "",
+   "source": [
+    "table:Sales.SalesTerritoryHistory",
+    "table:Sales.SalesTerritory"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "SAL-13",
+   "domain": "Sales",
+   "question": "Find an order by purchase order number or card approval code",
+   "actor": "Customer service",
+   "inputs": "PO number | approval code",
+   "result": "order",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "business"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Candidate for a sparse lookup; or accept Redshift for rare lookups (decide in phase 3).",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-01",
+   "domain": "Customer & Party",
+   "question": "Log me in with my email and password",
+   "actor": "Shopper: login; demo Account/Login",
+   "inputs": "email, password",
+   "result": "customer id, display name, default address",
+   "frequency": "~orders x 2",
+   "read_write": "R",
+   "consistency": "strong",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "screen:Account/Login (demo)",
+    "table:Person.EmailAddress",
+    "table:Person.Password"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Email must be unique across persons (19,972 emails). Password hash/salt in SQL; demo uses a shared password.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-02",
+   "domain": "Customer & Party",
+   "question": "Show my profile: name, emails, phones, addresses, saved cards (masked)",
+   "actor": "Shopper: account / checkout",
+   "inputs": "customerId",
+   "result": "profile with addresses & cards",
+   "frequency": "~orders x 2",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "screen:Customers/Details",
+    "view:Sales.vIndividualCustomer",
+    "fn:dbo.ufnGetContactInformation"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-03",
+   "domain": "Customer & Party",
+   "question": "Which addresses / cards can I use at checkout?",
+   "actor": "Shopper: checkout",
+   "inputs": "customerId",
+   "result": "addresses by type (billing/shipping/home), cards (type, last4, expiry)",
+   "frequency": "~orders",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "table:Person.BusinessEntityAddress",
+    "table:Sales.PersonCreditCard"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-04",
+   "domain": "Customer & Party",
+   "question": "Register / update / delete a customer (unique account number and email)",
+   "actor": "Shopper sign-up; Admin Customers CRUD",
+   "inputs": "customer fields",
+   "result": "customer written",
+   "frequency": "low",
+   "read_write": "W",
+   "consistency": "strong; conditional (uniqueness)",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "screen:Customers/Create|Edit|Delete",
+    "trigger:Person.iuPerson"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-05",
+   "domain": "Customer & Party",
+   "question": "List customers (admin grid), paged",
+   "actor": "Admin: Customers Index",
+   "inputs": "page",
+   "result": "customers",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "name",
+   "filter": "",
+   "source": [
+    "screen:Customers/Index"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "19,820 customers; paged scan of one type is acceptable for admin.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-06",
+   "domain": "Customer & Party",
+   "question": "Find a customer by account number",
+   "actor": "Customer service; CDC; DW",
+   "inputs": "accountNumber (AW000xxxxx)",
+   "result": "customer",
+   "frequency": "medium",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "dw:DimCustomer.CustomerAlternateKey",
+    "table:Sales.Customer (AK_Customer_AccountNumber)"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-07",
+   "domain": "Customer & Party",
+   "question": "Show a store with its contacts, addresses and demographics",
+   "actor": "Sales rep",
+   "inputs": "storeId",
+   "result": "store + contacts (role) + addresses + demographics",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "view:Sales.vStoreWithContacts",
+    "view:Sales.vStoreWithAddresses",
+    "view:Sales.vStoreWithDemographics"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-08",
+   "domain": "Customer & Party",
+   "question": "Show a person's demographics",
+   "actor": "Marketing; DW",
+   "inputs": "personId",
+   "result": "income, education, occupation, cars, children, ...",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "view:Sales.vPersonDemographics",
+    "dw:DimCustomer"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Keep the XML as a map; DW needs it.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-09",
+   "domain": "Customer & Party",
+   "question": "Add / update my address, email, phone or card",
+   "actor": "Shopper: account",
+   "inputs": "customerId, value",
+   "result": "updated profile",
+   "frequency": "low",
+   "read_write": "W",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "shopper:account"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Changing an address does not change past orders (orders carry a snapshot).",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-10",
+   "domain": "Customer & Party",
+   "question": "Customers in a territory",
+   "actor": "Sales manager",
+   "inputs": "territoryId",
+   "result": "customers",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "business"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "10 territories x ~2k customers; candidate for Redshift instead of an index.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CUS-11",
+   "domain": "Customer & Party",
+   "question": "Contact info for any business entity (person, store, vendor contact, employee)",
+   "actor": "Back office",
+   "inputs": "businessEntityId",
+   "result": "name, job title, type, phone, email",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "fn:dbo.ufnGetContactInformation",
+    "view:Person.vAdditionalContactInfo"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": {
+    "why": "polymorphic lookup across domains (vendor contacts, employees, store contacts)",
+    "approach": "Customer & Party owns all persons, so keep a person item keyed by businessEntityId; Purchasing/HR keep copies of what they display."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "PUR-01",
+   "domain": "Purchasing",
+   "question": "Show a vendor with addresses and contacts",
+   "actor": "Buyer",
+   "inputs": "vendorId",
+   "result": "vendor + addresses + contacts",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "view:Purchasing.vVendorWithAddresses",
+    "view:Purchasing.vVendorWithContacts"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "PUR-02",
+   "domain": "Purchasing",
+   "question": "Who can supply this product, at what price and lead time?",
+   "actor": "Buyer",
+   "inputs": "productId",
+   "result": "vendors with std price, lead time, min/max qty",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "table:Purchasing.ProductVendor"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "PUR-03",
+   "domain": "Purchasing",
+   "question": "What does this vendor supply?",
+   "actor": "Buyer",
+   "inputs": "vendorId",
+   "result": "products",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "table:Purchasing.ProductVendor"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Many-to-many with PUR-02 (460 edges).",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "PUR-04",
+   "domain": "Purchasing",
+   "question": "Create a purchase order and show it with its lines",
+   "actor": "Buyer",
+   "inputs": "vendorId, lines | poId",
+   "result": "PO + lines",
+   "frequency": "~3 POs/day (4,012 / 41 months)",
+   "read_write": "R/W",
+   "consistency": "strong (totals maintained in same transaction)",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "trigger:iPurchaseOrderDetail/uPurchaseOrderDetail/uPurchaseOrderHeader"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "PUR-05",
+   "domain": "Purchasing",
+   "question": "Purchase orders for a vendor, newest first, optionally by status",
+   "actor": "Buyer",
+   "inputs": "vendorId, status?",
+   "result": "POs",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "OrderDate desc",
+   "filter": "status",
+   "source": [
+    "fn:dbo.ufnGetPurchaseOrderStatusText"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "PUR-06",
+   "domain": "Purchasing",
+   "question": "Purchase orders raised by an employee",
+   "actor": "Purchasing manager",
+   "inputs": "employeeId",
+   "result": "POs",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "OrderDate desc",
+   "filter": "",
+   "source": [
+    "business"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "PUR-07",
+   "domain": "Purchasing",
+   "question": "Open purchase orders (pending/approved) to receive",
+   "actor": "Warehouse",
+   "inputs": "status",
+   "result": "POs",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "status in (1,2)",
+   "source": [
+    "business"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Sparse: few open POs.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "HR-01",
+   "domain": "HR",
+   "question": "Show an employee with current department, shift, job title and pay",
+   "actor": "HR; manager",
+   "inputs": "employeeId",
+   "result": "employee profile",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "strong for pay edits",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "view:HumanResources.vEmployee",
+    "view:HumanResources.vEmployeeDepartment"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "HR-02",
+   "domain": "HR",
+   "question": "Show an employee's department and pay history",
+   "actor": "HR",
+   "inputs": "employeeId",
+   "result": "history newest first",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "StartDate/RateChangeDate desc",
+   "filter": "",
+   "source": [
+    "view:HumanResources.vEmployeeDepartmentHistory",
+    "table:HumanResources.EmployeePayHistory"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "HR-03",
+   "domain": "HR",
+   "question": "Who reports to this manager (all levels) / what is this employee's management chain?",
+   "actor": "Manager; org chart",
+   "inputs": "employeeId",
+   "result": "subtree / chain",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "proc:dbo.uspGetManagerEmployees",
+    "proc:dbo.uspGetEmployeeManagers",
+    "column:Employee.OrganizationNode (hierarchyid)"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": {
+    "why": "recursive hierarchy (hierarchyid)",
+    "approach": "Store the materialized org path (e.g. /1/4/3/) as a sort key → subtree = begins_with; chain = parse path. 290 employees, so client-side is also fine."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "HR-04",
+   "domain": "HR",
+   "question": "Who is currently in this department?",
+   "actor": "Manager",
+   "inputs": "departmentId",
+   "result": "employees",
+   "frequency": "low",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "EndDate null",
+   "source": [
+    "business"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "HR-05",
+   "domain": "HR",
+   "question": "Update hire info, login, personal info",
+   "actor": "HR",
+   "inputs": "employeeId, fields",
+   "result": "employee updated",
+   "frequency": "rare",
+   "read_write": "W",
+   "consistency": "strong",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "proc:HumanResources.uspUpdateEmployeeHireInfo",
+    "proc:HumanResources.uspUpdateEmployeeLogin",
+    "proc:HumanResources.uspUpdateEmployeePersonalInfo"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "HR-06",
+   "domain": "HR",
+   "question": "List job candidates; search résumés by text",
+   "actor": "Recruiter",
+   "inputs": "text",
+   "result": "candidates",
+   "frequency": "rare",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "view:HumanResources.vJobCandidate*",
+    "proc:dbo.uspSearchCandidateResumes"
+   ],
+   "shopper_page": false,
+   "scope": "out-of-scope",
+   "hard": {
+    "why": "full-text search over XML résumés (13 rows)",
+    "approach": "Out of scope for keys; if needed, OpenSearch or a client-side filter over 13 items."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "REF-01",
+   "domain": "Reference",
+   "question": "List countries, and states/provinces for a country",
+   "actor": "Shopper: address forms",
+   "inputs": "countryCode?",
+   "result": "countries (238) / states (181)",
+   "frequency": "every address form (cache)",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "name",
+   "filter": "",
+   "source": [
+    "view:Person.vStateProvinceCountryRegion"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "REF-02",
+   "domain": "Reference",
+   "question": "What sales tax applies to a ship-to state?",
+   "actor": "Checkout",
+   "inputs": "stateProvinceId",
+   "result": "tax rates (29 rows)",
+   "frequency": "~orders",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "table:Sales.SalesTaxRate"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "REF-03",
+   "domain": "Reference",
+   "question": "What was the exchange rate between two currencies on a date?",
+   "actor": "Checkout (foreign currency); DW",
+   "inputs": "from, to, date",
+   "result": "average & end-of-day rate",
+   "frequency": "~orders (non-USD)",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "date",
+   "filter": "",
+   "source": [
+    "table:Sales.CurrencyRate (13,532)",
+    "dw:FactCurrencyRate"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "REF-04",
+   "domain": "Reference",
+   "question": "Which ship methods are available and what do they cost?",
+   "actor": "Checkout",
+   "inputs": "–",
+   "result": "5 ship methods with base/rate",
+   "frequency": "~orders (cache)",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "table:Purchasing.ShipMethod"
+   ],
+   "shopper_page": true,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "REF-05",
+   "domain": "Reference",
+   "question": "List currencies, units of measure, cultures",
+   "actor": "Admin forms",
+   "inputs": "–",
+   "result": "small lists",
+   "frequency": "low (cache)",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "table:Sales.Currency",
+    "table:Production.UnitMeasure",
+    "table:Production.Culture"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CDC-01",
+   "domain": "Cross-cutting",
+   "question": "Apply a source change (insert/update) to the target item(s), idempotently, keyed by the SQL primary key",
+   "actor": "CDC Lambda (DMS→Kinesis) / Debezium consumer",
+   "inputs": "source table, source PK, after-image, LSN/commit ts",
+   "result": "target item(s) upserted",
+   "frequency": "every OLTP write (68 tables); demo bursts",
+   "read_write": "W",
+   "consistency": "conditional on LSN (ignore older)",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "cdc:all 68 tables"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Requires every target item to be addressable from its source PK (deterministic key) and to carry the last-applied LSN.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CDC-02",
+   "domain": "Cross-cutting",
+   "question": "Apply a source delete",
+   "actor": "CDC consumer",
+   "inputs": "source table, PK, LSN",
+   "result": "target item(s) deleted or tombstoned",
+   "frequency": "low",
+   "read_write": "W",
+   "consistency": "conditional on LSN",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "cdc:all 68 tables"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "e.g. reset-demo deletes demo orders → must remove them from aw-sales.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CDC-03",
+   "domain": "Cross-cutting",
+   "question": "Fan out a source change to denormalized copies in other items/domains",
+   "actor": "CDC consumer / stream processor",
+   "inputs": "changed entity",
+   "result": "copies refreshed (e.g. product name on catalog listings, person name on employee)",
+   "frequency": "low-medium",
+   "read_write": "W",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "docs/discovery/domains.md (break/duplicate table)"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": {
+    "why": "cross-domain joins replaced by copies",
+    "approach": "Event-driven refresh via DynamoDB Streams/EventBridge; immutable snapshots (order lines, order addresses) are never refreshed."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "CDC-04",
+   "domain": "Cross-cutting",
+   "question": "Child row arrives before its parent (e.g. order line before header)",
+   "actor": "CDC consumer",
+   "inputs": "child change",
+   "result": "item written without waiting for parent",
+   "frequency": "per transaction",
+   "read_write": "W",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "cdc ordering"
+   ],
+   "shopper_page": false,
+   "scope": "dynamodb",
+   "hard": null,
+   "notes": "Design keys so a child can be written using only its own source columns (no lookup of the parent required).",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "DW-01",
+   "domain": "Cross-cutting",
+   "question": "Land all domain data in Redshift continuously",
+   "actor": "DynamoDB zero-ETL → Redshift",
+   "inputs": "–",
+   "result": "SUPER rows per item",
+   "frequency": "continuous",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "dw:all facts/dims"
+   ],
+   "shopper_page": false,
+   "scope": "redshift",
+   "hard": null,
+   "notes": "Needs entityType + plain-named business attributes on every item (not only inside PK/SK).",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "DW-02",
+   "domain": "Cross-cutting",
+   "question": "Rebuild FactInternetSales / FactResellerSales / FactInternetSalesReason / FactSalesQuota",
+   "actor": "Redshift SQL (phase 6)",
+   "inputs": "order + line items, offers, cost at order date",
+   "result": "fact rows",
+   "frequency": "batch / materialized views",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "dw:FactInternetSales",
+    "dw:FactResellerSales",
+    "dw:FactInternetSalesReason",
+    "dw:FactSalesQuota"
+   ],
+   "shopper_page": false,
+   "scope": "redshift",
+   "hard": null,
+   "notes": "Order/line items must keep: OnlineOrderFlag, CustomerID, StoreID, SalesPersonID, TerritoryID, CurrencyRateID, SpecialOfferID, product standard cost at order date, dates.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "DW-03",
+   "domain": "Cross-cutting",
+   "question": "Rebuild DimCustomer / DimReseller / DimGeography / DimProduct (SCD2) / DimEmployee / DimPromotion / DimCurrency / DimSalesTerritory",
+   "actor": "Redshift SQL",
+   "inputs": "domain items",
+   "result": "dimension rows",
+   "frequency": "batch",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "dw:Dim*"
+   ],
+   "shopper_page": false,
+   "scope": "redshift",
+   "hard": null,
+   "notes": "Keep demographics maps, price/cost history and employee history items so dimensions can be derived.",
+   "status": "draft-for-review"
+  },
+  {
+   "id": "DW-04",
+   "domain": "Cross-cutting",
+   "question": "Any aggregate report (sales by period/territory/category, top products, inventory balance)",
+   "actor": "Analyst / QuickSight",
+   "inputs": "any",
+   "result": "aggregates",
+   "frequency": "ad hoc",
+   "read_write": "R",
+   "consistency": "eventual",
+   "sort": "",
+   "filter": "",
+   "source": [
+    "dw:views",
+    "view:Sales.vSalesPersonSalesByFiscalYears"
+   ],
+   "shopper_page": false,
+   "scope": "redshift",
+   "hard": {
+    "why": "large aggregates / ad hoc analytics",
+    "approach": "Redshift + QuickSight only; no GSIs for reporting."
+   },
+   "notes": "",
+   "status": "draft-for-review"
+  }
+ ]
+}

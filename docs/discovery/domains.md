@@ -49,14 +49,14 @@ The app is built on AdventureWorksLT (`SalesLT` schema). LT is a flattened subse
 
 | LT table | Full OLTP source(s) | Notes |
 |---|---|---|
-| SalesLT.Customer | Sales.Customer ⨝ Person.Person ⨝ Person.EmailAddress ⨝ Person.PersonPhone ⨝ Person.Password; CompanyName from Sales.Store; SalesPerson from Sales.SalesPerson → Person.Person (login) | LT customers are mostly **store contacts**; CustomerIDs do **not** match full-DB CustomerIDs |
+| SalesLT.Customer | Sales.Customer ⨝ Person.Person ⨝ Person.EmailAddress ⨝ Person.PersonPhone ⨝ Person.Password; CompanyName from Sales.Store; SalesPerson from Sales.SalesPerson → Person.Person (login) | LT customers are **store contacts**; CustomerIDs **match** full-DB `Sales.Customer.CustomerID` (verified: 29485 → PersonID 293 Catherine Abel, StoreID 294), so the demo users map 1:1 to full-DB customers |
 | SalesLT.Address | Person.Address ⨝ StateProvince ⨝ CountryRegion | State/country flattened to names |
 | SalesLT.CustomerAddress | Person.BusinessEntityAddress ⨝ AddressType | AddressType as text |
-| SalesLT.Product | Production.Product (+ ProductProductPhoto/ProductPhoto for ThumbNailPhoto) | LT `ProductCategoryID` = full `ProductSubcategoryID` level |
+| SalesLT.Product | Production.Product (+ ProductProductPhoto/ProductPhoto for ThumbNailPhoto) | ProductIDs match the full DB. LT `ProductCategoryID` is at the full `ProductSubcategory` level, same names but **different ids** (LT id = full subcategory id + 4, e.g. Road Frames 18 ↔ 14) → map by name |
 | SalesLT.ProductCategory | Production.ProductCategory (top level) + ProductSubcategory (children via ParentProductCategoryID) | 2-level hierarchy flattened into one self-referencing table |
 | SalesLT.ProductModel | Production.ProductModel | CatalogDescription XML kept |
 | SalesLT.ProductDescription / ProductModelProductDescription | Production.ProductDescription / ProductModelProductDescriptionCulture | |
-| SalesLT.SalesOrderHeader / Detail | Sales.SalesOrderHeader / SalesOrderDetail (+ ShipMethod name) | LT has only 32 orders; full has 31,465 |
+| SalesLT.SalesOrderHeader / Detail | Sales.SalesOrderHeader / SalesOrderDetail (+ ShipMethod name) | LT has 32 seeded orders (SalesOrderIDs 71774–71946; the full DB has those same ids, max 75123). New LT orders get identity 71947+, which **collides** with existing full-DB orders → demo orders need a separate id namespace when merged into `aw-sales`; full has 31,465 |
 
 | Screen (controller/action) | LT tables today | Full-domain source after phase 5 |
 |---|---|---|

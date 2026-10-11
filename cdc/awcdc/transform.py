@@ -205,7 +205,7 @@ class Transformer:
         img = ch.after or ch.before
         n = 0
         for r in self.rules:
-            if r["on"] != ch.table:
+            if r["changed"] != ch.table:
                 continue
             vals = {tcol: img.get(scol) for tcol, scol in r["where"].items()}
             if any(v is None for v in vals.values()):

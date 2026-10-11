@@ -4,15 +4,15 @@
 # (UpdateItem, src_lsn untouched, so the copy never blocks the row's own later changes). Immutable snapshots (order lines,
 # order header addresses/customer/card) are deliberately absent: they are copied once at order time.
 rules:
-  - {on: Production.ProductCategory,    refresh: Production.ProductSubcategory, where: {ProductCategoryID: ProductCategoryID}, owner: Catalog}
-  - {on: Production.ProductCategory,    refresh: Production.Product,            where: {category_id: ProductCategoryID}, owner: Catalog}
-  - {on: Production.ProductSubcategory, refresh: Production.Product,            where: {ProductSubcategoryID: ProductSubcategoryID}, owner: Catalog}
-  - {on: Production.ProductModel,       refresh: Production.Product,            where: {ProductModelID: ProductModelID}, owner: Catalog}
-  - {on: Production.ProductInventory,   refresh: Production.Product,            where: {ProductID: ProductID}, owner: Inventory & Manufacturing, note: stock_qty total}
-  - {on: Production.ProductDescription, refresh: Production.ProductModelProductDescriptionCulture, where: {ProductDescriptionID: ProductDescriptionID}, owner: Catalog}
-  - {on: Sales.SpecialOffer,            refresh: Sales.SpecialOfferProduct,     where: {SpecialOfferID: SpecialOfferID}, owner: Catalog}
-  - {on: Person.Address,                refresh: Person.BusinessEntityAddress,  where: {AddressID: AddressID}, owner: Customer & Party}
-  - {on: Person.Person,                 refresh: Sales.Customer,                where: {PersonID: BusinessEntityID}, owner: Customer & Party}
-  - {on: Sales.Store,                   refresh: Sales.Customer,                where: {StoreID: BusinessEntityID}, owner: Customer & Party}
-  - {on: Sales.SalesTerritory,          refresh: Sales.Customer,                where: {TerritoryID: TerritoryID}, owner: Sales}
-  - {on: Person.Person,                 refresh: HumanResources.Employee,       where: {BusinessEntityID: BusinessEntityID}, owner: HR}
+  - {changed: Production.ProductCategory,    refresh: Production.ProductSubcategory, where: {ProductCategoryID: ProductCategoryID}, owner: Catalog}
+  - {changed: Production.ProductCategory,    refresh: Production.Product,            where: {category_id: ProductCategoryID}, owner: Catalog}
+  - {changed: Production.ProductSubcategory, refresh: Production.Product,            where: {ProductSubcategoryID: ProductSubcategoryID}, owner: Catalog}
+  - {changed: Production.ProductModel,       refresh: Production.Product,            where: {ProductModelID: ProductModelID}, owner: Catalog}
+  - {changed: Production.ProductInventory,   refresh: Production.Product,            where: {ProductID: ProductID}, owner: Inventory & Manufacturing, note: stock_qty total}
+  - {changed: Production.ProductDescription, refresh: Production.ProductModelProductDescriptionCulture, where: {ProductDescriptionID: ProductDescriptionID}, owner: Catalog}
+  - {changed: Sales.SpecialOffer,            refresh: Sales.SpecialOfferProduct,     where: {SpecialOfferID: SpecialOfferID}, owner: Catalog}
+  - {changed: Person.Address,                refresh: Person.BusinessEntityAddress,  where: {AddressID: AddressID}, owner: Customer & Party}
+  - {changed: Person.Person,                 refresh: Sales.Customer,                where: {PersonID: BusinessEntityID}, owner: Customer & Party}
+  - {changed: Sales.Store,                   refresh: Sales.Customer,                where: {StoreID: BusinessEntityID}, owner: Customer & Party}
+  - {changed: Sales.SalesTerritory,          refresh: Sales.Customer,                where: {TerritoryID: TerritoryID}, owner: Sales}
+  - {changed: Person.Person,                 refresh: HumanResources.Employee,       where: {BusinessEntityID: BusinessEntityID}, owner: HR}

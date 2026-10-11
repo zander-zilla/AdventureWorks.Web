@@ -16,6 +16,14 @@ jobs:
         with:
           dotnet-version: "2.1.818"
       - run: dotnet build -c Release AdventureWorks.Web.csproj
+  generated-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Access-pattern catalog is in sync with its generator
+        run: |
+          python3 scripts/design/access_patterns.py
+          git diff --stat --exit-code docs/design
   before-stack:
     runs-on: ubuntu-latest
     timeout-minutes: 30

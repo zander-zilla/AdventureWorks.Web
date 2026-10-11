@@ -29,5 +29,5 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | Phase | Status | PR |
 |---|---|---|
 | 0 Setup | In review | #1 |
-| 1 Discovery | In review (stacked on #1) | #2 |
+| 1 Discovery | In review (stacked on #1): inventory, domain split, DW lineage, playbook, seed access patterns — see docs/discovery | #2 |
 | 2–8 | Not started | – |

@@ -35,6 +35,10 @@ jobs:
           sleep 10
           docker exec aw-before-sqlserver-1 /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'AdvWorks!2026' -b -W -d AdventureWorksLT2022 \
             -Q "SET NOCOUNT ON; IF (SELECT COUNT(*) FROM cdc.SalesLT_SalesOrderHeader_CT) = 0 THROW 50000, 'no CDC rows', 1; SELECT COUNT(*) cdc_rows FROM cdc.SalesLT_SalesOrderHeader_CT"
+      - name: Discovery inventory is reproducible from live DBs
+        run: |
+          scripts/discovery/generate.sh
+          git diff --stat --exit-code docs/discovery
       - name: Reset demo data
         run: docker exec -i aw-before-sqlserver-1 /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'AdvWorks!2026' -b -W < scripts/reset-demo.sql
       - name: Logs on failure

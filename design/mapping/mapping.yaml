@@ -1,0 +1,436 @@
+# AdventureWorks2022 -> DynamoDB domain tables: THE single source mapping.
+# Consumers: scripts/loader (bulk load + CDC transform), Lambda / Debezium transform (phase 4), showcase site (phase 8), docs.
+# design/mapping/mapping.json is the expanded, generated form (every column listed) - do not edit it by hand.
+#
+# Template syntax in keys: {Column} raw value; {Column:06d} zero-padded int; {Column:iso} ISO-8601 to seconds;
+# {Column:date} YYYY-MM-DD; {Column:ym} YYYY-MM; {Column:lower} lower-cased & trimmed; {Column:trim} trimmed.
+# Columns starting with x_ are helper columns produced by source_sql; they are usable in templates but not stored.
+# when: {col: X, op: is_null|not_null|in|lt_col, value: ...} - item (or GSI attributes) only written when true.
+version: 1
+conventions:
+  key_attributes: [PK, SK, GSI1PK, GSI1SK, GSI2PK, GSI2SK]
+  business_attributes: snake_case of the SQL column name (SalesOrderID -> sales_order_id); one attribute per column unless omitted/transformed
+  meta_attributes:
+    type: entity type name (every item) - zero-ETL/Redshift unpacks overloaded items by this
+    ver: integer version, +1 on every write (optimistic concurrency via ConditionExpression)
+    src: "'sql' (came from SQL via load/CDC) or 'ddb' (created natively by the .NET 10 app)"
+    src_table: source table, e.g. Sales.SalesOrderHeader (null for ddb-native items)
+    src_pk: source primary key as "Col=val[,Col=val]" - CDC upsert/delete address
+    src_lsn: last applied CDC LSN / commit position (hex string); "load" for bulk load. CDC writes are conditional on src_lsn < new
+    deleted: true on tombstones (SQL delete -> tombstone, decision D10); GSI attributes are removed so tombstones drop out of indexes
+    deleted_at: ISO timestamp of the delete
+    ttl: epoch seconds; set on carts (7 days, D3) and later on tombstones
+    updated_at: ISO timestamp of last write
+  derived_items: items marked derived (lookup/uniqueness/sparse-marker items) are rebuilt from the same source row and tombstoned/deleted with it
+  numbers: decimals and money stored as DynamoDB Number (exact); datetimes as ISO-8601 strings; uniqueidentifier as string; xml as string unless transform xml_map
+tables:
+  aw-catalog:     {domain: Catalog, gsis: [GSI1, GSI2]}
+  aw-inventory:   {domain: Inventory & Manufacturing, gsis: [GSI1, GSI2]}
+  aw-sales:       {domain: Sales, gsis: [GSI1, GSI2]}
+  aw-customer:    {domain: Customer & Party, gsis: [GSI1, GSI2]}
+  aw-purchasing:  {domain: Purchasing, gsis: [GSI1, GSI2]}
+  aw-hr:          {domain: HR, gsis: [GSI1, GSI2]}
+  aw-reference:   {domain: Reference, gsis: [GSI1]}
+table_settings:
+  billing_mode: PAY_PER_REQUEST
+  point_in_time_recovery: true
+  stream: NEW_AND_OLD_IMAGES
+  ttl_attribute: ttl
+  encryption: AWS owned key by default; customer-managed KMS key for aw-hr and aw-customer
+  gsi_projection: ALL
+  deletion_protection: true
+
+sources:
+  # ============================ CATALOG ============================
+  Production.ProductCategory:
+    items:
+      - {table: aw-catalog, entity: Category, PK: "CATALOG", SK: "CAT#{ProductCategoryID:04d}"}
+  Production.ProductSubcategory:
+    source_sql: "SELECT s.*, c.Name AS category_name FROM Production.ProductSubcategory s JOIN Production.ProductCategory c ON c.ProductCategoryID = s.ProductCategoryID"
+    snapshots: [{attrs: [category_name], from: Production.ProductCategory, owner: Catalog, refresh: catalog stream on category rename}]
+    items:
+      - {table: aw-catalog, entity: Subcategory, PK: "CATALOG", SK: "CAT#{ProductCategoryID:04d}#SUB#{ProductSubcategoryID:04d}",
+         GSI1PK: "SUBCAT#{ProductSubcategoryID:04d}", GSI1SK: "#META"}
+  Production.Product:
+    source_sql: >-
+      SELECT p.*, s.Name AS subcategory_name, s.ProductCategoryID AS category_id, c.Name AS category_name, m.Name AS model_name,
+             (SELECT ISNULL(SUM(i.Quantity),0) FROM Production.ProductInventory i WHERE i.ProductID = p.ProductID) AS stock_qty,
+             CASE WHEN p.SellEndDate IS NULL AND p.DiscontinuedDate IS NULL THEN 'A' ELSE 'X' END AS x_active,
+             LOWER(LTRIM(RTRIM(p.Name))) AS x_name_lower
+      FROM Production.Product p
+      LEFT JOIN Production.ProductSubcategory s ON s.ProductSubcategoryID = p.ProductSubcategoryID
+      LEFT JOIN Production.ProductCategory c ON c.ProductCategoryID = s.ProductCategoryID
+      LEFT JOIN Production.ProductModel m ON m.ProductModelID = p.ProductModelID
+    snapshots:
+      - {attrs: [subcategory_name, category_id, category_name, model_name], from: Production.ProductSubcategory/ProductCategory/ProductModel, owner: Catalog, refresh: catalog stream}
+      - {attrs: [stock_qty], from: Production.ProductInventory, owner: Inventory & Manufacturing, refresh: inventory stream publishes total per product}
+    items:
+      - {table: aw-catalog, entity: Product, PK: "PRODUCT#{ProductID:06d}", SK: "PRODUCT",
+         GSI1PK: "SUBCAT#{ProductSubcategoryID:04d}", GSI1SK: "PRODUCT#{x_active}#{x_name_lower}#{ProductID:06d}",
+         gsi1_when: {col: ProductSubcategoryID, op: not_null},
+         GSI2PK: "MODEL#{ProductModelID:04d}", GSI2SK: "PRODUCT#{ProductID:06d}", gsi2_when: {col: ProductModelID, op: not_null},
+         extra: {active: "{x_active}"}}
+      - {table: aw-catalog, entity: ProductNameIndex, derived: true, PK: "PRODUCTNAMES", SK: "{x_name_lower}",
+         attributes: [ProductID, Name, ProductNumber, ListPrice, ProductSubcategoryID], extra: {active: "{x_active}"},
+         purpose: "name-prefix search (CAT-12), admin list (CAT-06), name uniqueness (attribute_not_exists)"}
+      - {table: aw-catalog, entity: ProductNumberIndex, derived: true, PK: "PRODUCTNUMBER#{ProductNumber}", SK: "PRODUCTNUMBER",
+         attributes: [ProductID], purpose: "lookup by SKU (CAT-05) + uniqueness"}
+      - {table: aw-inventory, entity: InventoryProduct, PK: "PRODUCT#{ProductID:06d}", SK: "PRODUCT", copy_of: Catalog,
+         attributes: [ProductID, Name, ProductNumber, SafetyStockLevel, ReorderPoint, stock_qty],
+         GSI1PK: "REORDER", GSI1SK: "PRODUCT#{ProductID:06d}", gsi1_when: {col: stock_qty, op: lt_col, value: ReorderPoint},
+         purpose: "inventory-side product copy; sparse REORDER index (INV-02)"}
+  Production.ProductModel:
+    items:
+      - {table: aw-catalog, entity: ProductModel, PK: "MODEL#{ProductModelID:04d}", SK: "MODEL"}
+  Production.ProductDescription:
+    items:
+      - {table: aw-catalog, entity: ProductDescription, PK: "DESCRIPTION#{ProductDescriptionID:05d}", SK: "DESCRIPTION"}
+  Production.ProductModelProductDescriptionCulture:
+    source_sql: "SELECT x.*, d.Description AS description FROM Production.ProductModelProductDescriptionCulture x JOIN Production.ProductDescription d ON d.ProductDescriptionID = x.ProductDescriptionID"
+    snapshots: [{attrs: [description], from: Production.ProductDescription, owner: Catalog, refresh: "catalog stream: on DESCRIPTION change, Query GSI1 DESCRIPTION#id and update copies"}]
+    items:
+      - {table: aw-catalog, entity: ModelDescription, PK: "MODEL#{ProductModelID:04d}", SK: "DESC#{CultureID:trim}",
+         GSI1PK: "DESCRIPTION#{ProductDescriptionID:05d}", GSI1SK: "MODEL#{ProductModelID:04d}#{CultureID:trim}"}
+  Production.ProductPhoto:
+    items:
+      - {table: aw-catalog, entity: ProductPhoto, PK: "PHOTO#{ProductPhotoID:04d}", SK: "PHOTO"}
+  Production.ProductProductPhoto:
+    source_sql: "SELECT x.*, p.ThumbnailPhotoFileName AS thumbnail_file_name FROM Production.ProductProductPhoto x JOIN Production.ProductPhoto p ON p.ProductPhotoID = x.ProductPhotoID"
+    items:
+      - {table: aw-catalog, entity: ProductPhotoLink, PK: "PRODUCT#{ProductID:06d}", SK: "PHOTO#{ProductPhotoID:04d}"}
+  Production.ProductReview:
+    items:
+      - {table: aw-catalog, entity: ProductReview, PK: "PRODUCT#{ProductID:06d}", SK: "REVIEW#{ReviewDate:iso}#{ProductReviewID:05d}"}
+  Production.ProductListPriceHistory:
+    items:
+      - {table: aw-catalog, entity: ListPriceHistory, PK: "PRODUCT#{ProductID:06d}", SK: "PRICE#{StartDate:iso}"}
+  Production.ProductCostHistory:
+    items:
+      - {table: aw-catalog, entity: CostHistory, PK: "PRODUCT#{ProductID:06d}", SK: "COST#{StartDate:iso}"}
+  Production.Illustration:
+    items:
+      - {table: aw-catalog, entity: Illustration, PK: "ILLUSTRATION#{IllustrationID:04d}", SK: "ILLUSTRATION"}
+  Production.ProductModelIllustration:
+    items:
+      - {table: aw-catalog, entity: ModelIllustration, PK: "MODEL#{ProductModelID:04d}", SK: "ILLUSTRATION#{IllustrationID:04d}"}
+  Production.Document:
+    source_sql: "SELECT d.*, d.DocumentNode.ToString() AS x_node, d.DocumentNode.ToString() AS document_path FROM Production.Document d"
+    omit: [DocumentNode]
+    items:
+      - {table: aw-catalog, entity: Document, PK: "DOCUMENT#{x_node}", SK: "DOCUMENT"}
+  Production.ProductDocument:
+    source_sql: "SELECT x.*, x.DocumentNode.ToString() AS x_node, x.DocumentNode.ToString() AS document_path FROM Production.ProductDocument x"
+    omit: [DocumentNode]
+    items:
+      - {table: aw-catalog, entity: ProductDocumentLink, PK: "PRODUCT#{ProductID:06d}", SK: "DOCUMENT#{x_node}"}
+  Sales.SpecialOffer:
+    items:
+      - {table: aw-catalog, entity: SpecialOffer, PK: "OFFER#{SpecialOfferID:03d}", SK: "OFFER"}
+  Sales.SpecialOfferProduct:
+    source_sql: >-
+      SELECT x.*, o.Description AS offer_description, o.DiscountPct AS discount_pct, o.Type AS offer_type, o.Category AS offer_category,
+             o.StartDate AS offer_start, o.EndDate AS offer_end, o.MinQty AS min_qty, o.MaxQty AS max_qty
+      FROM Sales.SpecialOfferProduct x JOIN Sales.SpecialOffer o ON o.SpecialOfferID = x.SpecialOfferID
+    snapshots: [{attrs: [offer_description, discount_pct, offer_type, offer_category, offer_start, offer_end, min_qty, max_qty], from: Sales.SpecialOffer, owner: Catalog, refresh: "catalog stream: on OFFER change, Query GSI1 OFFER#id"}]
+    items:
+      - {table: aw-catalog, entity: ProductOffer, PK: "PRODUCT#{ProductID:06d}", SK: "OFFER#{SpecialOfferID:03d}",
+         GSI1PK: "OFFER#{SpecialOfferID:03d}", GSI1SK: "PRODUCT#{ProductID:06d}"}
+
+  # ============================ INVENTORY & MANUFACTURING ============================
+  Production.Location:
+    items:
+      - {table: aw-inventory, entity: Location, PK: "LOCATION", SK: "{LocationID:03d}"}
+  Production.ProductInventory:
+    source_sql: "SELECT i.*, l.Name AS location_name FROM Production.ProductInventory i JOIN Production.Location l ON l.LocationID = i.LocationID"
+    items:
+      - {table: aw-inventory, entity: ProductInventory, PK: "PRODUCT#{ProductID:06d}", SK: "INV#{LocationID:03d}"}
+  Production.TransactionHistory:
+    items:
+      - {table: aw-inventory, entity: InventoryTransaction, PK: "PRODUCT#{ProductID:06d}", SK: "TXN#{TransactionDate:iso}#{TransactionID:06d}", extra: {archived: false}}
+  Production.TransactionHistoryArchive:
+    items:
+      - {table: aw-inventory, entity: InventoryTransaction, PK: "PRODUCT#{ProductID:06d}", SK: "TXN#{TransactionDate:iso}#{TransactionID:06d}", extra: {archived: true}}
+  Production.BillOfMaterials:
+    source_sql: >-
+      SELECT b.*, ISNULL(RIGHT('000000' + CAST(b.ProductAssemblyID AS varchar(10)), 6), 'ROOT') AS x_assembly, p.Name AS component_name
+      FROM Production.BillOfMaterials b JOIN Production.Product p ON p.ProductID = b.ComponentID
+    items:
+      - {table: aw-inventory, entity: BomEdge, PK: "ASSEMBLY#{x_assembly}", SK: "COMPONENT#{ComponentID:06d}#{StartDate:iso}",
+         GSI1PK: "COMPONENT#{ComponentID:06d}", GSI1SK: "ASSEMBLY#{x_assembly}#{StartDate:iso}"}
+  Production.WorkOrder:
+    source_sql: "SELECT w.*, p.Name AS product_name FROM Production.WorkOrder w JOIN Production.Product p ON p.ProductID = w.ProductID"
+    items:
+      - {table: aw-inventory, entity: WorkOrder, PK: "WO#{WorkOrderID:06d}", SK: "WO",
+         GSI2PK: "WODUE#{DueDate:ym}", GSI2SK: "{DueDate:iso}#{WorkOrderID:06d}"}
+  Production.WorkOrderRouting:
+    items:
+      - {table: aw-inventory, entity: WorkOrderRouting, PK: "WO#{WorkOrderID:06d}", SK: "ROUTING#{OperationSequence:03d}#{LocationID:03d}"}
+  Production.ScrapReason:
+    items:
+      - {table: aw-inventory, entity: ScrapReason, PK: "SCRAPREASON", SK: "{ScrapReasonID:03d}"}
+
+  # ============================ SALES ============================
+  Sales.SalesOrderHeader:
+    source_sql: >-
+      SELECT h.*, c.AccountNumber AS customer_account_number,
+             COALESCE(p.FirstName + ' ' + p.LastName, s.Name) AS customer_name, s.Name AS store_name,
+             sm.Name AS ship_method_name,
+             sa.AddressLine1 AS ship_to_line1, sa.AddressLine2 AS ship_to_line2, sa.City AS ship_to_city, ssp.StateProvinceCode AS ship_to_state, sa.PostalCode AS ship_to_postal_code, ssp.CountryRegionCode AS ship_to_country,
+             ba.AddressLine1 AS bill_to_line1, ba.AddressLine2 AS bill_to_line2, ba.City AS bill_to_city, bsp.StateProvinceCode AS bill_to_state, ba.PostalCode AS bill_to_postal_code, bsp.CountryRegionCode AS bill_to_country,
+             cc.CardType AS card_type, RIGHT(cc.CardNumber, 4) AS card_last4,
+             cr.FromCurrencyCode AS currency_from, cr.ToCurrencyCode AS currency_to, cr.AverageRate AS currency_average_rate
+      FROM Sales.SalesOrderHeader h
+      JOIN Sales.Customer c ON c.CustomerID = h.CustomerID
+      LEFT JOIN Person.Person p ON p.BusinessEntityID = c.PersonID
+      LEFT JOIN Sales.Store s ON s.BusinessEntityID = c.StoreID
+      JOIN Purchasing.ShipMethod sm ON sm.ShipMethodID = h.ShipMethodID
+      JOIN Person.Address sa ON sa.AddressID = h.ShipToAddressID JOIN Person.StateProvince ssp ON ssp.StateProvinceID = sa.StateProvinceID
+      JOIN Person.Address ba ON ba.AddressID = h.BillToAddressID JOIN Person.StateProvince bsp ON bsp.StateProvinceID = ba.StateProvinceID
+      LEFT JOIN Sales.CreditCard cc ON cc.CreditCardID = h.CreditCardID
+      LEFT JOIN Sales.CurrencyRate cr ON cr.CurrencyRateID = h.CurrencyRateID
+    snapshots:
+      - {attrs: [customer_account_number, customer_name, store_name], from: Sales.Customer/Person.Person/Sales.Store, owner: Sales, refresh: "immutable at order time (CDC transform enriches from aw-customer)"}
+      - {attrs: ["ship_to_*", "bill_to_*"], from: Person.Address, owner: Sales, refresh: "immutable: address as at order time"}
+      - {attrs: [ship_method_name, currency_from, currency_to, currency_average_rate], from: Reference, owner: Sales, refresh: immutable}
+      - {attrs: [card_type, card_last4], from: Sales.CreditCard, owner: Sales, refresh: "immutable; full card number never copied"}
+    items:
+      - {table: aw-sales, entity: Order, PK: "ORDER#{SalesOrderID:010d}", SK: "ORDER",
+         GSI1PK: "CUSTOMER#{CustomerID:06d}", GSI1SK: "ORDER#{OrderDate:iso}#{SalesOrderID:010d}",
+         GSI2PK: "ORDERSTATUS#{Status}", GSI2SK: "{OrderDate:iso}#{SalesOrderID:010d}", gsi2_when: {col: Status, op: in, value: [1, 2, 3]}}
+      - {table: aw-sales, entity: OrderByPurchaseOrderNumber, derived: true, PK: "PONUMBER#{PurchaseOrderNumber}", SK: "ORDER#{SalesOrderID:010d}",
+         when: {col: PurchaseOrderNumber, op: not_null}, attributes: [SalesOrderID, SalesOrderNumber, CustomerID, OrderDate]}
+      - {table: aw-sales, entity: OrderByApprovalCode, derived: true, PK: "CCAPPROVAL#{CreditCardApprovalCode}", SK: "ORDER#{SalesOrderID:010d}",
+         when: {col: CreditCardApprovalCode, op: not_null}, attributes: [SalesOrderID, SalesOrderNumber, CustomerID, OrderDate]}
+  Sales.SalesOrderDetail:
+    source_sql: "SELECT d.*, p.Name AS product_name, p.ProductNumber AS product_number FROM Sales.SalesOrderDetail d JOIN Production.Product p ON p.ProductID = d.ProductID"
+    snapshots: [{attrs: [product_name, product_number], from: Production.Product, owner: Sales, refresh: "immutable at order time (CDC transform enriches from aw-catalog)"}]
+    items:
+      - {table: aw-sales, entity: OrderLine, PK: "ORDER#{SalesOrderID:010d}", SK: "LINE#{SalesOrderDetailID:07d}"}
+  Sales.SalesOrderHeaderSalesReason:
+    source_sql: "SELECT x.*, r.Name AS reason_name, r.ReasonType AS reason_type FROM Sales.SalesOrderHeaderSalesReason x JOIN Sales.SalesReason r ON r.SalesReasonID = x.SalesReasonID"
+    items:
+      - {table: aw-sales, entity: OrderSalesReason, PK: "ORDER#{SalesOrderID:010d}", SK: "REASON#{SalesReasonID:02d}"}
+  Sales.SalesReason:
+    items:
+      - {table: aw-sales, entity: SalesReason, PK: "SALESREASON", SK: "{SalesReasonID:02d}"}
+  Sales.ShoppingCartItem:
+    items:
+      - {table: aw-sales, entity: CartItem, PK: "CART#{ShoppingCartID:trim}", SK: "ITEM#{ProductID:06d}", ttl_from: {col: ModifiedDate, days: 7}}
+  Sales.SalesPerson:
+    source_sql: "SELECT sp.*, p.FirstName + ' ' + p.LastName AS sales_person_name, t.Name AS territory_name FROM Sales.SalesPerson sp JOIN Person.Person p ON p.BusinessEntityID = sp.BusinessEntityID LEFT JOIN Sales.SalesTerritory t ON t.TerritoryID = sp.TerritoryID"
+    items:
+      - {table: aw-sales, entity: SalesPerson, PK: "SALESPERSON#{BusinessEntityID:06d}", SK: "SALESPERSON"}
+  Sales.SalesPersonQuotaHistory:
+    items:
+      - {table: aw-sales, entity: SalesQuota, PK: "SALESPERSON#{BusinessEntityID:06d}", SK: "QUOTA#{QuotaDate:iso}"}
+  Sales.SalesTerritory:
+    items:
+      - {table: aw-sales, entity: SalesTerritory, PK: "TERRITORY#{TerritoryID:02d}", SK: "TERRITORY"}
+  Sales.SalesTerritoryHistory:
+    source_sql: "SELECT h.*, p.FirstName + ' ' + p.LastName AS sales_person_name FROM Sales.SalesTerritoryHistory h JOIN Person.Person p ON p.BusinessEntityID = h.BusinessEntityID"
+    items:
+      - {table: aw-sales, entity: TerritoryAssignment, PK: "TERRITORY#{TerritoryID:02d}", SK: "SALESPERSON#{StartDate:iso}#{BusinessEntityID:06d}"}
+
+  # ============================ CUSTOMER & PARTY ============================
+  Person.BusinessEntity:
+    items:
+      - {table: aw-customer, entity: BusinessEntity, PK: "BE#{BusinessEntityID:06d}", SK: "BE"}
+  Person.Person:
+    transforms: {Demographics: xml_map}
+    items:
+      - {table: aw-customer, entity: Person, PK: "BE#{BusinessEntityID:06d}", SK: "PERSON"}
+  Person.Password:
+    items:
+      - {table: aw-customer, entity: Password, PK: "BE#{BusinessEntityID:06d}", SK: "PASSWORD"}
+  Person.EmailAddress:
+    source_sql: "SELECT e.*, LOWER(LTRIM(RTRIM(e.EmailAddress))) AS x_email_lower FROM Person.EmailAddress e"
+    items:
+      - {table: aw-customer, entity: EmailAddress, PK: "BE#{BusinessEntityID:06d}", SK: "EMAIL#{EmailAddressID:06d}"}
+      - {table: aw-customer, entity: EmailLogin, derived: true, PK: "EMAIL#{x_email_lower}", SK: "EMAIL",
+         attributes: [BusinessEntityID, EmailAddressID], purpose: "login by email (CUS-01, strong read) + uniqueness"}
+  Person.PersonPhone:
+    source_sql: "SELECT x.*, t.Name AS phone_type FROM Person.PersonPhone x JOIN Person.PhoneNumberType t ON t.PhoneNumberTypeID = x.PhoneNumberTypeID"
+    items:
+      - {table: aw-customer, entity: Phone, PK: "BE#{BusinessEntityID:06d}", SK: "PHONE#{PhoneNumberTypeID:02d}#{PhoneNumber}"}
+  Person.PhoneNumberType:
+    items:
+      - {table: aw-customer, entity: PhoneNumberType, PK: "LOOKUP#PHONETYPE", SK: "{PhoneNumberTypeID:02d}"}
+  Person.AddressType:
+    items:
+      - {table: aw-customer, entity: AddressType, PK: "LOOKUP#ADDRESSTYPE", SK: "{AddressTypeID:02d}"}
+  Person.ContactType:
+    items:
+      - {table: aw-customer, entity: ContactType, PK: "LOOKUP#CONTACTTYPE", SK: "{ContactTypeID:02d}"}
+  Person.Address:
+    source_sql: >-
+      SELECT a.*, sp.StateProvinceCode AS state_province_code, sp.Name AS state_province_name, sp.CountryRegionCode AS country_region_code,
+             a.SpatialLocation.Lat AS latitude, a.SpatialLocation.Long AS longitude
+      FROM Person.Address a JOIN Person.StateProvince sp ON sp.StateProvinceID = a.StateProvinceID
+    omit: [SpatialLocation]
+    items:
+      - {table: aw-customer, entity: Address, PK: "ADDRESS#{AddressID:06d}", SK: "ADDRESS"}
+  Person.BusinessEntityAddress:
+    source_sql: >-
+      SELECT x.*, CASE WHEN EXISTS (SELECT 1 FROM Purchasing.Vendor v WHERE v.BusinessEntityID = x.BusinessEntityID) THEN 1 ELSE 0 END AS x_is_vendor,
+             t.Name AS address_type, a.AddressLine1 AS address_line1, a.AddressLine2 AS address_line2, a.City AS city,
+             sp.StateProvinceCode AS state_province_code, a.PostalCode AS postal_code, sp.CountryRegionCode AS country_region_code
+      FROM Person.BusinessEntityAddress x JOIN Person.AddressType t ON t.AddressTypeID = x.AddressTypeID
+      JOIN Person.Address a ON a.AddressID = x.AddressID JOIN Person.StateProvince sp ON sp.StateProvinceID = a.StateProvinceID
+    snapshots: [{attrs: [address_line1, address_line2, city, state_province_code, postal_code, country_region_code], from: Person.Address, owner: Customer & Party, refresh: "customer stream: on ADDRESS change, Query GSI1 ADDRESS#id and update links (+ Purchasing vendor copies)"}]
+    items:
+      - {table: aw-customer, entity: PartyAddress, PK: "BE#{BusinessEntityID:06d}", SK: "ADDRESS#{AddressTypeID:02d}#{AddressID:06d}",
+         GSI1PK: "ADDRESS#{AddressID:06d}", GSI1SK: "BE#{BusinessEntityID:06d}"}
+      - {table: aw-purchasing, entity: VendorAddress, copy_of: Customer & Party, PK: "VENDOR#{BusinessEntityID:06d}", SK: "ADDRESS#{AddressTypeID:02d}#{AddressID:06d}",
+         when: {col: x_is_vendor, op: in, value: [1]}}
+  Person.BusinessEntityContact:
+    source_sql: >-
+      SELECT x.*, CASE WHEN EXISTS (SELECT 1 FROM Purchasing.Vendor v WHERE v.BusinessEntityID = x.BusinessEntityID) THEN 1 ELSE 0 END AS x_is_vendor,
+             p.FirstName + ' ' + p.LastName AS contact_name, t.Name AS contact_type
+      FROM Person.BusinessEntityContact x JOIN Person.Person p ON p.BusinessEntityID = x.PersonID JOIN Person.ContactType t ON t.ContactTypeID = x.ContactTypeID
+    items:
+      - {table: aw-customer, entity: PartyContact, PK: "BE#{BusinessEntityID:06d}", SK: "CONTACT#{PersonID:06d}#{ContactTypeID:02d}",
+         GSI1PK: "BE#{PersonID:06d}", GSI1SK: "CONTACTOF#{BusinessEntityID:06d}#{ContactTypeID:02d}"}
+      - {table: aw-purchasing, entity: VendorContact, copy_of: Customer & Party, PK: "VENDOR#{BusinessEntityID:06d}", SK: "CONTACT#{PersonID:06d}#{ContactTypeID:02d}",
+         when: {col: x_is_vendor, op: in, value: [1]}}
+  Sales.Customer:
+    source_sql: >-
+      SELECT c.*, RIGHT('000000' + CAST(COALESCE(c.PersonID, c.StoreID) AS varchar(10)), 6) AS x_owner,
+             COALESCE(p.FirstName + ' ' + p.LastName, s.Name) AS display_name, s.Name AS store_name, t.Name AS territory_name,
+             UPPER(COALESCE(p.LastName + ', ' + p.FirstName, s.Name)) AS x_sort_name
+      FROM Sales.Customer c LEFT JOIN Person.Person p ON p.BusinessEntityID = c.PersonID
+      LEFT JOIN Sales.Store s ON s.BusinessEntityID = c.StoreID LEFT JOIN Sales.SalesTerritory t ON t.TerritoryID = c.TerritoryID
+    snapshots: [{attrs: [display_name, store_name, territory_name], from: Person.Person/Sales.Store/Sales.SalesTerritory, owner: Customer & Party, refresh: "customer stream (person/store rename); Sales events (territory rename)"}]
+    items:
+      - {table: aw-customer, entity: Customer, PK: "BE#{x_owner}", SK: "CUSTOMER#{CustomerID:06d}",
+         GSI1PK: "CUSTOMER#{CustomerID:06d}", GSI1SK: "CUSTOMER", GSI2PK: "CUSTOMERS", GSI2SK: "{x_sort_name}#{CustomerID:06d}"}
+  Sales.Store:
+    transforms: {Demographics: xml_map}
+    source_sql: "SELECT s.*, p.FirstName + ' ' + p.LastName AS sales_person_name FROM Sales.Store s LEFT JOIN Person.Person p ON p.BusinessEntityID = s.SalesPersonID"
+    items:
+      - {table: aw-customer, entity: Store, PK: "BE#{BusinessEntityID:06d}", SK: "STORE"}
+  Sales.CreditCard:
+    source_sql: "SELECT c.*, RIGHT(c.CardNumber, 4) AS card_last4 FROM Sales.CreditCard c"
+    omit: [CardNumber]
+    items:
+      - {table: aw-customer, entity: CreditCard, PK: "CARD#{CreditCardID:06d}", SK: "CARD"}
+  Sales.PersonCreditCard:
+    source_sql: "SELECT x.*, c.CardType AS card_type, RIGHT(c.CardNumber, 4) AS card_last4, c.ExpMonth AS exp_month, c.ExpYear AS exp_year FROM Sales.PersonCreditCard x JOIN Sales.CreditCard c ON c.CreditCardID = x.CreditCardID"
+    items:
+      - {table: aw-customer, entity: PartyCard, PK: "BE#{BusinessEntityID:06d}", SK: "CARD#{CreditCardID:06d}"}
+
+  # ============================ PURCHASING ============================
+  Purchasing.Vendor:
+    items:
+      - {table: aw-purchasing, entity: Vendor, PK: "VENDOR#{BusinessEntityID:06d}", SK: "VENDOR"}
+  Purchasing.ProductVendor:
+    source_sql: "SELECT x.*, p.Name AS product_name, p.ProductNumber AS product_number, v.Name AS vendor_name FROM Purchasing.ProductVendor x JOIN Production.Product p ON p.ProductID = x.ProductID JOIN Purchasing.Vendor v ON v.BusinessEntityID = x.BusinessEntityID"
+    items:
+      - {table: aw-purchasing, entity: VendorProduct, PK: "VENDOR#{BusinessEntityID:06d}", SK: "PRODUCT#{ProductID:06d}",
+         GSI1PK: "PRODUCT#{ProductID:06d}", GSI1SK: "VENDOR#{BusinessEntityID:06d}"}
+  Purchasing.PurchaseOrderHeader:
+    source_sql: >-
+      SELECT h.*, v.Name AS vendor_name, p.FirstName + ' ' + p.LastName AS employee_name, sm.Name AS ship_method_name
+      FROM Purchasing.PurchaseOrderHeader h JOIN Purchasing.Vendor v ON v.BusinessEntityID = h.VendorID
+      JOIN Person.Person p ON p.BusinessEntityID = h.EmployeeID JOIN Purchasing.ShipMethod sm ON sm.ShipMethodID = h.ShipMethodID
+    items:
+      - {table: aw-purchasing, entity: PurchaseOrder, PK: "PO#{PurchaseOrderID:06d}", SK: "PO",
+         GSI1PK: "VENDOR#{VendorID:06d}", GSI1SK: "PO#{OrderDate:iso}#{PurchaseOrderID:06d}",
+         GSI2PK: "EMPLOYEE#{EmployeeID:06d}", GSI2SK: "PO#{OrderDate:iso}#{PurchaseOrderID:06d}"}
+      - {table: aw-purchasing, entity: OpenPurchaseOrder, derived: true, PK: "POSTATUS#{Status}", SK: "{OrderDate:iso}#{PurchaseOrderID:06d}",
+         when: {col: Status, op: in, value: [1, 2]}, attributes: [PurchaseOrderID, VendorID, vendor_name, Status, OrderDate, TotalDue],
+         purpose: "sparse open-PO list (PUR-07) without a third GSI"}
+  Purchasing.PurchaseOrderDetail:
+    source_sql: "SELECT d.*, p.Name AS product_name FROM Purchasing.PurchaseOrderDetail d JOIN Production.Product p ON p.ProductID = d.ProductID"
+    items:
+      - {table: aw-purchasing, entity: PurchaseOrderLine, PK: "PO#{PurchaseOrderID:06d}", SK: "LINE#{PurchaseOrderDetailID:06d}"}
+
+  # ============================ HR ============================
+  HumanResources.Employee:
+    source_sql: >-
+      SELECT e.*, ISNULL(e.OrganizationNode.ToString(), '/') AS x_org_path, ISNULL(e.OrganizationNode.ToString(), '/') AS org_path,
+             p.FirstName AS first_name, p.LastName AS last_name
+      FROM HumanResources.Employee e JOIN Person.Person p ON p.BusinessEntityID = e.BusinessEntityID
+    omit: [OrganizationNode]
+    snapshots: [{attrs: [first_name, last_name], from: Person.Person, owner: HR, refresh: "customer stream event PersonChanged -> HR updates its copy"}]
+    items:
+      - {table: aw-hr, entity: Employee, PK: "EMPLOYEE#{BusinessEntityID:06d}", SK: "EMPLOYEE", GSI2PK: "ORG", GSI2SK: "{x_org_path}"}
+  HumanResources.EmployeeDepartmentHistory:
+    source_sql: "SELECT h.*, d.Name AS department_name, s.Name AS shift_name FROM HumanResources.EmployeeDepartmentHistory h JOIN HumanResources.Department d ON d.DepartmentID = h.DepartmentID JOIN HumanResources.Shift s ON s.ShiftID = h.ShiftID"
+    items:
+      - {table: aw-hr, entity: DepartmentAssignment, PK: "EMPLOYEE#{BusinessEntityID:06d}", SK: "DEPT#{StartDate:iso}#{DepartmentID:02d}#{ShiftID}",
+         GSI1PK: "DEPARTMENT#{DepartmentID:02d}", GSI1SK: "EMPLOYEE#{BusinessEntityID:06d}", gsi1_when: {col: EndDate, op: is_null}}
+  HumanResources.EmployeePayHistory:
+    items:
+      - {table: aw-hr, entity: PayRate, PK: "EMPLOYEE#{BusinessEntityID:06d}", SK: "PAY#{RateChangeDate:iso}"}
+  HumanResources.Department:
+    items:
+      - {table: aw-hr, entity: Department, PK: "DEPARTMENT#{DepartmentID:02d}", SK: "DEPARTMENT"}
+  HumanResources.Shift:
+    items:
+      - {table: aw-hr, entity: Shift, PK: "SHIFT", SK: "{ShiftID}"}
+  HumanResources.JobCandidate:
+    items:
+      - {table: aw-hr, entity: JobCandidate, PK: "CANDIDATE#{JobCandidateID:03d}", SK: "CANDIDATE"}
+
+  # ============================ REFERENCE ============================
+  Person.CountryRegion:
+    items:
+      - {table: aw-reference, entity: Country, PK: "COUNTRIES", SK: "COUNTRY#{CountryRegionCode}"}
+  Person.StateProvince:
+    source_sql: "SELECT s.*, c.Name AS country_name FROM Person.StateProvince s JOIN Person.CountryRegion c ON c.CountryRegionCode = s.CountryRegionCode"
+    items:
+      - {table: aw-reference, entity: StateProvince, PK: "COUNTRY#{CountryRegionCode}", SK: "STATE#{StateProvinceCode:trim}",
+         GSI1PK: "STATE#{StateProvinceID:03d}", GSI1SK: "STATE"}
+  Sales.SalesTaxRate:
+    items:
+      - {table: aw-reference, entity: SalesTaxRate, PK: "TAX#{StateProvinceID:03d}", SK: "TAX#{TaxType}#{SalesTaxRateID:03d}"}
+  Sales.Currency:
+    items:
+      - {table: aw-reference, entity: Currency, PK: "CURRENCIES", SK: "CURRENCY#{CurrencyCode}"}
+  Sales.CountryRegionCurrency:
+    items:
+      - {table: aw-reference, entity: CountryCurrency, PK: "COUNTRY#{CountryRegionCode}", SK: "CURRENCY#{CurrencyCode}"}
+  Sales.CurrencyRate:
+    items:
+      - {table: aw-reference, entity: CurrencyRate, PK: "FX#{FromCurrencyCode}#{ToCurrencyCode}", SK: "{CurrencyRateDate:iso}#{CurrencyRateID:05d}",
+         GSI1PK: "FXRATE#{CurrencyRateID:05d}", GSI1SK: "FXRATE"}
+  Purchasing.ShipMethod:
+    items:
+      - {table: aw-reference, entity: ShipMethod, PK: "SHIPMETHODS", SK: "SHIPMETHOD#{ShipMethodID:02d}"}
+  Production.UnitMeasure:
+    items:
+      - {table: aw-reference, entity: UnitMeasure, PK: "UNITS", SK: "UNIT#{UnitMeasureCode:trim}"}
+  Production.Culture:
+    items:
+      - {table: aw-reference, entity: Culture, PK: "CULTURES", SK: "CULTURE#{CultureID:trim}"}
+
+excluded:
+  - {table: dbo.AWBuildVersion, reason: housekeeping}
+  - {table: dbo.DatabaseLog, reason: housekeeping (DDL log)}
+  - {table: dbo.ErrorLog, reason: housekeeping (error log)}
+
+native_items:
+  - {table: aw-sales, entity: OrderIdCounter, PK: "COUNTER", SK: "ORDER", attributes: {next_id: 1000000000},
+     purpose: "D5: DynamoDB-native order ids = UpdateItem ADD next_id :1 (starts at 1,000,000,000 > SQL max 75,123); order number 'SO-DDB-<id>', src='ddb'"}
+
+# DW lineage links (from docs/discovery/dw-lineage.md): DW table -> entity types it is rebuilt from in Redshift (phase 6).
+dw_lineage:
+  DimCustomer:        {from: [aw-customer/Customer, aw-customer/Person, aw-customer/PartyAddress, aw-customer/EmailAddress, aw-customer/Phone, aw-customer/Address], note: "individual customers (store_id null); demographics map"}
+  DimReseller:        {from: [aw-customer/Store, aw-customer/Customer, aw-customer/PartyAddress]}
+  DimGeography:       {from: [aw-customer/Address, aw-reference/StateProvince, aw-reference/Country, aw-sales/SalesTerritory], note: "localised names static"}
+  DimProduct:         {from: [aw-catalog/Product, aw-catalog/ProductModel, aw-catalog/ModelDescription, aw-catalog/ListPriceHistory, aw-catalog/CostHistory, aw-catalog/ProductPhoto], note: SCD2 from price/cost history}
+  DimProductSubcategory: {from: [aw-catalog/Subcategory]}
+  DimProductCategory: {from: [aw-catalog/Category]}
+  DimPromotion:       {from: [aw-catalog/SpecialOffer]}
+  DimSalesTerritory:  {from: [aw-sales/SalesTerritory]}
+  DimEmployee:        {from: [aw-hr/Employee, aw-hr/DepartmentAssignment, aw-hr/PayRate, aw-sales/SalesPerson, aw-sales/TerritoryAssignment]}
+  DimCurrency:        {from: [aw-reference/Currency]}
+  DimSalesReason:     {from: [aw-sales/SalesReason]}
+  DimDate:            {from: [], note: generated in Redshift}
+  FactInternetSales:  {from: [aw-sales/Order, aw-sales/OrderLine, aw-catalog/CostHistory], filter: "online_order_flag = true"}
+  FactResellerSales:  {from: [aw-sales/Order, aw-sales/OrderLine, aw-catalog/CostHistory], filter: "online_order_flag = false"}
+  FactInternetSalesReason: {from: [aw-sales/OrderSalesReason, aw-sales/OrderLine]}
+  FactSalesQuota:     {from: [aw-sales/SalesQuota]}
+  FactProductInventory: {from: [aw-inventory/InventoryTransaction, aw-inventory/ProductInventory]}
+  FactCurrencyRate:   {from: [aw-reference/CurrencyRate]}
+  static_carry_over:  {from: [], tables: [FactFinance, DimAccount, DimOrganization, DimDepartmentGroup, DimScenario, FactCallCenter, FactSurveyResponse, FactAdditionalInternationalProductDescription, NewFactCurrencyRate, ProspectiveBuyer], note: "decision 3: one-time static load from AdventureWorksDW2022"}

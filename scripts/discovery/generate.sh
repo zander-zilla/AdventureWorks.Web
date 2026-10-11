@@ -9,3 +9,4 @@ for db in AdventureWorks2022 AdventureWorksDW2022; do
     < "$ROOT/scripts/discovery/inventory.sql" | tr -d '\r\n' | sed 's/^[^{]*//' > "$TMP/$db.json"
 done
 python3 "$ROOT/scripts/discovery/render.py" "$TMP" "$ROOT/docs/discovery"
+python3 "$ROOT/scripts/discovery/domains.py"

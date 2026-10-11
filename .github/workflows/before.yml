@@ -75,3 +75,41 @@ jobs:
       - name: Load stats
         if: always()
         run: cat /tmp/load-stats.json || true
+
+  cdc-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cache AdventureWorks backups
+        uses: actions/cache@v4
+        with:
+          path: docker/before/baks
+          key: aw-baks-2022-v1
+      - run: pip install -r requirements-design.txt
+      - name: Transform unit tests + Lambda handler tests
+        run: python -m pytest -q tests/cdc/test_transform.py tests/cdc/test_lambda.py
+      - name: Before stack (SQL Server + demo app)
+        run: scripts/before-up.sh
+      - name: Bulk-vs-CDC identity test (all 68 tables)
+        run: python -m pytest -q tests/cdc/test_identity.py
+      - name: CDC stack - DynamoDB Local, consumer (paused), Debezium streaming, bulk load, resume
+        run: PYTHON=python scripts/cdc-up.sh
+      - name: End-to-end - demo order -> aw-sales, reset-demo -> tombstones
+        run: AW_E2E=1 DDB_MULTI=1 python -m pytest -q tests/cdc/test_e2e.py
+      - name: Reconcile SQL vs DynamoDB (counts + checksums)
+        run: DDB_MULTI=1 python scripts/reconcile.py --out /tmp/reconcile.json
+      - name: Results
+        if: always()
+        run: |
+          cat /tmp/cdc-e2e.json || true
+          python -c "import json;d=json.load(open('/tmp/reconcile.json'));print(json.dumps(d['summary'],indent=1))" || true
+          curl -s localhost:8090/api/status || true
+      - name: Logs on failure
+        if: failure()
+        run: |
+          tail -100 /tmp/aw-cdc-consumer.log || true
+          docker logs aw-cdc-debezium-1 2>&1 | tail -100 || true

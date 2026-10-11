@@ -23,12 +23,13 @@ fi
 # CDC capture job polls every 5 s by default; 1 s makes the demo snappier.
 "${SQLCMD[@]}" -d AdventureWorks2022 -Q "EXEC sys.sp_cdc_change_job @job_type = N'capture', @pollinginterval = 1; EXEC sys.sp_cdc_stop_job N'capture';" || true
 # stop is asynchronous: retry start until the Agent accepts it, then verify the capture job is running.
+started=0
 for i in $(seq 1 30); do
   sleep 2
-  "${SQLCMD[@]}" -d AdventureWorks2022 -Q "EXEC sys.sp_cdc_start_job N'capture'" >/dev/null 2>&1 && break
+  out=$("${SQLCMD[@]}" -d AdventureWorks2022 -Q "EXEC sys.sp_cdc_start_job N'capture'" 2>&1 || true)
+  echo "$out" | grep -qE "started successfully|already running" && { started=1; break; }
 done
-running=$("${SQLCMD[@]}" -h -1 -W -d msdb -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM msdb.dbo.sysjobactivity a JOIN msdb.dbo.sysjobs j ON j.job_id = a.job_id WHERE j.name = N'cdc.AdventureWorks2022_capture' AND a.start_execution_date IS NOT NULL AND a.stop_execution_date IS NULL AND a.session_id = (SELECT MAX(session_id) FROM msdb.dbo.syssessions)" | tr -d '[:space:]')
-[ "$running" = "1" ] || { echo "CDC capture job is not running"; exit 1; }
+[ "$started" = 1 ] || { echo "could not start the CDC capture job: $out"; exit 1; }
 echo "CDC capture job running (polling interval 1 s)"
 
 for p in 8001 8002 8003 8004 8005 8006 8007; do docker rm -f aw-ddb-$p >/dev/null 2>&1 || true; done  # fresh JVMs (recreate on a loaded one is slow)

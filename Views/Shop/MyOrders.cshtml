@@ -1,5 +1,5 @@
 @* BEFORE BASELINE (demo-only) *@
-@model IEnumerable<AdventureWorks.Web.Models.SalesOrderHeader>
+@model IEnumerable<AdventureWorks.Web.Demo.ShopOrder>
 @{ ViewData["Title"] = "My orders"; }
 <h2>My orders</h2>
 @if (TempData["Message"] != null) { <div class="alert alert-success" id="order-message">@TempData["Message"]</div> }
@@ -10,7 +10,7 @@
     {
         <tr>
             <td>@o.SalesOrderNumber</td><td>@o.OrderDate.ToString("u")</td><td>@o.Status</td>
-            <td>@string.Join(", ", o.SalesOrderDetail.Select(d => d.OrderQty + " x " + d.Product?.Name))</td>
+            <td>@string.Join(", ", o.Lines.Select(d => d.Qty + " x " + d.Product))</td>
             <td>@o.TotalDue.ToString("0.00")</td>
         </tr>
     }

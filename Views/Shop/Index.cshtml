@@ -1,14 +1,15 @@
 @* BEFORE BASELINE (demo-only) *@
-@model IEnumerable<AdventureWorks.Web.Models.Product>
+@model IEnumerable<AdventureWorks.Web.Demo.ShopProduct>
 @{ ViewData["Title"] = "Shop"; }
 <h2>Shop (signed in as @User.Identity.Name)</h2>
+<p class="text-muted">Demo shop reads and writes the full AdventureWorks2022 database.</p>
 <p><a asp-action="MyOrders">My orders</a></p>
 <table class="table">
-    <tr><th>Product</th><th>Number</th><th>List price</th><th></th></tr>
+    <tr><th>Product</th><th>Subcategory</th><th>Number</th><th>List price</th><th></th></tr>
     @foreach (var p in Model)
     {
         <tr>
-            <td>@p.Name</td><td>@p.ProductNumber</td><td>@p.ListPrice.ToString("0.00")</td>
+            <td>@p.Name</td><td>@p.Subcategory</td><td>@p.ProductNumber</td><td>@p.ListPrice.ToString("0.00")</td>
             <td>
                 <form asp-action="Order" method="post" class="form-inline">
                     <input type="hidden" name="productId" value="@p.ProductId" />

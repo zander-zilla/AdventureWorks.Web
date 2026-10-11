@@ -1,5 +1,6 @@
 // BEFORE BASELINE (demo-only): minimal customer login for the live CDC demo.
-// Not production auth: a handful of seeded demo users mapped to existing SalesLT.Customer rows.
+// Not production auth: a handful of seeded demo users mapped to existing AdventureWorks2022 Sales.Customer rows
+// (store contacts; CustomerID/AddressID are identical in AdventureWorksLT2022). AddressId = the store's BusinessEntityAddress.
 using System.Collections.Generic;
 using System.Linq;
 

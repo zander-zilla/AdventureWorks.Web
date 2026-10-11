@@ -1,0 +1,17 @@
+@* BEFORE BASELINE (demo-only) *@
+@model IEnumerable<AdventureWorks.Web.Demo.ShopOrder>
+@{ ViewData["Title"] = "My orders"; }
+<h2>My orders</h2>
+@if (TempData["Message"] != null) { <div class="alert alert-success" id="order-message">@TempData["Message"]</div> }
+<p><a asp-action="Index">Back to shop</a></p>
+<table class="table">
+    <tr><th>Order</th><th>Date</th><th>Status</th><th>Lines</th><th>Total due</th></tr>
+    @foreach (var o in Model)
+    {
+        <tr>
+            <td>@o.SalesOrderNumber</td><td>@o.OrderDate.ToString("u")</td><td>@o.Status</td>
+            <td>@string.Join(", ", o.Lines.Select(d => d.Qty + " x " + d.Product))</td>
+            <td>@o.TotalDue.ToString("0.00")</td>
+        </tr>
+    }
+</table>

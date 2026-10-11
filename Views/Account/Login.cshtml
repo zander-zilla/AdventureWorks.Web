@@ -1,0 +1,13 @@
+@* BEFORE BASELINE (demo-only) *@
+@model IEnumerable<AdventureWorks.Web.Demo.DemoCustomer>
+@{ ViewData["Title"] = "Demo login"; }
+<h2>Demo customer login</h2>
+@if (ViewData["Error"] != null) { <div class="alert alert-danger">@ViewData["Error"]</div> }
+<form asp-action="Login" method="post" class="form-horizontal" style="max-width:420px">
+    <input type="hidden" name="returnUrl" value="@ViewData["ReturnUrl"]" />
+    <div class="form-group"><label>Email</label><input name="email" class="form-control" /></div>
+    <div class="form-group"><label>Password</label><input name="password" type="password" class="form-control" /></div>
+    <button type="submit" class="btn btn-primary">Log in</button>
+</form>
+<h4>Demo users (password: @AdventureWorks.Web.Demo.DemoCustomers.Password)</h4>
+<ul>@foreach (var c in Model) { <li>@c.Email (@c.DisplayName, CustomerID @c.CustomerId)</li> }</ul>

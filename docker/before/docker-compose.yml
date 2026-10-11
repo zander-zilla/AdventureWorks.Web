@@ -1,0 +1,33 @@
+# BEFORE baseline stack: SQL Server 2022 (Agent enabled for CDC) + the original ASP.NET Core 2.1 app.
+# Host networking is used because container-to-container networking is not available on every dev box.
+name: aw-before
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    network_mode: host
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-AdvWorks!2026}"
+      MSSQL_AGENT_ENABLED: "true"
+      MSSQL_PID: Developer
+    volumes:
+      - ./baks:/var/opt/mssql/backup:ro
+      - ./sql:/sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  app:
+    build:
+      context: ../..
+      dockerfile: docker/before/Dockerfile.app
+    network_mode: host
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_URLS: "http://+:5080"
+      ASPNETCORE_ENVIRONMENT: Development
+      DisableHttpsRedirection: "true"
+      ConnectionStrings__sampledbContext: "Server=localhost,1433;Database=AdventureWorksLT2022;User Id=sa;Password=${MSSQL_SA_PASSWORD:-AdvWorks!2026};TrustServerCertificate=True"

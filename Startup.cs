@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpsPolicy;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using AdventureWorks.Web.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.Cookies;
 
 namespace AdventureWorks.Web
 {
@@ -34,6 +36,12 @@ namespace AdventureWorks.Web
             });
 
 
+            // BEFORE BASELINE (demo-only): cookie auth for seeded demo customers.
+            services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+                .AddCookie(o => { o.LoginPath = "/Account/Login"; o.Cookie.IsEssential = true; });
+            services.AddSingleton<AdventureWorks.Web.Demo.FullDb>();
+            services.Configure<CookieTempDataProviderOptions>(o => o.Cookie.IsEssential = true);
+
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
             services.AddDbContext<sampledbContext>(options =>
         options.UseSqlServer(Configuration.GetConnectionString("sampledbContext")));
@@ -55,9 +63,11 @@ namespace AdventureWorks.Web
             app.UseDeveloperExceptionPage();
 
 
-            app.UseHttpsRedirection();
+            // BEFORE BASELINE: HTTPS redirect is skipped when no HTTPS endpoint is configured (containers/CI).
+            if (Configuration["DisableHttpsRedirection"] != "true") app.UseHttpsRedirection();
             app.UseStaticFiles();
             app.UseCookiePolicy();
+            app.UseAuthentication();
 
             app.UseMvc(routes =>
             {

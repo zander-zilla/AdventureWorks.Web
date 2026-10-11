@@ -4,6 +4,12 @@ SET NOCOUNT ON;
 SET QUOTED_IDENTIFIER ON;
 USE AdventureWorks2022;
 BEGIN TRAN;
+-- The SalesOrderDetail trigger also logs a Production.TransactionHistory row (type 'S') per demo line.
+-- Demo orders get ids above the restored max (75123); also removes rows orphaned by older resets.
+DELETE th FROM Production.TransactionHistory th
+ WHERE th.TransactionType = 'S' AND th.ReferenceOrderID > 75123
+   AND (th.ReferenceOrderID IN (SELECT SalesOrderID FROM Sales.SalesOrderHeader WHERE Comment = N'demo-order')
+        OR NOT EXISTS (SELECT 1 FROM Sales.SalesOrderHeader h WHERE h.SalesOrderID = th.ReferenceOrderID));
 DELETE r FROM Sales.SalesOrderHeaderSalesReason r JOIN Sales.SalesOrderHeader h ON h.SalesOrderID = r.SalesOrderID WHERE h.Comment = N'demo-order';
 DELETE d FROM Sales.SalesOrderDetail d JOIN Sales.SalesOrderHeader h ON h.SalesOrderID = d.SalesOrderID WHERE h.Comment = N'demo-order';
 DELETE FROM Sales.SalesOrderHeader WHERE Comment = N'demo-order';

@@ -37,6 +37,10 @@ jobs:
             -Q "SET NOCOUNT ON; IF (SELECT COUNT(*) FROM cdc.Sales_SalesOrderHeader_CT WHERE Comment = 'demo-order') = 0 THROW 50000, 'no CDC rows for demo order', 1; IF (SELECT COUNT(*) FROM cdc.change_tables) <> 68 THROW 50001, 'expected 68 CDC tables', 1; SELECT COUNT(*) cdc_rows FROM cdc.Sales_SalesOrderHeader_CT"
       - name: Reset demo data
         run: docker exec -i aw-before-sqlserver-1 /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'AdvWorks!2026' -b -W < scripts/reset-demo.sql
+      - name: Discovery inventory is reproducible from live DBs (after demo reset)
+        run: |
+          scripts/discovery/generate.sh
+          git diff --stat --exit-code docs/discovery
       - name: Logs on failure
         if: failure()
         run: docker compose -f docker/before/docker-compose.yml logs --tail 200

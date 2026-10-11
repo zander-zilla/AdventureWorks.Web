@@ -1,0 +1,21 @@
+{
+  "status": "approved 2026-10-11",
+  "_comment": "Domain split. One DynamoDB table per domain. Feeds the future mapping file.",
+  "domains": {
+    "Catalog": {"table": "aw-catalog", "rationale": "What we sell and how it is described/priced. Read-heavy, shopper-facing, changes rarely.",
+      "tables": ["Production.Product","Production.ProductCategory","Production.ProductSubcategory","Production.ProductModel","Production.ProductDescription","Production.ProductModelProductDescriptionCulture","Production.ProductPhoto","Production.ProductProductPhoto","Production.ProductReview","Production.ProductListPriceHistory","Production.ProductCostHistory","Production.Illustration","Production.ProductModelIllustration","Production.Document","Production.ProductDocument","Sales.SpecialOffer","Sales.SpecialOfferProduct"]},
+    "Inventory & Manufacturing": {"table": "aw-inventory", "rationale": "Stock levels, BOM and shop-floor work orders. Write-heavy, operational, not shopper-facing except stock check.",
+      "tables": ["Production.ProductInventory","Production.Location","Production.BillOfMaterials","Production.WorkOrder","Production.WorkOrderRouting","Production.ScrapReason","Production.TransactionHistory","Production.TransactionHistoryArchive"]},
+    "Sales": {"table": "aw-sales", "rationale": "Orders, carts and the sales organisation (sales people, territories, quotas). Highest write volume; target of the live CDC demo.",
+      "tables": ["Sales.SalesOrderHeader","Sales.SalesOrderDetail","Sales.SalesOrderHeaderSalesReason","Sales.SalesReason","Sales.ShoppingCartItem","Sales.SalesPerson","Sales.SalesPersonQuotaHistory","Sales.SalesTerritory","Sales.SalesTerritoryHistory"]},
+    "Customer & Party": {"table": "aw-customer", "rationale": "Everyone we know: persons, stores (B2B customers), contacts, addresses, emails, phones, payment cards, logins. Supports login/profile and is the 'who' for Sales/Purchasing/HR.",
+      "tables": ["Sales.Customer","Sales.Store","Sales.CreditCard","Sales.PersonCreditCard","Person.BusinessEntity","Person.Person","Person.Password","Person.EmailAddress","Person.PersonPhone","Person.PhoneNumberType","Person.Address","Person.AddressType","Person.BusinessEntityAddress","Person.BusinessEntityContact","Person.ContactType"]},
+    "Purchasing": {"table": "aw-purchasing", "rationale": "Vendors, what they supply, purchase orders. Independent lifecycle from sales.",
+      "tables": ["Purchasing.Vendor","Purchasing.ProductVendor","Purchasing.PurchaseOrderHeader","Purchasing.PurchaseOrderDetail"]},
+    "HR": {"table": "aw-hr", "rationale": "Employees, org, pay, shifts, candidates. Sensitive data (pay, national ID) isolated in its own table/IAM boundary.",
+      "tables": ["HumanResources.Employee","HumanResources.Department","HumanResources.EmployeeDepartmentHistory","HumanResources.EmployeePayHistory","HumanResources.Shift","HumanResources.JobCandidate"]},
+    "Reference": {"table": "aw-reference", "rationale": "Small shared lookup data used by several domains (geo, currency/FX, tax, ship methods, units, cultures). Read-mostly, cached in apps, copied into consumers where needed.",
+      "tables": ["Person.CountryRegion","Person.StateProvince","Sales.Currency","Sales.CountryRegionCurrency","Sales.CurrencyRate","Sales.SalesTaxRate","Purchasing.ShipMethod","Production.UnitMeasure","Production.Culture"]}
+  },
+  "excluded": {"tables": ["dbo.AWBuildVersion","dbo.DatabaseLog","dbo.ErrorLog"], "rationale": "Database plumbing (version stamp, DDL log, error log) - replaced by CloudWatch/CloudTrail."}
+}

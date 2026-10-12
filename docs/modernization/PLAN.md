@@ -38,6 +38,7 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 2026-10-12 | Phase 6 (ADR 0007): one zero-ETL integration per domain table; typed staging MVs generated from mapping.json; star schema rebuilt hourly by one portable stored procedure; static DW tables via S3 → COPY. Open for John: W-1 KMS (AWS-managed keys unsupported by zero-ETL → AWS-owned/CMK), R-1 reseller tax/freight allocation, W-2 schedule, W-3 inventory grain, W-4 QuickSight subscription. |
 | 2026-10-12 | Phase 6 decisions accepted (John; ADR 0007 → Accepted): **W-1** AWS-owned keys on catalog/inventory/sales/purchasing/reference, CMKs kept on aw-hr/aw-customer with a key-policy grant for Redshift zero-ETL (ADR 0004 P3-2 amended, mapping.yaml, Terraform); **R-1** real order-total reseller tax/freight; **W-2** hourly rebuild; **W-3** inventory grain as built; **W-4** QuickSight Enterprise only for the showcase (`enable_quicksight` toggle). |
 | 2026-10-12 | Phase 7 (proposed, ADR 0008): one Terraform root `infra/live` (modules network/dynamodb/source_db/cdc/app/warehouse) + `infra/bootstrap` (state bucket, GitHub OIDC roles); app on ECS Fargate + ALB; RDS SQL Server SE; db-init/bulk-load as ECS tools tasks; OIDC-only manual deploy workflow; teardown script. Runbook docs/aws-setup.md. |
+| 2026-10-12 | Phase 7 decisions accepted (John; ADR 0008 → Accepted): (1) ECS Fargate + ALB; (2) RDS SQL Server SE db.m6i.large, torn down after demos; (3) deploy role as-is, tighten after first apply; (4) DB password in encrypted state; (5) AWS Budgets alert USD 50/month (`budget_alert_emails`, `infra/live/budget.tf`) + required reviewer on the GitHub `demo` environment. |
 
 ## Status
 
@@ -50,5 +51,5 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 4 Migration / CDC | Approved; #5 (transform, Debezium local, DMS/Kinesis/Lambda, monitor, e2e + reconcile); follow-ups P4-1..4 in #6 | #5, #6 |
 | 5 App modernization | Merged (.NET 10 app on DynamoDB, ADR 0006); CDC enrichment from DynamoDB lookups merged | #7, #8 |
 | 6 Analytics | Merged; decisions W-1..W-4, R-1 accepted (ADR 0007): zero-ETL (7 integrations) → Redshift Serverless, stg MVs generated from the mapping, `dw.sp_build_star()` (12 dims + 6 facts), static carry-over, QuickSight; local Postgres verification + reconciliation vs AdventureWorksDW2022 in CI (`warehouse` workflow); ADR 0007, docs/design/warehouse.md | #9 |
-| 7 IaC / CI | In review: Terraform for the whole deployment (`infra/`), offline plan tests, `infra` CI + manual OIDC `deploy` workflow, teardown, runbook docs/aws-setup.md, ADR 0008. Nothing applied | this PR |
+| 7 IaC / CI | Merged; decisions accepted (ADR 0008): Terraform for the whole deployment (`infra/`), offline plan tests, `infra` CI + manual OIDC `deploy` workflow, teardown, runbook docs/aws-setup.md, ADR 0008. Nothing applied | #10, #11 |
 | 8 | Not started | – |

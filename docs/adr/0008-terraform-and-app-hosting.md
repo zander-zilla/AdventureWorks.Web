@@ -1,6 +1,6 @@
 # ADR 0008: One Terraform root for the whole AWS deployment; .NET 10 app on ECS Fargate behind an ALB; OIDC-only CI/CD
 
-Status: Proposed (Phase 7) — code only, nothing applied (no AWS calls were made). Runbook: docs/aws-setup.md.
+Status: **Accepted** (John, 2026-10-12, PR #10 decisions) — code only, nothing applied yet (no AWS calls were made). Runbook: docs/aws-setup.md.
 
 ## Context
 Phase 7 must describe every AWS resource of the demo (VPC, RDS SQL Server source with CDC, DMS, Kinesis, the CDC Lambda,
@@ -47,3 +47,14 @@ more than one environment, keep no long-lived secrets in GitHub, and be cheap to
 - The RDS SQL Server licence dominates the hourly cost; John tears the environment down after each demo.
 - The deploy role is PowerUserAccess + IAM limited to `aw-*`/DMS service roles — broad enough for the stack, not admin.
 - Secrets: the RDS master password lives in Secrets Manager and in the encrypted remote state (DMS endpoint needs it).
+
+## Decisions accepted (John, 2026-10-12)
+1. **Hosting: ECS Fargate + ALB** as above.
+2. **Source DB: RDS SQL Server Standard `db.m6i.large`**, torn down after every demo (`scripts/aws/teardown.sh`).
+3. **Deploy role as-is** (PowerUserAccess + scoped IAM); tighten to a least-privilege policy after the first real apply,
+   using IAM Access Analyzer policy generation from that apply's CloudTrail.
+4. **RDS master password in the encrypted remote state** (S3 SSE, versioned, private) accepted; it also lives in Secrets Manager.
+5. **Cost guardrail: AWS Budgets** `aw-<env>-monthly` (`infra/live/budget.tf`), USD 50/month by default
+   (`budget_monthly_usd`), e-mails `budget_alert_emails` at 80 % actual and 100 % forecast; not created when no e-mail is
+   set. The GitHub `demo` environment **must** have a required reviewer (docs/aws-setup.md §3), so every apply/destroy
+   from Actions is approved by John.

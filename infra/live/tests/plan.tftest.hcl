@@ -103,3 +103,22 @@ run "quicksight_requires_principal" {
   }
   expect_failures = [var.quicksight_principal_arn]
 }
+
+run "budget_alert" {
+  command = plan
+  variables {
+    budget_alert_emails = ["ops@example.com"]
+  }
+  assert {
+    condition     = length(aws_budgets_budget.monthly) == 1 && aws_budgets_budget.monthly[0].limit_amount == "50"
+    error_message = "USD 50/month budget expected when an alert e-mail is set"
+  }
+}
+
+run "no_budget_without_email" {
+  command = plan
+  assert {
+    condition     = length(aws_budgets_budget.monthly) == 0
+    error_message = "no budget without alert e-mails"
+  }
+}

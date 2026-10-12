@@ -15,7 +15,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pytest playwright && python -m playwright install --with-deps chromium
+      - run: pip install pytest pyyaml playwright && python -m playwright install --with-deps chromium
+      - name: monitor API Lambda + CDC monitor feed (Phase 8b S-2, no AWS)
+        run: python -m pytest -q -p no:cacheprovider tests/cdc/test_monitor_api.py tests/cdc/test_lambda.py
       - name: static build (no AWS, no app/CDC stack)
         run: python showcase/build.py && bash -n scripts/showcase-up.sh scripts/aws/push-showcase.sh
       - name: Playwright - every tab (stub app, recorded replication replay)

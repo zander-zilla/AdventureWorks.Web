@@ -135,3 +135,13 @@ def test_cdc_lambda_records_applied_changes_only():
     out = H.handler({"Records": [TL.rec("a", 1), TL.rec("b", 2), TL.rec("c", 3, "control")]}, None,
                     ctx={"rows": TL.Rows, "tr": Tr(), "monitor": Mon()})
     assert out == {"batchItemFailures": []} and seen == ["a"]
+
+
+def test_showcase_build_aws_mode_keeps_the_replay_fallback(tmp_path):
+    """push-showcase.sh builds with --monitor-mode aws; the replay files must still be uploaded (CloudFront failover)."""
+    sys.path.insert(0, os.path.join(HERE, "..", "..", "showcase"))
+    import build
+    out = build.build(str(tmp_path / "dist"), monitor_mode="aws")
+    cfg = json.load(open(os.path.join(out, "config.json")))
+    assert cfg["monitorMode"] == "aws" and cfg["monitorApi"] == ""  # same origin: CloudFront /api/*
+    assert json.load(open(os.path.join(out, "api", "status")))["replay"]

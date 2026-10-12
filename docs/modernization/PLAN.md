@@ -35,6 +35,8 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 2026-10-11 | Phase 4 (P4-1..5, ADR 0005 accepted): (1) AWS Lambda builds items from DMS full row images + DynamoDB lookups; SQL re-read only for 15 join tables (configurable, `cdc-enrichment.yaml`); (2) copy refreshes run inside the CDC transform; (3) refreshes REMOVE copies whose source became NULL; (4) CDC retention 7 days (RDS `sp_cdc_change_job @retention=10080`); (5) ADR 0005 accepted. |
 | 2026-10-11 | CDC enrichment without SQL (John; ADR 0005 amended): the 15 join tables are built from the event image + lookups of the already-replicated related items in DynamoDB (+ re-implemented computed columns, hierarchyid/geography); snapshot refreshes find dependents in DynamoDB; a missing referenced item is retried with backoff (4 attempts, 0.1/0.2/0.4 s) and then fails the event to the batch retry / DLQ. SQL read dependency and the RDS read-replica recommendation removed. |
 
+| 2026-10-12 | Phase 6 (proposed, ADR 0007): one zero-ETL integration per domain table; typed staging MVs generated from mapping.json; star schema rebuilt hourly by one portable stored procedure; static DW tables via S3 → COPY. Open for John: W-1 KMS (AWS-managed keys unsupported by zero-ETL → AWS-owned/CMK), R-1 reseller tax/freight allocation, W-2 schedule, W-3 inventory grain, W-4 QuickSight subscription. |
+
 ## Status
 
 | Phase | Status | PR |
@@ -44,4 +46,6 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 2 Access patterns | Approved (D1–D10), in review (stacked on #2): docs/design/access-patterns.md/.json | #3 |
 | 3 DynamoDB design | In review (against master; carries D1-D10; decisions P3-1..5 recorded in ADR 0004) | #4 |
 | 4 Migration / CDC | Approved; #5 (transform, Debezium local, DMS/Kinesis/Lambda, monitor, e2e + reconcile); follow-ups P4-1..4 in #6 | #5, #6 |
-| 5–8 | Not started | – |
+| 5 App modernization | Merged (.NET 10 app on DynamoDB, ADR 0006); CDC enrichment from DynamoDB lookups merged | #7, #8 |
+| 6 Analytics | In review: zero-ETL (7 integrations) → Redshift Serverless, stg MVs generated from the mapping, `dw.sp_build_star()` (12 dims + 6 facts), static carry-over, QuickSight; local Postgres verification + reconciliation vs AdventureWorksDW2022 in CI (`warehouse` workflow); ADR 0007, docs/design/warehouse.md. Open: W-1..W-4, R-1 | this PR |
+| 7–8 | Not started | – |

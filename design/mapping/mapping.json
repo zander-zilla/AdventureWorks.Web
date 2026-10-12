@@ -115,87 +115,122 @@
  ],
  "dw_lineage": {
   "DimCustomer": {
+   "target": "dw.dim_customer",
    "from": [
     "aw-customer/Customer",
     "aw-customer/Person",
     "aw-customer/PartyAddress",
+    "aw-customer/Address",
     "aw-customer/EmailAddress",
-    "aw-customer/Phone",
-    "aw-customer/Address"
+    "aw-customer/Phone"
    ],
-   "note": "individual customers (store_id null); demographics map"
+   "note": "individual customers (store_id null); customer_key = CustomerID; demographics map flattened"
   },
   "DimReseller": {
+   "target": "dw.dim_reseller",
    "from": [
     "aw-customer/Store",
     "aw-customer/Customer",
-    "aw-customer/PartyAddress"
-   ]
+    "aw-customer/PartyAddress",
+    "aw-customer/Address"
+   ],
+   "note": "alternate key = store customer's AccountNumber; demographics map flattened"
   },
   "DimGeography": {
+   "target": "dw.dim_geography",
    "from": [
+    "aw-customer/PartyAddress",
     "aw-customer/Address",
+    "aw-customer/Customer",
+    "aw-customer/Store",
     "aw-reference/StateProvince",
-    "aw-reference/Country",
-    "aw-sales/SalesTerritory"
+    "aw-reference/Country"
    ],
-   "note": "localised names static"
+   "static": [
+    "dw_static.loc_country"
+   ],
+   "note": "distinct home (customers) / main-office (resellers) addresses"
   },
   "DimProduct": {
+   "target": "dw.dim_product",
    "from": [
     "aw-catalog/Product",
-    "aw-catalog/ProductModel",
-    "aw-catalog/ModelDescription",
     "aw-catalog/ListPriceHistory",
     "aw-catalog/CostHistory",
-    "aw-catalog/ProductPhoto"
+    "aw-catalog/ModelDescription"
    ],
-   "note": "SCD2 from price/cost history"
+   "static": [
+    "dw_static.loc_product_name"
+   ],
+   "note": "SCD2: one row per list-price version"
   },
   "DimProductSubcategory": {
+   "target": "dw.dim_product_subcategory",
    "from": [
     "aw-catalog/Subcategory"
+   ],
+   "static": [
+    "dw_static.loc_product_subcategory"
    ]
   },
   "DimProductCategory": {
+   "target": "dw.dim_product_category",
    "from": [
     "aw-catalog/Category"
+   ],
+   "static": [
+    "dw_static.loc_product_category"
    ]
   },
   "DimPromotion": {
+   "target": "dw.dim_promotion",
    "from": [
     "aw-catalog/SpecialOffer"
+   ],
+   "static": [
+    "dw_static.loc_promotion"
    ]
   },
   "DimSalesTerritory": {
+   "target": "dw.dim_sales_territory",
    "from": [
-    "aw-sales/SalesTerritory"
-   ]
+    "aw-sales/SalesTerritory",
+    "aw-reference/Country"
+   ],
+   "note": "+ NA row (key 11)"
   },
   "DimEmployee": {
+   "target": "dw.dim_employee",
    "from": [
     "aw-hr/Employee",
     "aw-hr/DepartmentAssignment",
     "aw-hr/PayRate",
     "aw-sales/SalesPerson",
-    "aw-sales/TerritoryAssignment"
-   ]
+    "aw-customer/Person",
+    "aw-customer/EmailAddress",
+    "aw-customer/Phone"
+   ],
+   "note": "SCD2 per department assignment; parent from org_path"
   },
   "DimCurrency": {
+   "target": "dw.dim_currency",
    "from": [
     "aw-reference/Currency"
    ]
   },
   "DimSalesReason": {
+   "target": "dw.dim_sales_reason",
    "from": [
     "aw-sales/SalesReason"
    ]
   },
   "DimDate": {
+   "target": "dw.dim_date",
    "from": [],
-   "note": "generated in Redshift"
+   "note": "generated 2005-2014; FY starts 1 July, named by its start year"
   },
   "FactInternetSales": {
+   "target": "dw.fact_internet_sales",
    "from": [
     "aw-sales/Order",
     "aw-sales/OrderLine",
@@ -204,36 +239,45 @@
    "filter": "online_order_flag = true"
   },
   "FactResellerSales": {
+   "target": "dw.fact_reseller_sales",
    "from": [
     "aw-sales/Order",
     "aw-sales/OrderLine",
-    "aw-catalog/CostHistory"
+    "aw-catalog/CostHistory",
+    "aw-customer/Customer"
    ],
    "filter": "online_order_flag = false"
   },
   "FactInternetSalesReason": {
+   "target": "dw.fact_internet_sales_reason",
    "from": [
     "aw-sales/OrderSalesReason",
+    "aw-sales/Order",
     "aw-sales/OrderLine"
    ]
   },
   "FactSalesQuota": {
+   "target": "dw.fact_sales_quota",
    "from": [
     "aw-sales/SalesQuota"
    ]
   },
   "FactProductInventory": {
+   "target": "dw.fact_product_inventory",
    "from": [
     "aw-inventory/InventoryTransaction",
     "aw-inventory/ProductInventory"
-   ]
+   ],
+   "note": "daily movements + balance anchored to on-hand"
   },
   "FactCurrencyRate": {
+   "target": "dw.fact_currency_rate",
    "from": [
     "aw-reference/CurrencyRate"
    ]
   },
   "static_carry_over": {
+   "target": "dw_static",
    "from": [],
    "tables": [
     "FactFinance",
@@ -247,7 +291,7 @@
     "NewFactCurrencyRate",
     "ProspectiveBuyer"
    ],
-   "note": "decision 3: one-time static load from AdventureWorksDW2022"
+   "note": "decision 3: one-time static load from AdventureWorksDW2022 (S3 -> COPY), plus loc_* localised-name lookups"
   }
  },
  "generated_from": "design/mapping/mapping.yaml",

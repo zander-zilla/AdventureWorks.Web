@@ -5,6 +5,8 @@ Microsoft does not ship the ETL for AdventureWorksDW, so this lineage is **infer
 and spot checks (row counts below are from the live DBs, see `inventory.md`). Items marked ⚠ have no OLTP source
 and must be carried over as static data or synthesised.
 
+**As built (phase 6): see [docs/design/warehouse.md](../design/warehouse.md)** for the final source-to-target mapping, reconciliation and the changes from this lineage.
+
 Target in phase 6: Redshift tables built from the DynamoDB zero-ETL landing (per-domain tables) — the "OLTP sources"
 below become `entityType` slices of `aw-*` tables.
 

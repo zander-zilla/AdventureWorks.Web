@@ -24,6 +24,10 @@ jobs:
         run: |
           python3 scripts/design/access_patterns.py
           git diff --stat --exit-code docs/design
+      - name: Business-process docs are in sync with their generator
+        run: |
+          python3 scripts/business-processes/render.py
+          git diff --stat --exit-code docs/business-processes
   before-stack:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -54,7 +58,7 @@ jobs:
           scripts/business-processes/run.sh
           git diff --exit-code docs/business-processes/evidence.json
       - name: Upload business-process evidence
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: business-process-evidence

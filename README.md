@@ -1,7 +1,10 @@
 # AdventureWorks Modernization (SQL Server → DynamoDB + Redshift zero-ETL)
 
 Fork of [Azure-Samples/AdventureWorks.Web](https://github.com/Azure-Samples/AdventureWorks.Web) (archived; MIT, © Microsoft — see LICENSE.md).
-This fork is used for an AWS modernization demo; see [docs/modernization/PLAN.md](docs/modernization/PLAN.md).
+This fork is used for an AWS modernization demo in two chapters (overview: [PLAN.md](PLAN.md)):
+
+- **Chapter 1 – Migration** (phases 0-8, tag `v1.0-migration`): SQL Server → DynamoDB + CDC, .NET 10 app, zero-ETL → Redshift, Terraform, showcase. [docs/modernization/PLAN.md](docs/modernization/PLAN.md)
+- **Chapter 2 – Extend and modernize** (proposed): modern React + Tailwind UI and new back-office features from the [business-process analysis](docs/business-processes/README.md). [docs/chapter-2/PLAN.md](docs/chapter-2/PLAN.md)
 
 Original description: *AdventureWorks Sample Web App. This App connects to the sample database Adventure Works.*
 

@@ -45,5 +45,5 @@ def test_quicksight_dashboard_definition():
     botocore.validate.validate_parameters(d, model.operation_model("CreateDashboard").input_shape)  # raises on schema errors
     cols = {m for m in re.findall(r'"ColumnName": "([a-z_]+)"', json.dumps(d))}
     assert cols <= _v_sales_columns(), cols - _v_sales_columns()
-    tf = open(os.path.join(ROOT, "aws/warehouse/terraform/quicksight.tf")).read()
+    tf = open(os.path.join(ROOT, "infra/modules/warehouse/quicksight.tf")).read()
     assert cols <= set(re.findall(r'name = "([a-z_]+)"', tf)), "dashboard uses columns the data set does not import"

@@ -1,0 +1,66 @@
+name: infra (Terraform fmt / validate / offline plan tests)
+on:
+  push:
+    branches: [master, "phase-*"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  TF_VERSION: 1.11.4
+  TF_IN_AUTOMATION: "1"
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: fmt
+        run: terraform -chdir=infra fmt -check -recursive -diff
+      - name: validate (no credentials, nothing applied)
+        run: |
+          for d in infra/bootstrap infra/live; do
+            terraform -chdir=$d init -backend=false -input=false
+            terraform -chdir=$d validate
+          done
+      - name: offline plan tests (terraform test, mock AWS provider - W-1 keys, toggles, 7 integrations)
+        run: terraform -chdir=infra/live test
+  plan-aws:
+    # Real `terraform plan` against the account, only once John has run infra/bootstrap and set the repository
+    # variables AWS_PLAN_ROLE_ARN / TF_STATE_BUCKET (OIDC, read-only role; no secrets). Skipped otherwise.
+    if: vars.AWS_PLAN_ROLE_ARN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: terraform
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: plan (demo)
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          scripts/aws/tf.sh demo init
+          scripts/aws/tf.sh demo plan -lock=false -var 'allowed_cidrs=${{ vars.ALLOWED_CIDRS || '["127.0.0.1/32"]' }}'
+  packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: CDC Lambda package builds (consumed by the cdc module)
+        run: cdc/lambda/build.sh
+      - name: tools image builds (db init / bulk load on ECS)
+        run: docker build -q -f docker/tools/Dockerfile -t aw-tools:ci . && docker run --rm aw-tools:ci nope || test $? -eq 2
+      - name: scripts lint
+        run: bash -n scripts/aws/*.sh && python -m py_compile scripts/aws/db_init.py

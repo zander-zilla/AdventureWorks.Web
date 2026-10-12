@@ -36,7 +36,7 @@ table_settings:
   point_in_time_recovery: true
   stream: NEW_AND_OLD_IMAGES
   ttl_attribute: ttl
-  encryption: customer-managed KMS key for aw-hr and aw-customer; AWS-managed key elsewhere  # P3-2
+  encryption: customer-managed KMS key for aw-hr and aw-customer (key policy grants Redshift zero-ETL); AWS-owned key elsewhere  # P3-2 as amended by W-1 (ADR 0007): zero-ETL rejects AWS-managed keys
   gsi_projection: ALL  # P3-3
   tombstone_ttl_seconds: 604800  # P3-4: 7 days after the delete is captured
   native_order_id: one atomic ADD next_id 1 per order  # P3-1

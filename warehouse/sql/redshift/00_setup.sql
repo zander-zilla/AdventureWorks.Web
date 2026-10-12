@@ -1,4 +1,4 @@
--- Redshift Serverless one-time setup (run as admin in database aw_dw after `terraform apply` of aws/warehouse/terraform).
+-- Redshift Serverless one-time setup (run as admin in database aw_dw after `terraform apply` of infra/modules/warehouse).
 -- Order (runbook: docs/design/warehouse.md "Deploying on AWS"): 00_setup -> 10_staging_views -> star/01_ddl -> star/05_static_ddl
 --   -> 40_static_copy -> 30_physical -> star/20_build_procedure -> CALL dw.sp_build_star() -> star/04_views.
 

@@ -1,0 +1,6 @@
+# Filled from infra/bootstrap outputs (state_bucket). One state key per environment.
+bucket       = "REPLACE-with-bootstrap-state_bucket"
+key          = "adventureworks/demo/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true

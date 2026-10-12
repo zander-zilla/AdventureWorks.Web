@@ -1,7 +1,8 @@
 # QuickSight: Redshift data source + SPICE data set over dw.v_sales. The dashboard itself is defined in
-# ../quicksight/dashboard.json (CreateDashboard API input, applied with ../quicksight/deploy.sh). Optional: only
-# created when a QuickSight principal is given (QuickSight Enterprise subscription is a manual, billed account step).
-locals { qs = var.quicksight_principal_arn != "" }
+# aws/warehouse/quicksight/dashboard.json (CreateDashboard API input, applied with aws/warehouse/quicksight/deploy.sh).
+# Optional (decision W-4): only created when enable_quicksight = true; the QuickSight Enterprise subscription itself is a
+# manual, billed account step done only for the showcase.
+locals { qs = var.enable_quicksight }
 
 resource "aws_quicksight_data_source" "redshift" {
   count          = local.qs ? 1 : 0

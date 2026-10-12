@@ -1,6 +1,6 @@
 # ADR 0007: DynamoDB zero-ETL to Redshift Serverless; star schema built by one portable stored procedure
 
-Status: Proposed (Phase 6) — reflects the as-built, locally verified design. Details: docs/design/warehouse.md.
+Status: **Accepted** (2026-10-12, John; decisions W-1..W-4 and R-1 below) — reflects the as-built, locally verified design. Details: docs/design/warehouse.md. Terraform: `infra/modules/warehouse` (Phase 7).
 
 ## Context
 Phase 6 must rebuild the AdventureWorksDW star schema from the replicated DynamoDB domain tables, keep the no-source DW
@@ -24,7 +24,7 @@ tables as static data (decision 3), feed QuickSight, prefer AWS-native services 
 
 ## Consequences
 - Source tables need PITR (already on) and an **AWS-owned or customer-managed** KMS key: zero-ETL does not accept AWS-managed
-  keys, so ADR 0004 P3-2 needs an amendment (decision W-1).
+  keys, so ADR 0004 P3-2 is amended (decision W-1).
 - Freshness = zero-ETL lag (15–30 min) + schedule (1 h). Full rebuild each run: fine at AdventureWorks scale (≈4 s locally);
   revisit with incremental MERGE if facts grow by orders of magnitude.
 - Any DynamoDB attribute over 64 KB fails a table's replication: CI pre-flights item sizes; `aw_zetl_catalog` uses TRUNCATECOLUMNS.
@@ -35,3 +35,12 @@ tables as static data (decision 3), feed QuickSight, prefer AWS-native services 
 - *Star tables as materialized views*: SCD2 windowing and multi-step dependencies prevent incremental refresh; a procedure is clearer.
 - *Plain late-binding staging views*: re-parses SUPER per query; MVs are cheaper and refresh incrementally.
 - *Redshift-only SQL verified only on AWS*: no CI coverage; rejected in favour of the portable layer.
+
+## Accepted decisions (John, 2026-10-12)
+| # | Decision | Implemented in |
+|---|---|---|
+| W-1 | **AWS-owned keys** for aw-catalog, aw-inventory, aw-sales, aw-purchasing, aw-reference; **customer-managed keys kept** on aw-hr and aw-customer, whose key policies grant `redshift.amazonaws.com` `kms:Decrypt`/`DescribeKey` (scoped to this account's `integration:*`) and `kms:CreateGrant`. Amends ADR 0004 P3-2. | `design/mapping/mapping.yaml` table_settings, `infra/modules/dynamodb`, offline plan test `dynamodb_encryption_per_table` |
+| R-1 | Keep the **real order-total** reseller TaxAmt/Freight, allocated by line share (not the DW's flat 8 % / 2.5 %). | as built (`dw.sp_build_star`) |
+| W-2 | **Hourly** `CALL dw.sp_build_star()` (EventBridge Scheduler → Data API). | `star_build_schedule = "rate(1 hour)"` |
+| W-3 | FactProductInventory **grain as built** (per product, first to last movement date, anchored to on-hand). | as built |
+| W-4 | **QuickSight Enterprise only for the showcase**: optional, toggled by `enable_quicksight` (default false; requires `quicksight_principal_arn`). | `infra/modules/warehouse/quicksight.tf`, `infra/live` variables, plan tests `quicksight_toggle` / `quicksight_requires_principal` |

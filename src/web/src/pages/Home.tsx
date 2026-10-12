@@ -7,7 +7,7 @@ export function Home() {
       <div className="mb-6 grid grid-cols-4 gap-3.5">
         <KpiCard label="Domain tables (DynamoDB)" value="7" />
         <KpiCard label="Processes with a UI" value="2 → 6" delta="target after C2-4" />
-        <KpiCard label="Designed access patterns" value="~70" />
+        <KpiCard label="Designed access patterns" value="70" />
         <KpiCard label="API" value="/api/v2" />
       </div>
       <div className="grid grid-cols-2 gap-4">

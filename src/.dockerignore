@@ -1,3 +1,8 @@
-**/bin
-**/obj
+**/bin/
+**/obj/
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+AdventureWorks.Web/wwwroot/app/
 AdventureWorks.Web.Tests

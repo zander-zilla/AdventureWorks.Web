@@ -47,7 +47,7 @@ for (const t of ['dark', 'light'] as const) {
   test(`products over /api/v2 (${t})`, async ({ page }) => {
     await mock(page); await theme(page, t)
     await page.goto('./shop/products')
-    await expect(page.getByRole('table', { name: 'Products' })).toContainText(real ? 'Road' : 'FR-R92B-58')
+    await expect(page.getByRole('table', { name: 'Products' })).toContainText(real ? '$' : 'FR-R92B-58')
     await shot(page, `products-${t}.png`)
   })
 }

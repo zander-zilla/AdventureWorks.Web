@@ -358,3 +358,4 @@ src/**/obj/
 .terraform/
 *.tfstate*
 showcase/dist/
+wwwroot/app/

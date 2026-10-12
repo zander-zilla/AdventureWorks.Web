@@ -1,0 +1,49 @@
+name: web (Chapter 2 React front end)
+on:
+  push:
+    branches: [master, "phase-*", "c2-*"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: src/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Supply chain (pinned lockfile, no high/critical advisories)
+        run: npm audit --audit-level=high --omit=dev
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Unit tests (Vitest)
+        run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Playwright (built bundle, /api/v2 mocked; screenshots of shell + gallery in both themes)
+        run: AW_SCREENSHOTS=../../screenshots/chapter-2 npx playwright test --reporter=line
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chapter-2-screenshots
+          path: screenshots/chapter-2/
+          if-no-files-found: ignore
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: src/global.json
+      - name: /api/v2 + /app/ hosting tests (in-process, no DynamoDB)
+        run: cd src && dotnet test AdventureWorks.slnx -c Release --filter "FullyQualifiedName~ApiV2Tests|FullyQualifiedName~FramedCookieTests"

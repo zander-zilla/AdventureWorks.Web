@@ -1,0 +1,537 @@
+{
+ "AwsAccountId": "${account_id}",
+ "DashboardId": "aw-sales-overview",
+ "Name": "AdventureWorks - Sales overview (DynamoDB -> Redshift zero-ETL)",
+ "Permissions": [
+  {
+   "Principal": "${quicksight_principal_arn}",
+   "Actions": [
+    "quicksight:DescribeDashboard",
+    "quicksight:ListDashboardVersions",
+    "quicksight:UpdateDashboardPermissions",
+    "quicksight:QueryDashboard",
+    "quicksight:UpdateDashboard",
+    "quicksight:DeleteDashboard",
+    "quicksight:DescribeDashboardPermissions",
+    "quicksight:UpdateDashboardPublishedVersion"
+   ]
+  }
+ ],
+ "Definition": {
+  "DataSetIdentifierDeclarations": [
+   {
+    "Identifier": "sales",
+    "DataSetArn": "${data_set_arn}"
+   }
+  ],
+  "Sheets": [
+   {
+    "SheetId": "overview",
+    "Name": "Overview",
+    "Visuals": [
+     {
+      "KPIVisual": {
+       "VisualId": "kpi-sales",
+       "Title": {
+        "Visibility": "VISIBLE",
+        "FormatText": {
+         "PlainText": "Total sales"
+        }
+       },
+       "ChartConfiguration": {
+        "FieldWells": {
+         "Values": [
+          {
+           "NumericalMeasureField": {
+            "FieldId": "kpi-sales-m",
+            "Column": {
+             "DataSetIdentifier": "sales",
+             "ColumnName": "sales_amount"
+            },
+            "AggregationFunction": {
+             "SimpleNumericalAggregation": "SUM"
+            }
+           }
+          }
+         ]
+        }
+       }
+      }
+     },
+     {
+      "KPIVisual": {
+       "VisualId": "kpi-margin",
+       "Title": {
+        "Visibility": "VISIBLE",
+        "FormatText": {
+         "PlainText": "Gross margin"
+        }
+       },
+       "ChartConfiguration": {
+        "FieldWells": {
+         "Values": [
+          {
+           "NumericalMeasureField": {
+            "FieldId": "kpi-margin-m",
+            "Column": {
+             "DataSetIdentifier": "sales",
+             "ColumnName": "gross_margin"
+            },
+            "AggregationFunction": {
+             "SimpleNumericalAggregation": "SUM"
+            }
+           }
+          }
+         ]
+        }
+       }
+      }
+     },
+     {
+      "KPIVisual": {
+       "VisualId": "kpi-units",
+       "Title": {
+        "Visibility": "VISIBLE",
+        "FormatText": {
+         "PlainText": "Units sold"
+        }
+       },
+       "ChartConfiguration": {
+        "FieldWells": {
+         "Values": [
+          {
+           "NumericalMeasureField": {
+            "FieldId": "kpi-units-m",
+            "Column": {
+             "DataSetIdentifier": "sales",
+             "ColumnName": "order_quantity"
+            },
+            "AggregationFunction": {
+             "SimpleNumericalAggregation": "SUM"
+            }
+           }
+          }
+         ]
+        }
+       }
+      }
+     },
+     {
+      "LineChartVisual": {
+       "VisualId": "line-month",
+       "Title": {
+        "Visibility": "VISIBLE",
+        "FormatText": {
+         "PlainText": "Sales by month and channel"
+        }
+       },
+       "ChartConfiguration": {
+        "FieldWells": {
+         "LineChartAggregatedFieldWells": {
+          "Category": [
+           {
+            "DateDimensionField": {
+             "FieldId": "line-month-d",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "order_date"
+             },
+             "DateGranularity": "MONTH"
+            }
+           }
+          ],
+          "Values": [
+           {
+            "NumericalMeasureField": {
+             "FieldId": "line-month-m",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "sales_amount"
+             },
+             "AggregationFunction": {
+              "SimpleNumericalAggregation": "SUM"
+             }
+            }
+           }
+          ],
+          "Colors": [
+           {
+            "CategoricalDimensionField": {
+             "FieldId": "line-month-c",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "channel"
+             }
+            }
+           }
+          ]
+         }
+        },
+        "Type": "LINE"
+       }
+      }
+     },
+     {
+      "BarChartVisual": {
+       "VisualId": "bar-territory",
+       "Title": {
+        "Visibility": "VISIBLE",
+        "FormatText": {
+         "PlainText": "Sales by territory group"
+        }
+       },
+       "ChartConfiguration": {
+        "FieldWells": {
+         "BarChartAggregatedFieldWells": {
+          "Category": [
+           {
+            "CategoricalDimensionField": {
+             "FieldId": "bar-territory-d",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "sales_territory_group"
+             }
+            }
+           }
+          ],
+          "Values": [
+           {
+            "NumericalMeasureField": {
+             "FieldId": "bar-territory-m",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "sales_amount"
+             },
+             "AggregationFunction": {
+              "SimpleNumericalAggregation": "SUM"
+             }
+            }
+           }
+          ],
+          "Colors": [
+           {
+            "CategoricalDimensionField": {
+             "FieldId": "bar-territory-c",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "channel"
+             }
+            }
+           }
+          ]
+         }
+        },
+        "Orientation": "HORIZONTAL",
+        "BarsArrangement": "STACKED",
+        "SortConfiguration": {
+         "CategorySort": [
+          {
+           "FieldSort": {
+            "FieldId": "bar-territory-m",
+            "Direction": "DESC"
+           }
+          }
+         ]
+        }
+       }
+      }
+     },
+     {
+      "BarChartVisual": {
+       "VisualId": "bar-category",
+       "Title": {
+        "Visibility": "VISIBLE",
+        "FormatText": {
+         "PlainText": "Sales by product category"
+        }
+       },
+       "ChartConfiguration": {
+        "FieldWells": {
+         "BarChartAggregatedFieldWells": {
+          "Category": [
+           {
+            "CategoricalDimensionField": {
+             "FieldId": "bar-category-d",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "product_category"
+             }
+            }
+           }
+          ],
+          "Values": [
+           {
+            "NumericalMeasureField": {
+             "FieldId": "bar-category-m",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "sales_amount"
+             },
+             "AggregationFunction": {
+              "SimpleNumericalAggregation": "SUM"
+             }
+            }
+           }
+          ],
+          "Colors": [
+           {
+            "CategoricalDimensionField": {
+             "FieldId": "bar-category-c",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "channel"
+             }
+            }
+           }
+          ]
+         }
+        },
+        "Orientation": "VERTICAL",
+        "BarsArrangement": "STACKED",
+        "SortConfiguration": {
+         "CategorySort": [
+          {
+           "FieldSort": {
+            "FieldId": "bar-category-m",
+            "Direction": "DESC"
+           }
+          }
+         ]
+        }
+       }
+      }
+     },
+     {
+      "TableVisual": {
+       "VisualId": "tbl-top",
+       "Title": {
+        "Visibility": "VISIBLE",
+        "FormatText": {
+         "PlainText": "Top customers / resellers"
+        }
+       },
+       "ChartConfiguration": {
+        "FieldWells": {
+         "TableAggregatedFieldWells": {
+          "GroupBy": [
+           {
+            "CategoricalDimensionField": {
+             "FieldId": "tbl-top-d",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "customer_or_reseller"
+             }
+            }
+           },
+           {
+            "CategoricalDimensionField": {
+             "FieldId": "tbl-top-ch",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "channel"
+             }
+            }
+           }
+          ],
+          "Values": [
+           {
+            "NumericalMeasureField": {
+             "FieldId": "tbl-top-m",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "sales_amount"
+             },
+             "AggregationFunction": {
+              "SimpleNumericalAggregation": "SUM"
+             }
+            }
+           },
+           {
+            "NumericalMeasureField": {
+             "FieldId": "tbl-top-q",
+             "Column": {
+              "DataSetIdentifier": "sales",
+              "ColumnName": "order_quantity"
+             },
+             "AggregationFunction": {
+              "SimpleNumericalAggregation": "SUM"
+             }
+            }
+           }
+          ]
+         }
+        },
+        "SortConfiguration": {
+         "RowSort": [
+          {
+           "FieldSort": {
+            "FieldId": "tbl-top-m",
+            "Direction": "DESC"
+           }
+          }
+         ],
+         "PaginationConfiguration": {
+          "PageSize": 25,
+          "PageNumber": 1
+         }
+        }
+       }
+      }
+     }
+    ],
+    "FilterControls": [
+     {
+      "Dropdown": {
+       "FilterControlId": "ctl-year",
+       "Title": "Fiscal year",
+       "SourceFilterId": "flt-year",
+       "Type": "MULTI_SELECT"
+      }
+     },
+     {
+      "Dropdown": {
+       "FilterControlId": "ctl-channel",
+       "Title": "Channel",
+       "SourceFilterId": "flt-channel",
+       "Type": "MULTI_SELECT"
+      }
+     }
+    ],
+    "Layouts": [
+     {
+      "Configuration": {
+       "GridLayout": {
+        "Elements": [
+         {
+          "ElementId": "kpi-sales",
+          "ElementType": "VISUAL",
+          "ColumnIndex": 0,
+          "RowIndex": 0,
+          "ColumnSpan": 12,
+          "RowSpan": 5
+         },
+         {
+          "ElementId": "kpi-margin",
+          "ElementType": "VISUAL",
+          "ColumnIndex": 12,
+          "RowIndex": 0,
+          "ColumnSpan": 12,
+          "RowSpan": 5
+         },
+         {
+          "ElementId": "kpi-units",
+          "ElementType": "VISUAL",
+          "ColumnIndex": 24,
+          "RowIndex": 0,
+          "ColumnSpan": 12,
+          "RowSpan": 5
+         },
+         {
+          "ElementId": "line-month",
+          "ElementType": "VISUAL",
+          "ColumnIndex": 0,
+          "RowIndex": 5,
+          "ColumnSpan": 36,
+          "RowSpan": 10
+         },
+         {
+          "ElementId": "bar-territory",
+          "ElementType": "VISUAL",
+          "ColumnIndex": 0,
+          "RowIndex": 15,
+          "ColumnSpan": 18,
+          "RowSpan": 10
+         },
+         {
+          "ElementId": "bar-category",
+          "ElementType": "VISUAL",
+          "ColumnIndex": 18,
+          "RowIndex": 15,
+          "ColumnSpan": 18,
+          "RowSpan": 10
+         },
+         {
+          "ElementId": "tbl-top",
+          "ElementType": "VISUAL",
+          "ColumnIndex": 0,
+          "RowIndex": 25,
+          "ColumnSpan": 36,
+          "RowSpan": 12
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "FilterGroups": [
+   {
+    "FilterGroupId": "fg-main",
+    "CrossDataset": "SINGLE_DATASET",
+    "Status": "ENABLED",
+    "ScopeConfiguration": {
+     "SelectedSheets": {
+      "SheetVisualScopingConfigurations": [
+       {
+        "SheetId": "overview",
+        "Scope": "ALL_VISUALS"
+       }
+      ]
+     }
+    },
+    "Filters": [
+     {
+      "CategoryFilter": {
+       "FilterId": "flt-channel",
+       "Column": {
+        "DataSetIdentifier": "sales",
+        "ColumnName": "channel"
+       },
+       "Configuration": {
+        "FilterListConfiguration": {
+         "MatchOperator": "CONTAINS",
+         "SelectAllOptions": "FILTER_ALL_VALUES"
+        }
+       }
+      }
+     },
+     {
+      "NumericEqualityFilter": {
+       "FilterId": "flt-year",
+       "Column": {
+        "DataSetIdentifier": "sales",
+        "ColumnName": "fiscal_year"
+       },
+       "MatchOperator": "EQUALS",
+       "NullOption": "NON_NULLS_ONLY",
+       "SelectAllOptions": "FILTER_ALL_VALUES"
+      }
+     }
+    ]
+   }
+  ],
+  "AnalysisDefaults": {
+   "DefaultNewSheetConfiguration": {
+    "InteractiveLayoutConfiguration": {
+     "Grid": {
+      "CanvasSizeOptions": {
+       "ScreenCanvasSizeOptions": {
+        "ResizeOption": "RESPONSIVE"
+       }
+      }
+     }
+    },
+    "SheetContentType": "INTERACTIVE"
+   }
+  }
+ },
+ "DashboardPublishOptions": {
+  "AdHocFilteringOption": {
+   "AvailabilityStatus": "ENABLED"
+  },
+  "ExportToCSVOption": {
+   "AvailabilityStatus": "ENABLED"
+  }
+ }
+}

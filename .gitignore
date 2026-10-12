@@ -353,3 +353,7 @@ obj/
 docker/before/baks/*.bak
 src/**/bin/
 src/**/obj/
+
+# terraform
+.terraform/
+*.tfstate*

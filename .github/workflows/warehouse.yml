@@ -1,0 +1,58 @@
+name: warehouse (zero-ETL -> Redshift star schema, local stand-in)
+on:
+  push:
+    branches: [master, "phase-*"]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  warehouse-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-design.txt
+      - name: Portable-SQL lint, generated SQL in sync, QuickSight definition valid (botocore model)
+        run: python -m pytest -q -p no:cacheprovider tests/warehouse/test_static.py
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - name: terraform fmt + validate (no AWS credentials, nothing applied)
+        run: |
+          cd aws/warehouse/terraform
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform validate
+  warehouse-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cache AdventureWorks backups
+        uses: actions/cache@v4
+        with:
+          path: docker/before/baks
+          key: aw-baks-2022-v1
+      - run: pip install -r requirements-design.txt
+      - name: SQL Server (AW2022 + AdventureWorksDW2022) + DynamoDB Local loaded via the mapping
+        run: PYTHON=python scripts/design-validate.sh
+      - name: Export -> Postgres zero-ETL landing -> staging -> dw.sp_build_star() -> reconcile vs AdventureWorksDW2022
+        run: STOP_DDB_AFTER_EXPORT=1 PYTHON=python scripts/warehouse-up.sh
+      - name: Warehouse integration tests (idempotent rebuild, native order + tombstone, static carry-over)
+        run: AW_WH_IT=1 python -m pytest -q -p no:cacheprovider tests/warehouse
+      - name: Static DDL is reproducible from AdventureWorksDW2022
+        run: |
+          python warehouse/local/static_export.py --ddl --out /tmp/aw-static-check
+          git diff --stat --exit-code warehouse/sql
+      - name: Reconciliation summary
+        if: always()
+        run: python -c "import json;d=json.load(open('/tmp/warehouse-reconcile.json'));print(json.dumps({k:d[k] for k in ('counts','gate_failures')},indent=1))" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: warehouse-reconcile
+          path: /tmp/warehouse-reconcile.json

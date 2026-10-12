@@ -1,18 +1,34 @@
-# Snapshot-copy refresh rules for the CDC transform (Phase 4). Owner = domain responsible for the copy (Phase 3 design).
-# When a row of `on` changes (update/delete), rows of `refresh` matching `where` (columns of the refresh table's source_sql
-# output, values from the changed row) are re-read and their items' non-key attributes updated in place
-# (UpdateItem, src_lsn untouched, so the copy never blocks the row's own later changes). Immutable snapshots (order lines,
-# order header addresses/customer/card) are deliberately absent: they are copied once at order time.
+# Snapshot-copy refresh rules for the CDC transform (Phase 4; no SQL reads since ADR 0005 amendment 2026-10-11).
+# Owner = domain responsible for the copy (Phase 3 design). When a row of `changed` is updated/deleted, the dependent items
+# of `refresh` are found in DynamoDB with `find` (a chain of steps: the first step's key templates use the changed row's
+# columns, each later step uses the previous step's item attributes; `scan` + `match` = filtered Scan for rare, unindexed
+# parents). Each dependent row is rebuilt from its own item + the enrichment lookups (cdc-enrichment.yaml) and its items'
+# non-key attributes are updated in place (UpdateItem, src_lsn untouched, so the copy never blocks the row's own later
+# changes; copies whose source became NULL are REMOVEd). Immutable snapshots (order lines, order header
+# addresses/customer/card) are deliberately absent: they are copied once at order time.
 rules:
-  - {changed: Production.ProductCategory,    refresh: Production.ProductSubcategory, where: {ProductCategoryID: ProductCategoryID}, owner: Catalog}
-  - {changed: Production.ProductCategory,    refresh: Production.Product,            where: {category_id: ProductCategoryID}, owner: Catalog}
-  - {changed: Production.ProductSubcategory, refresh: Production.Product,            where: {ProductSubcategoryID: ProductSubcategoryID}, owner: Catalog}
-  - {changed: Production.ProductModel,       refresh: Production.Product,            where: {ProductModelID: ProductModelID}, owner: Catalog}
-  - {changed: Production.ProductInventory,   refresh: Production.Product,            where: {ProductID: ProductID}, owner: Inventory & Manufacturing, note: stock_qty total}
-  - {changed: Production.ProductDescription, refresh: Production.ProductModelProductDescriptionCulture, where: {ProductDescriptionID: ProductDescriptionID}, owner: Catalog}
-  - {changed: Sales.SpecialOffer,            refresh: Sales.SpecialOfferProduct,     where: {SpecialOfferID: SpecialOfferID}, owner: Catalog}
-  - {changed: Person.Address,                refresh: Person.BusinessEntityAddress,  where: {AddressID: AddressID}, owner: Customer & Party}
-  - {changed: Person.Person,                 refresh: Sales.Customer,                where: {PersonID: BusinessEntityID}, owner: Customer & Party}
-  - {changed: Sales.Store,                   refresh: Sales.Customer,                where: {StoreID: BusinessEntityID}, owner: Customer & Party}
-  - {changed: Sales.SalesTerritory,          refresh: Sales.Customer,                where: {TerritoryID: TerritoryID}, owner: Sales}
-  - {changed: Person.Person,                 refresh: HumanResources.Employee,       where: {BusinessEntityID: BusinessEntityID}, owner: HR}
+  - {changed: Production.ProductCategory, refresh: Production.ProductSubcategory, owner: Catalog,
+     find: [{table: aw-catalog, PK: "CATALOG", SK_begins: "CAT#{ProductCategoryID:04d}#SUB#"}]}
+  - {changed: Production.ProductCategory, refresh: Production.Product, owner: Catalog,
+     find: [{table: aw-catalog, PK: "CATALOG", SK_begins: "CAT#{ProductCategoryID:04d}#SUB#"},
+            {table: aw-catalog, index: GSI1, PK: "SUBCAT#{product_subcategory_id:04d}", SK_begins: "PRODUCT#"}]}
+  - {changed: Production.ProductSubcategory, refresh: Production.Product, owner: Catalog,
+     find: [{table: aw-catalog, index: GSI1, PK: "SUBCAT#{ProductSubcategoryID:04d}", SK_begins: "PRODUCT#"}]}
+  - {changed: Production.ProductModel, refresh: Production.Product, owner: Catalog,
+     find: [{table: aw-catalog, index: GSI2, PK: "MODEL#{ProductModelID:04d}", SK_begins: "PRODUCT#"}]}
+  - {changed: Production.ProductInventory, refresh: Production.Product, owner: Inventory & Manufacturing, note: stock_qty total,
+     find: [{table: aw-catalog, PK: "PRODUCT#{ProductID:06d}", SK: "PRODUCT"}]}
+  - {changed: Production.ProductDescription, refresh: Production.ProductModelProductDescriptionCulture, owner: Catalog,
+     find: [{table: aw-catalog, index: GSI1, PK: "DESCRIPTION#{ProductDescriptionID:05d}", SK_begins: "MODEL#"}]}
+  - {changed: Sales.SpecialOffer, refresh: Sales.SpecialOfferProduct, owner: Catalog,
+     find: [{table: aw-catalog, index: GSI1, PK: "OFFER#{SpecialOfferID:03d}", SK_begins: "PRODUCT#"}]}
+  - {changed: Person.Address, refresh: Person.BusinessEntityAddress, owner: Customer & Party,
+     find: [{table: aw-customer, index: GSI1, PK: "ADDRESS#{AddressID:06d}", SK_begins: "BE#"}]}
+  - {changed: Person.Person, refresh: Sales.Customer, owner: Customer & Party,
+     find: [{table: aw-customer, PK: "BE#{BusinessEntityID:06d}", SK_begins: "CUSTOMER#"}]}
+  - {changed: Sales.Store, refresh: Sales.Customer, owner: Customer & Party,
+     find: [{table: aw-customer, PK: "BE#{BusinessEntityID:06d}", SK_begins: "CUSTOMER#"}]}
+  - {changed: Sales.SalesTerritory, refresh: Sales.Customer, owner: Sales, note: 10 territories, renames are rare -> filtered Scan,
+     find: [{table: aw-customer, scan: {src_table: Sales.Customer}, match: {territory_id: TerritoryID}}]}
+  - {changed: Person.Person, refresh: HumanResources.Employee, owner: HR,
+     find: [{table: aw-hr, PK: "EMPLOYEE#{BusinessEntityID:06d}", SK: "EMPLOYEE"}]}

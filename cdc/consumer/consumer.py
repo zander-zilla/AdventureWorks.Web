@@ -17,7 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "scripts", "loader"))
 from awcdc import transform as T  # noqa: E402
-import ddb, sqlsrc  # noqa: E402
+import ddb  # noqa: E402
 
 MONITOR = os.path.join(HERE, "..", "monitor", "index.html")
 
@@ -59,11 +59,10 @@ class Applier(threading.Thread):
     def __init__(self, store, max_attempts=3):
         super().__init__(daemon=True)
         self.store, self.max_attempts = store, max_attempts
-        self.conn = sqlsrc.connect()
         self.mapping = T.load_json(T.default_mapping_path())
         sink = T.DynamoDBSink(ddb.resource())
-        # same enrichment rules as the Lambda (image / DynamoDB lookup / SQL per cdc-enrichment.yaml)
-        self.rows = T.Enricher(self.mapping, sink, T.SqlRows(self.conn, self.mapping))
+        # same enrichment as the Lambda: event image + lookups of replicated items in DynamoDB (no SQL reads)
+        self.rows = T.Enricher(self.mapping, sink)
         self.tr = T.Transformer(self.rows, sink, mapping=self.mapping)
 
     def run(self):
@@ -77,13 +76,8 @@ class Applier(threading.Thread):
             try:
                 self.apply_one(iid, json.loads(body))
                 self.store.q("UPDATE inbox SET state='done' WHERE id=?", (iid,))
-            except Exception as e:  # retry in order; after max_attempts park it in the DLQ state and move on
-                traceback.print_exc()
-                try:
-                    self.conn.close()
-                except Exception:
-                    pass
-                self.conn = sqlsrc.connect(); self.rows.sql.conn = self.conn
+            except Exception as e:  # retry in order (e.g. T.MissingParent: a referenced item not replicated yet, after the
+                traceback.print_exc()  # Enricher's own bounded backoff); after max_attempts park it in the DLQ state and move on
                 state = "dlq" if attempts + 1 >= self.max_attempts else "new"
                 self.store.q("UPDATE inbox SET attempts=attempts+1, state=?, error=? WHERE id=?", (state, repr(e)[:2000], iid))
                 time.sleep(1)

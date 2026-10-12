@@ -1,11 +1,20 @@
-# How the CDC transform turns a change event's row image into the row the mapping expects (Phase 4b).
-# mode image : the event's full row image is the row (tables without source_sql and without computed columns; the default).
-# mode lookup: image + copies read from DynamoDB items (GetItem; key templates use image columns) + computed columns
-#              re-implemented here (SQL Server CDC / DMS images never carry computed columns).
-# mode sql   : re-read through the mapping's source_sql by primary key (needs SQL read access; on AWS an RDS read replica).
-#              Only for tables whose extra columns need real joins (many-way joins, EXISTS flags, hierarchyid paths, XML).
-# Override for all tables with env CDC_ENRICHMENT=sql (e.g. no DynamoDB parents yet) or per table here.
-# Tables with source_sql or computed columns that are not listed default to `sql` (safe); tests assert the lists below.
+# How the CDC transform turns a change event's row image into the row the mapping expects (ADR 0005, amended 2026-10-11:
+# no SQL reads). The bulk load runs each mapping source_sql against SQL Server; CDC rebuilds the same columns from
+#   1. the event's full row image (Debezium / DMS full before+after images),
+#   2. lookups of the related items that are already replicated to DynamoDB (the JOINs of source_sql), and
+#   3. computed columns / source_sql expressions re-implemented in awcdc.transform.COMPUTED (run after the lookups).
+# Tables not listed use the image as is. tests/cdc/test_identity.py proves bulk-load == CDC items for every mapped table.
+#
+# lookups (in order; later ones may use columns set by earlier ones):
+#   {table, PK, SK, attrs: {row column: item attribute}}          GetItem (strongly consistent)
+#   {table, index: GSI1|GSI2, PK, SK, attrs}                       Query on a GSI (when the parent's base key is not derivable)
+#   {table, PK, SK_begins, sum: {col, attr}}                       SUM over child items (missing -> 0)
+#   {table, PK, SK, exists: col}                                   EXISTS flag (1/0; never retried)
+# A NULL in a key template column = LEFT JOIN with no parent: attrs become NULL, no lookup.
+# A referenced item that is missing (not replicated yet, e.g. an order arriving before its customer) is retried
+# CDC_LOOKUP_ATTEMPTS times (default 4) with exponential backoff from CDC_LOOKUP_BACKOFF_MS (default 100 ms: 0.1/0.2/0.4 s),
+# then the event fails: Lambda reports a partial batch failure (Kinesis retries the batch, then the SQS DLQ); the local
+# consumer retries it in order and then parks it in its DLQ state. Delete/before images never wait (only keys matter).
 lookup:
   Production.ProductSubcategory:
     lookups: [{table: aw-catalog, PK: "CATALOG", SK: "CAT#{ProductCategoryID:04d}", attrs: {category_name: name}}]
@@ -46,11 +55,79 @@ lookup:
     lookups:
       - {table: aw-catalog, PK: "PRODUCT#{ProductID:06d}", SK: "PRODUCT", attrs: {product_name: name, product_number: product_number}}
       - {table: aw-purchasing, PK: "VENDOR#{BusinessEntityID:06d}", SK: "VENDOR", attrs: {vendor_name: name}}
-# Need SQL (documented): Production.Product (sub/category/model names + stock total), Production.Document and
-# Production.ProductDocument (hierarchyid paths), Production.BillOfMaterials, Sales.SalesOrderHeader (8-way join + computed),
-# Sales.SalesPerson, Sales.SalesTerritoryHistory, Sales.Customer (computed AccountNumber + names), Sales.Store,
-# Sales.PersonCreditCard, Person.Address (spatial lat/long), Person.BusinessEntityAddress and Person.BusinessEntityContact
-# (EXISTS vendor flag + joins), Purchasing.PurchaseOrderHeader (computed totals + names), HumanResources.Employee (org path).
-sql: [Production.Product, Production.Document, Production.ProductDocument, Production.BillOfMaterials, Sales.SalesOrderHeader,
-      Sales.SalesPerson, Sales.SalesTerritoryHistory, Sales.Customer, Sales.Store, Sales.PersonCreditCard, Person.Address,
-      Person.BusinessEntityAddress, Person.BusinessEntityContact, Purchasing.PurchaseOrderHeader, HumanResources.Employee]
+  # ---- formerly SQL re-read (15 join tables), now DynamoDB lookups ----
+  Production.Product:
+    lookups:
+      - {table: aw-catalog, index: GSI1, PK: "SUBCAT#{ProductSubcategoryID:04d}", SK: "#META", attrs: {subcategory_name: name, category_id: product_category_id}}
+      - {table: aw-catalog, PK: "CATALOG", SK: "CAT#{category_id:04d}", attrs: {category_name: name}}
+      - {table: aw-catalog, PK: "MODEL#{ProductModelID:04d}", SK: "MODEL", attrs: {model_name: name}}
+      - {table: aw-inventory, PK: "PRODUCT#{ProductID:06d}", SK_begins: "INV#", sum: {col: stock_qty, attr: quantity}}
+    computed: {x_active: product_active, x_name_lower: name_lower}
+  Production.Document:
+    computed: {DocumentLevel: document_level, x_node: document_path, document_path: document_path}
+  Production.ProductDocument:
+    computed: {x_node: document_path, document_path: document_path}
+  Production.BillOfMaterials:
+    lookups: [{table: aw-catalog, PK: "PRODUCT#{ComponentID:06d}", SK: "PRODUCT", attrs: {component_name: name}}]
+    computed: {x_assembly: bom_assembly}
+  Sales.SalesOrderHeader:
+    lookups:
+      - {table: aw-customer, index: GSI1, PK: "CUSTOMER#{CustomerID:06d}", SK: "CUSTOMER",
+         attrs: {customer_account_number: account_number, customer_name: display_name, store_name: store_name}}
+      - {table: aw-reference, PK: "SHIPMETHODS", SK: "SHIPMETHOD#{ShipMethodID:02d}", attrs: {ship_method_name: name}}
+      - {table: aw-customer, PK: "ADDRESS#{ShipToAddressID:06d}", SK: "ADDRESS",
+         attrs: {ship_to_line1: address_line1, ship_to_line2: address_line2, ship_to_city: city, ship_to_state: state_province_code,
+                 ship_to_postal_code: postal_code, ship_to_country: country_region_code}}
+      - {table: aw-customer, PK: "ADDRESS#{BillToAddressID:06d}", SK: "ADDRESS",
+         attrs: {bill_to_line1: address_line1, bill_to_line2: address_line2, bill_to_city: city, bill_to_state: state_province_code,
+                 bill_to_postal_code: postal_code, bill_to_country: country_region_code}}
+      - {table: aw-customer, PK: "CARD#{CreditCardID:06d}", SK: "CARD", attrs: {card_type: card_type, card_last4: card_last4}}
+      - {table: aw-reference, index: GSI1, PK: "FXRATE#{CurrencyRateID:05d}", SK: "FXRATE",
+         attrs: {currency_from: from_currency_code, currency_to: to_currency_code, currency_average_rate: average_rate}}
+    computed: {SalesOrderNumber: so_number, TotalDue: total_due}
+  Sales.SalesPerson:
+    lookups:
+      - {table: aw-customer, PK: "BE#{BusinessEntityID:06d}", SK: "PERSON", attrs: {x_first_name: first_name, x_last_name: last_name}}
+      - {table: aw-sales, PK: "TERRITORY#{TerritoryID:02d}", SK: "TERRITORY", attrs: {territory_name: name}}
+    computed: {sales_person_name: person_name}
+  Sales.SalesTerritoryHistory:
+    lookups: [{table: aw-customer, PK: "BE#{BusinessEntityID:06d}", SK: "PERSON", attrs: {x_first_name: first_name, x_last_name: last_name}}]
+    computed: {sales_person_name: person_name}
+  Sales.Customer:
+    lookups:
+      - {table: aw-customer, PK: "BE#{PersonID:06d}", SK: "PERSON", attrs: {x_first_name: first_name, x_last_name: last_name}}
+      - {table: aw-customer, PK: "BE#{StoreID:06d}", SK: "STORE", attrs: {store_name: name}}
+      - {table: aw-sales, PK: "TERRITORY#{TerritoryID:02d}", SK: "TERRITORY", attrs: {territory_name: name}}
+    computed: {AccountNumber: aw_account_number, x_owner: customer_owner, display_name: customer_display_name, x_sort_name: customer_sort_name}
+  Sales.Store:
+    lookups: [{table: aw-customer, PK: "BE#{SalesPersonID:06d}", SK: "PERSON", attrs: {x_first_name: first_name, x_last_name: last_name}}]
+    computed: {sales_person_name: person_name}
+  Sales.PersonCreditCard:
+    lookups: [{table: aw-customer, PK: "CARD#{CreditCardID:06d}", SK: "CARD",
+               attrs: {card_type: card_type, card_last4: card_last4, exp_month: exp_month, exp_year: exp_year}}]
+  Person.Address:
+    lookups: [{table: aw-reference, index: GSI1, PK: "STATE#{StateProvinceID:03d}", SK: "STATE",
+               attrs: {state_province_code: state_province_code, state_province_name: name, country_region_code: country_region_code}}]
+    computed: {latitude: latitude, longitude: longitude}
+  Person.BusinessEntityAddress:
+    lookups:
+      - {table: aw-purchasing, PK: "VENDOR#{BusinessEntityID:06d}", SK: "VENDOR", exists: x_is_vendor}
+      - {table: aw-customer, PK: "LOOKUP#ADDRESSTYPE", SK: "{AddressTypeID:02d}", attrs: {address_type: name}}
+      - {table: aw-customer, PK: "ADDRESS#{AddressID:06d}", SK: "ADDRESS",
+         attrs: {address_line1: address_line1, address_line2: address_line2, city: city, state_province_code: state_province_code,
+                 postal_code: postal_code, country_region_code: country_region_code}}
+  Person.BusinessEntityContact:
+    lookups:
+      - {table: aw-purchasing, PK: "VENDOR#{BusinessEntityID:06d}", SK: "VENDOR", exists: x_is_vendor}
+      - {table: aw-customer, PK: "BE#{PersonID:06d}", SK: "PERSON", attrs: {x_first_name: first_name, x_last_name: last_name}}
+      - {table: aw-customer, PK: "LOOKUP#CONTACTTYPE", SK: "{ContactTypeID:02d}", attrs: {contact_type: name}}
+    computed: {contact_name: person_name}
+  Purchasing.PurchaseOrderHeader:
+    lookups:
+      - {table: aw-purchasing, PK: "VENDOR#{VendorID:06d}", SK: "VENDOR", attrs: {vendor_name: name}}
+      - {table: aw-customer, PK: "BE#{EmployeeID:06d}", SK: "PERSON", attrs: {x_first_name: first_name, x_last_name: last_name}}
+      - {table: aw-reference, PK: "SHIPMETHODS", SK: "SHIPMETHOD#{ShipMethodID:02d}", attrs: {ship_method_name: name}}
+    computed: {employee_name: person_name, TotalDue: total_due}
+  HumanResources.Employee:
+    lookups: [{table: aw-customer, PK: "BE#{BusinessEntityID:06d}", SK: "PERSON", attrs: {first_name: first_name, last_name: last_name}}]
+    computed: {x_org_path: org_path, org_path: org_path, OrganizationLevel: org_level}

@@ -1,0 +1,33 @@
+{
+ "TargetMetadata": {
+  "SupportLobs": true,
+  "LimitedSizeLobMode": true,
+  "LobMaxSize": 64
+ },
+ "FullLoadSettings": {
+  "TargetTablePrepMode": "DO_NOTHING",
+  "MaxFullLoadSubTasks": 8,
+  "CommitRate": 10000
+ },
+ "Logging": {
+  "EnableLogging": true
+ },
+ "BeforeImageSettings": {
+  "EnableBeforeImage": true,
+  "FieldName": "before-image",
+  "ColumnFilter": "all"
+ },
+ "ChangeProcessingTuning": {
+  "BatchApplyEnabled": false,
+  "BatchSplitSize": 0
+ },
+ "ErrorBehavior": {
+  "DataErrorPolicy": "LOG_ERROR",
+  "ApplyErrorDeletePolicy": "LOG_ERROR",
+  "ApplyErrorInsertPolicy": "LOG_ERROR",
+  "ApplyErrorUpdatePolicy": "LOG_ERROR"
+ },
+ "ValidationSettings": {
+  "EnableValidation": false
+ }
+}

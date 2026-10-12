@@ -1,0 +1,12 @@
+{
+ "_comment": "RDS SQL Server source endpoint extra settings. RDS: enable CDC with msdb.dbo.rds_cdc_enable_db 'AdventureWorks2022' then sys.sp_cdc_enable_table per table (docker/before/sql/02-enable-cdc.sql logic).",
+ "EngineName": "sqlserver",
+ "DatabaseName": "AdventureWorks2022",
+ "MicrosoftSQLServerSettings": {
+  "ReadBackupOnly": false,
+  "SafeguardPolicy": "RELY_ON_SQL_SERVER_REPLICATION_AGENT",
+  "QuerySingleAlwaysOnNode": false,
+  "TlogAccessMode": "PreferTlog",
+  "UseThirdPartyBackupDevice": false
+ }
+}

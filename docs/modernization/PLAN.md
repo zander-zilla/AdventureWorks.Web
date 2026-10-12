@@ -41,4 +41,5 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 1 Discovery | In review (stacked on #1): inventory, domain split, DW lineage, playbook, seed access patterns — see docs/discovery | #2 |
 | 2 Access patterns | Approved (D1–D10), in review (stacked on #2): docs/design/access-patterns.md/.json | #3 |
 | 3 DynamoDB design | In review (against master; carries D1-D10; decisions P3-1..5 recorded in ADR 0004) | #4 |
-| 4–8 | Not started | – |
+| 4 Migration / CDC | In review: awcdc transform (mapping-driven), Debezium local stack + consumer, DMS/Kinesis/Lambda code, replication monitor, e2e + reconcile in CI | #5 |
+| 5–8 | Not started | – |

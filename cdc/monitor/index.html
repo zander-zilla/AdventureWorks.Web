@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- Replication monitor component (Phase 4). Standalone page now; the Phase 8 showcase "Data Mapping" tab embeds the
+     same markup/script (<div id="aw-replication-monitor" data-api="..."></div>). API: cdc/consumer/consumer.py -->
+<html lang="en"><head><meta charset="utf-8"><title>AdventureWorks replication monitor</title>
+<style>
+ body{font-family:system-ui,sans-serif;margin:1.5rem;color:#1b2430} h1{font-size:1.3rem;margin:0 0 .5rem}
+ .stats{display:flex;gap:1rem;margin:.5rem 0 1rem}.stat{background:#f2f5f9;border-radius:8px;padding:.5rem .8rem}.stat b{display:block;font-size:1.2rem}
+ table{border-collapse:collapse;width:100%;font-size:.85rem} th,td{border-bottom:1px solid #e3e8ef;padding:.35rem .5rem;text-align:left;vertical-align:top}
+ tr.c{cursor:pointer} tr.c:hover{background:#f7f9fc} .op-c{color:#137333}.op-u{color:#1a56db}.op-d{color:#b3261e}
+ .detail{display:grid;grid-template-columns:1fr 1fr;gap:1rem} pre{background:#0f172a;color:#e2e8f0;padding:.6rem;border-radius:6px;overflow:auto;max-height:24rem;font-size:.75rem}
+ .arrow{font-size:1.4rem;text-align:center} small{color:#5b6573}
+</style></head><body>
+<div id="aw-replication-monitor" data-api="">
+ <h1>SQL Server → DynamoDB replication <small>(Debezium → awcdc transform → DynamoDB)</small></h1>
+ <div class="stats" id="stats"></div>
+ <label>Table filter <input id="flt" placeholder="e.g. Sales.SalesOrderHeader" size="32"></label>
+ <table><thead><tr><th>#</th><th>Source table</th><th>Op</th><th>Key</th><th>Position (LSN)</th><th>Items written</th><th>Lag</th></tr></thead><tbody id="rows"></tbody></table>
+</div>
+<script>
+(function(){
+ const root=document.getElementById('aw-replication-monitor');
+ const api=(new URLSearchParams(location.search).get('api'))||root.dataset.api||'';
+ const opName={c:'insert',u:'update',d:'delete',r:'snapshot'}; let open=new Set();
+ const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+ async function tick(){
+  try{
+   const st=await (await fetch(api+'/api/status')).json();
+   document.getElementById('stats').innerHTML=[['Changes applied',st.changes],['Queued',st.queued],['DLQ',st.dlq],['Lag last',fmt(st.lag_ms.last)],['Lag p50',fmt(st.lag_ms.p50)],['Lag max (200)',fmt(st.lag_ms.max)],['State',st.paused?'paused (bulk load)':'streaming']]
+     .map(([k,v])=>`<div class="stat">${k}<b>${v??'–'}</b></div>`).join('');
+   const f=document.getElementById('flt').value.trim();
+   const ch=await (await fetch(api+'/api/changes?limit=50'+(f?'&table='+encodeURIComponent(f):''))).json();
+   document.getElementById('rows').innerHTML=ch.map(c=>{
+     const items=c.puts.map(p=>p[0]+' '+p[1].PK+' | '+p[1].SK).concat(c.tombstones.map(p=>'🪦 '+p[0]+' '+p[1].PK+' | '+p[1].SK));
+     const main=`<tr class="c" data-id="${c.id}"><td>${c.id}</td><td>${c.table}</td><td class="op-${c.op}">${opName[c.op]||c.op}</td><td>${esc(JSON.stringify(c.pk))}</td><td><code>${c.position}</code></td><td>${items.length}${c.refreshed?` (+${c.refreshed} copies)`:''}${c.skipped?` <small>${c.skipped} skipped (older)</small>`:''}</td><td>${fmt(c.lag_ms)}</td></tr>`;
+     const det=open.has(String(c.id))?`<tr><td colspan="7"><div class="detail"><div><b>SQL row</b> <small>${c.table}</small><pre>${esc(JSON.stringify(c.row,null,1))}</pre></div><div><b>DynamoDB items</b><pre>${esc(JSON.stringify(c.puts.concat(c.tombstones).map(p=>({table:p[0],item:p[1]})),null,1))}</pre></div></div></td></tr>`:'';
+     return main+det;}).join('');
+  }catch(e){document.getElementById('stats').textContent='API not reachable: '+e}
+ }
+ function fmt(ms){return ms==null?null:(ms<1000?ms+' ms':(ms/1000).toFixed(1)+' s')}
+ document.getElementById('rows').addEventListener('click',e=>{const tr=e.target.closest('tr.c');if(!tr)return;const id=tr.dataset.id;open.has(id)?open.delete(id):open.add(id);tick();});
+ tick(); setInterval(tick,2000);
+})();
+</script></body></html>

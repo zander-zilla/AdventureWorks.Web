@@ -68,6 +68,9 @@ jobs:
       - name: Build + push images, roll ECS (after .NET 10 app, before app, tools)
         if: inputs.action == 'apply' || inputs.action == 'app-only'
         run: scripts/aws/push-images.sh "$ENVNAME" "${GITHUB_SHA::12}" -var "allowed_cidrs=$CIDRS"
+      - name: Build + upload the showcase site (S3 + CloudFront, ADR 0009)
+        if: inputs.action == 'apply' || inputs.action == 'app-only'
+        run: scripts/aws/push-showcase.sh "$ENVNAME"
       - name: Outputs
         if: inputs.action == 'apply' || inputs.action == 'app-only'
         run: terraform -chdir=infra/live output

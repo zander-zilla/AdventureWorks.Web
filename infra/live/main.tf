@@ -64,6 +64,14 @@ module "app" {
   sql_secret_arn        = var.enable_source ? module.source_db[0].secret_arn : ""
   sql_security_group_id = var.enable_source ? module.source_db[0].security_group_id : ""
   backups_bucket        = var.enable_source ? module.source_db[0].backups_bucket : ""
+  frame_ancestors       = var.enable_showcase ? module.showcase[0].origin : ""
+}
+
+# Phase 8 showcase (ADR 0009): static site on S3 + CloudFront; content via scripts/aws/push-showcase.sh.
+module "showcase" {
+  count  = var.enable_showcase ? 1 : 0
+  source = "../modules/showcase"
+  name   = local.name
 }
 
 resource "aws_security_group" "redshift" {

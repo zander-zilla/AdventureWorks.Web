@@ -32,6 +32,14 @@ jobs:
         run: SKIP_LOAD=1 PYTHON=python scripts/after-up.sh && test "$(docker inspect -f '{{.Config.User}}' aw-after-app-1)" = 1654
       - name: Playwright smoke (login, browse, search, cart, checkout, history)
         run: python -m pytest -q -p no:cacheprovider tests/after
+      - name: Showcase embeds the real .NET 10 app (App tab)
+        run: SHOWCASE_APP_URL=http://localhost:5090 SHOWCASE_SCREENSHOTS=showcase-shots python -m pytest -q -p no:cacheprovider tests/showcase
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: showcase-with-app
+          path: showcase-shots/
+          if-no-files-found: ignore
       - name: App logs
         if: always()
         run: docker logs aw-after-app-1 2>&1 | tail -100 || true

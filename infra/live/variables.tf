@@ -131,3 +131,10 @@ variable "budget_alert_emails" {
   type        = list(string)
   default     = []
 }
+
+# --- showcase (Phase 8) ---
+variable "enable_showcase" {
+  description = "Showcase website on S3 + CloudFront (ADR 0009)."
+  type        = bool
+  default     = true
+}

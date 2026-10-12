@@ -29,6 +29,11 @@ variable "has_source" {
 }
 variable "sql_security_group_id" { type = string }
 variable "backups_bucket" { type = string }
+variable "frame_ancestors" {
+  description = "Origins allowed to embed the .NET 10 app (the Phase 8 showcase); empty = X-Frame-Options SAMEORIGIN."
+  type        = string
+  default     = ""
+}
 
 data "aws_region" "r" {}
 data "aws_partition" "p" {}
@@ -283,6 +288,7 @@ resource "aws_ecs_task_definition" "after" {
     environment = [
       { name = "ASPNETCORE_URLS", value = "http://+:8080" },
       { name = "DynamoDb__Region", value = local.region },
+      { name = "Showcase__FrameAncestors", value = var.frame_ancestors },
     ]
     logConfiguration = merge(local.log, { options = merge(local.log.options, { "awslogs-stream-prefix" = "after" }) })
   }])

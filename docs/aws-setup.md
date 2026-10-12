@@ -74,6 +74,7 @@ scripts/aws/tf.sh demo init
 scripts/aws/tf.sh demo apply -var app_desired_count=0   # ~25-40 min (RDS SQL Server and Redshift dominate)
 scripts/aws/push-images.sh demo                      # build + push after/before/tools, apply with the new tag
 scripts/aws/tf.sh demo apply                         # app_desired_count back to 1 (or edit the tfvars)
+scripts/aws/push-showcase.sh demo                    # Phase 8 showcase site -> S3 + CloudFront (output showcase_url)
 ```
 
 ## 4. Load data and start CDC

@@ -1,0 +1,14 @@
+{
+ "changes": 3,
+ "queued": 0,
+ "dlq": 0,
+ "failed": 0,
+ "paused": false,
+ "last_position": "0000a1f9:00000210:0002",
+ "lag_ms": {
+  "last": 1147,
+  "p50": 1270,
+  "max": 1405
+ },
+ "replay": "recorded sample of GitHub Actions run 38188847266 (cdc-e2e)"
+}

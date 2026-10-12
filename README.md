@@ -54,3 +54,6 @@ The original app has no customer login. Minimal additions so a test customer can
 - `scripts/reset-demo.sql` – deletes demo orders from AdventureWorks2022 (and any legacy LT demo orders).
 
 CI: `.github/workflows/before.yml` builds the app with the 2.1 SDK and brings up the full stack (restore, health check, CDC, smoke HTTP check incl. login + order, asserts 68 CDC tables and that the demo order appears in `cdc.Sales_SalesOrderHeader_CT`).
+
+## Showcase (Phase 8)
+`scripts/showcase-up.sh` → http://localhost:8088: Presentation, Architecture, Data Mapping, Access Patterns, Live Replication, App. See docs/showcase.md.

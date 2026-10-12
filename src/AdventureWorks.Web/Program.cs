@@ -16,6 +16,11 @@ builder.Services.AddSingleton<SalesRepository>();
 builder.Services.AddSingleton(builder.Configuration.GetSection("Demo").Get<DemoOptions>() ?? new DemoOptions());
 
 builder.Services.AddControllersWithViews();
+// Phase 8 (ADR 0009): Showcase:FrameAncestors = space-separated origins allowed to embed the app (the showcase's
+// "App" tab). Unset = default antiforgery X-Frame-Options: SAMEORIGIN.
+var frameAncestors = builder.Configuration["Showcase:FrameAncestors"]?.Trim();
+if (!string.IsNullOrEmpty(frameAncestors))
+    builder.Services.AddAntiforgery(o => o.SuppressXFrameOptionsHeader = true);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o => { o.LoginPath = "/Account/Login"; o.Cookie.Name = "aw.after"; o.SlidingExpiration = true; });
 builder.Services.AddAuthorization();
@@ -32,6 +37,8 @@ builder.Services.AddOpenTelemetry()
 
 var app = builder.Build();
 if (!app.Environment.IsDevelopment()) app.UseExceptionHandler("/Home/Error");
+if (!string.IsNullOrEmpty(frameAncestors))
+    app.Use((ctx, next) => { ctx.Response.Headers.ContentSecurityPolicy = "frame-ancestors 'self' " + frameAncestors; return next(); });
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();

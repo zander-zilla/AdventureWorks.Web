@@ -17,7 +17,7 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 5 | App modernization | App on .NET 10 reading the full-domain DynamoDB tables + shopper pages (no separate LT table) |
 | 6 | Analytics | DynamoDB zero-ETL → Redshift, rebuild DW star schema (facts/dims), QuickSight dashboards |
 | 7 | IaC / CI | Terraform for all AWS resources, GitHub Actions pipelines |
-| 8 | Showcase website | Tabs: Presentation / Architecture / Data Mapping / Access Patterns / Live App — all driven by one mapping file |
+| 8 | Showcase website | Tabs: Presentation / Architecture / Data Mapping / Access Patterns / Live Replication / App, all driven by the mapping + access-pattern files (docs/showcase.md) |
 
 ## Ground rules
 - No pushes to Azure-Samples/Microsoft repos; PRs are opened on this fork and merged by John only.
@@ -39,6 +39,7 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 2026-10-12 | Phase 6 decisions accepted (John; ADR 0007 → Accepted): **W-1** AWS-owned keys on catalog/inventory/sales/purchasing/reference, CMKs kept on aw-hr/aw-customer with a key-policy grant for Redshift zero-ETL (ADR 0004 P3-2 amended, mapping.yaml, Terraform); **R-1** real order-total reseller tax/freight; **W-2** hourly rebuild; **W-3** inventory grain as built; **W-4** QuickSight Enterprise only for the showcase (`enable_quicksight` toggle). |
 | 2026-10-12 | Phase 7 (proposed, ADR 0008): one Terraform root `infra/live` (modules network/dynamodb/source_db/cdc/app/warehouse) + `infra/bootstrap` (state bucket, GitHub OIDC roles); app on ECS Fargate + ALB; RDS SQL Server SE; db-init/bulk-load as ECS tools tasks; OIDC-only manual deploy workflow; teardown script. Runbook docs/aws-setup.md. |
 | 2026-10-12 | Phase 7 decisions accepted (John; ADR 0008 → Accepted): (1) ECS Fargate + ALB; (2) RDS SQL Server SE db.m6i.large, torn down after demos; (3) deploy role as-is, tighten after first apply; (4) DB password in encrypted state; (5) AWS Budgets alert USD 50/month (`budget_alert_emails`, `infra/live/budget.tf`) + required reviewer on the GitHub `demo` environment. |
+| 2026-10-12 | Phase 8 (proposed, ADR 0009): showcase as a static site on S3 + CloudFront (OAC), generated from mapping.json / access-patterns.json / results; Phase 4 monitor reused (replay by default); app embedded via `Showcase:FrameAncestors`. Open for John: S-1 public access, S-2 live replication API on AWS, S-3 HTTPS ALB for the embedded app, S-4 accept ADR 0009. |
 
 ## Status
 
@@ -52,4 +53,4 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 5 App modernization | Merged (.NET 10 app on DynamoDB, ADR 0006); CDC enrichment from DynamoDB lookups merged | #7, #8 |
 | 6 Analytics | Merged; decisions W-1..W-4, R-1 accepted (ADR 0007): zero-ETL (7 integrations) → Redshift Serverless, stg MVs generated from the mapping, `dw.sp_build_star()` (12 dims + 6 facts), static carry-over, QuickSight; local Postgres verification + reconciliation vs AdventureWorksDW2022 in CI (`warehouse` workflow); ADR 0007, docs/design/warehouse.md | #9 |
 | 7 IaC / CI | Merged; decisions accepted (ADR 0008): Terraform for the whole deployment (`infra/`), offline plan tests, `infra` CI + manual OIDC `deploy` workflow, teardown, runbook docs/aws-setup.md, ADR 0008. Nothing applied | #10, #11 |
-| 8 | Not started | – |
+| 8 Showcase | In review: static site `showcase/` (6 tabs, data from mapping.json/access-patterns.json, Phase 4 monitor embedded with recorded replay or live API), `scripts/showcase-up.sh`, S3 + CloudFront module + `push-showcase.sh`, Playwright tests in CI (`showcase` workflow, and with the real app in `after`), ADR 0009, docs/showcase.md. Stacked on #11 | this PR |

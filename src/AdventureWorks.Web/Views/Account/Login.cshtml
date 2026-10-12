@@ -1,0 +1,10 @@
+@{ ViewData["Title"] = "Demo login"; var emails = (List<string>)ViewData["Emails"]!; }
+<h1>Demo login</h1>
+<p class="muted">Demo customers (aw-customer, read with strong consistency). Password: <code>Demo!2026</code></p>
+@if (ViewData["Error"] is string e) { <p class="err">@e</p> }
+<form method="post">
+    <input type="hidden" name="returnUrl" value="@ViewData["ReturnUrl"]" />
+    <label>Email <select name="email" data-testid="login-email">@foreach (var m in emails) { <option>@m</option> }</select></label>
+    <label>Password <input type="password" name="password" data-testid="login-password" /></label>
+    <p><button type="submit" data-testid="login-submit">Log in</button></p>
+</form>

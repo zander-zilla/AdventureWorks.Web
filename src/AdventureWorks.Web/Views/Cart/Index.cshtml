@@ -1,0 +1,19 @@
+@model List<CartLine>
+@{ ViewData["Title"] = "Cart"; }
+<h1>Your cart</h1>
+<p class="muted">Kept for 7 days (TTL, D3). Read with strong consistency (D8).</p>
+@if (Model.Count == 0) { <p data-testid="cart-empty">Your cart is empty.</p> }
+else
+{
+<table data-testid="cart">
+<tr><th>Product</th><th class="num">Price</th><th>Qty</th><th class="num">Total</th></tr>
+@foreach (var l in Model)
+{
+    <tr data-testid="cart-line"><td>@l.Name <span class="muted">@l.ProductNumber</span></td><td class="num">@l.UnitPrice.ToString("C")</td>
+        <td><form asp-action="Update" method="post" class="inline"><input type="hidden" name="productId" value="@l.ProductId" /><input type="number" name="quantity" value="@l.Quantity" min="0" max="99" style="width:4em" /> <button type="submit">Update</button></form></td>
+        <td class="num">@l.LineTotal.ToString("C")</td></tr>
+}
+<tr><th colspan="3">Subtotal</th><th class="num">@Model.Sum(l => l.LineTotal).ToString("C")</th></tr>
+</table>
+<form asp-action="Checkout" method="post"><p><button type="submit" data-testid="checkout">Place order</button></p></form>
+}

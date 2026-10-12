@@ -269,3 +269,37 @@ run "http_by_default" {
     error_message = "HTTP only unless a certificate or domain is configured"
   }
 }
+
+run "showcase_chapter1_frozen_prefix" {
+  command = apply # C2-1: /c1/ on the same distribution; ordered behaviours are only fully known after (mock) apply
+  module {
+    source = "../modules/showcase"
+  }
+  override_resource {
+    target = aws_cloudfront_distribution.site
+    values = { arn = "arn:aws:cloudfront::123456789012:distribution/E2EXAMPLE", domain_name = "d111.cloudfront.net" }
+  }
+  variables {
+    name = "aw-ci"
+  }
+  assert {
+    condition     = [for b in aws_cloudfront_distribution.site.ordered_cache_behavior : b.path_pattern][0] == "c1/config.json" && [for b in aws_cloudfront_distribution.site.ordered_cache_behavior : b.path_pattern][1] == "c1/*"
+    error_message = "c1/config.json (no cache) must precede the long-TTL c1/* behaviour"
+  }
+  assert {
+    condition     = one([for b in aws_cloudfront_distribution.site.ordered_cache_behavior : b.cache_policy_id if b.path_pattern == "c1/config.json"]) == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    error_message = "c1/config.json carries today's stack URLs and must not be cached"
+  }
+  assert {
+    condition     = aws_cloudfront_cache_policy.frozen.default_ttl >= 86400 && length(aws_cloudfront_distribution.site.origin) == 1
+    error_message = "frozen Chapter 1 uses a long TTL on the same S3 origin"
+  }
+  assert {
+    condition     = length(aws_cloudfront_distribution.site.default_cache_behavior[0].function_association) == 1 && aws_cloudfront_function.paths.runtime == "cloudfront-js-2.0"
+    error_message = "directory URIs (/c1/) need the viewer-request index rewrite"
+  }
+  assert {
+    condition     = output.chapter1_url == "https://d111.cloudfront.net/c1/"
+    error_message = "chapter1_url output"
+  }
+}

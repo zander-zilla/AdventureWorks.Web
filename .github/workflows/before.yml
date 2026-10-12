@@ -119,7 +119,7 @@ jobs:
       - name: Showcase live - write in the Before App frame, watch it in Live Replication (Playwright)
         run: |
           pip install -q playwright && python -m playwright install --with-deps chromium
-          python showcase/build.py --app-url stub-app.html --before-url http://localhost:5080 --monitor-mode live
+          python showcase/build.py --chapter1-only --app-url stub-app.html --before-url http://localhost:5080 --monitor-mode live
           echo "<h1 id=stub>After app (not running in this job)</h1>" > showcase/dist/stub-app.html
           (python showcase/serve.py --live-api http://localhost:8090 > /tmp/showcase.log 2>&1 &)
           sleep 2

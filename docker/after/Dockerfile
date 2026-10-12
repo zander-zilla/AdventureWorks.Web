@@ -5,6 +5,9 @@ WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
+# C2-1: the chapter switch's "Chapter 1" goes to <showcase>/c1/ (Terraform output showcase_url, set by push-images.sh)
+ARG VITE_SHOWCASE_URL=""
+ENV VITE_SHOWCASE_URL=$VITE_SHOWCASE_URL
 RUN npm run build
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build

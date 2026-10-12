@@ -6,9 +6,10 @@ import { DesignGallery } from './pages/DesignGallery'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
 import { Products } from './pages/Products'
+import { chapter1Url } from './showcaseUrl'
 
 // Chapter switch: Chapter 1 is the frozen showcase under /c1/ on the showcase site (C2-1); in the app it links out.
-const goChapter1 = () => { window.location.href = (import.meta.env.VITE_SHOWCASE_URL ?? '/') + 'c1/' }
+const goChapter1 = () => { window.location.href = chapter1Url() }
 
 export function App() {
   const { me, logout } = useAuth()

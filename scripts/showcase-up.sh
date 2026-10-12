@@ -17,5 +17,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 PY="${PYTHON:-python3}"
+# C2-1: Chapter 2 showcase bundle (React, src/web); Chapter 1 is built under /c1/ by build.py
+[ -f src/web/dist-showcase/showcase.html ] || (cd src/web && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npm run build:showcase)
 "$PY" showcase/build.py --app-url "$APP_URL" --before-url "$BEFORE_URL" --monitor-mode "$([ -n "$LIVE" ] && echo live || echo replay)"
 exec "$PY" showcase/serve.py ${LIVE:+--live-api "$LIVE"}

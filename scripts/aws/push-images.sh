@@ -8,8 +8,10 @@ REPOS=$(terraform -chdir="$ROOT/infra/live" output -json ecr_repositories)
 repo() { echo "$REPOS" | python3 -c "import json,sys;print(json.load(sys.stdin).get('$1',''))"; }
 REG=$(repo after); REG=${REG%%/*}
 aws ecr get-login-password | docker login --username AWS --password-stdin "$REG"
+# C2-1: the SPA's Chapter 1 button links to <showcase_url>c1/ (empty when the showcase is disabled)
+SHOWCASE_URL=$(terraform -chdir="$ROOT/infra/live" output -raw showcase_url 2>/dev/null || true); [ "$SHOWCASE_URL" = null ] && SHOWCASE_URL=""
 build() { local name=$1 ctx=$2 file=$3; local r; r=$(repo "$name"); [ -n "$r" ] || return 0
-  docker build --platform linux/amd64 -t "$r:$TAG" -t "$r:latest" -f "$file" "$ctx" && docker push -q "$r:$TAG" && docker push -q "$r:latest"; }
+  docker build --platform linux/amd64 --build-arg VITE_SHOWCASE_URL="$SHOWCASE_URL" -t "$r:$TAG" -t "$r:latest" -f "$file" "$ctx" && docker push -q "$r:$TAG" && docker push -q "$r:latest"; }
 build after "$ROOT/src" "$ROOT/docker/after/Dockerfile"
 build before "$ROOT" "$ROOT/docker/before/Dockerfile.app"
 build tools "$ROOT" "$ROOT/docker/tools/Dockerfile"

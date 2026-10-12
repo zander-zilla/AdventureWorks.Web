@@ -13,8 +13,9 @@ SKIP = {"src_lsn", "updated_at", "ver"}
 
 def canon(item):
     def norm(v):
-        if isinstance(v, decimal.Decimal):
-            return str(v.normalize()) if v == v else "NaN"
+        if isinstance(v, (int, float, decimal.Decimal)) and not isinstance(v, bool):
+            d = decimal.Decimal(str(v))  # DynamoDB returns every number as Decimal: compare numerically, no exponent form
+            return "n:" + (str(int(d)) if d == d.to_integral_value() else format(d.normalize(), "f"))
         if isinstance(v, dict):
             return {k: norm(x) for k, x in sorted(v.items())}
         if isinstance(v, (list, tuple)):

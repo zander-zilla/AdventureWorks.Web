@@ -148,8 +148,8 @@ own checkout, never mixed); cache invalidation of `/c1/*` (versioned paths). Dem
   | Category | Before (Chapter 1, `/c1/`) | After (Chapter 2, `/`) |
   |---|---|---|
   | Performance | 100 | 100 |
-  | Accessibility | 96 | 96 → **100** after the contrast fix below (CI re-run) |
-  | Best practices | 96 | 96 → **100** with the favicon |
+  | Accessibility | 96 | **100** (dark `accent-ink` contrast fix, below) |
+  | Best practices | 96 | **100** (favicon; Chapter 1's 404 on `/favicon.ico` stays, it is frozen) |
   | SEO | 90 | 100 |
 
 #### Changes from initial design (C2-1)

@@ -1,11 +1,14 @@
 """DynamoDB (Local) helpers: table creation from the mapping.
 DynamoDB Local is effectively single-threaded per JVM, so for the full load we run one DynamoDB Local per table:
-set DDB_MULTI=1 and table i (sorted name order) is served at port DDB_PORT_BASE+i. Otherwise all tables use DDB_ENDPOINT."""
+set DDB_MULTI=1 and table i (sorted name order) is served at port DDB_PORT_BASE+i. Otherwise all tables use DDB_ENDPOINT
+(DDB_ENDPOINT=aws: real DynamoDB with the default AWS credential chain; existing tables are left alone)."""
 import os, boto3
 
 TABLES = ["aw-catalog", "aw-customer", "aw-hr", "aw-inventory", "aw-purchasing", "aw-reference", "aw-sales"]
 
 def _res(endpoint):
+    if endpoint == "aws":  # real DynamoDB (phase 7 bulk load on AWS): default credential chain, tables owned by Terraform
+        return boto3.resource("dynamodb", region_name=os.environ.get("AWS_REGION", "us-east-1"))
     return boto3.resource("dynamodb", endpoint_url=endpoint, region_name=os.environ.get("AWS_REGION", "us-east-1"),
                           aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "local"),
                           aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "local"))

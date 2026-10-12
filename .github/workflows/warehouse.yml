@@ -15,15 +15,6 @@ jobs:
       - run: pip install -r requirements-design.txt
       - name: Portable-SQL lint, generated SQL in sync, QuickSight definition valid (botocore model)
         run: python -m pytest -q -p no:cacheprovider tests/warehouse/test_static.py
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.9.8
-      - name: terraform fmt + validate (no AWS credentials, nothing applied)
-        run: |
-          cd aws/warehouse/terraform
-          terraform fmt -check -recursive
-          terraform init -backend=false -input=false
-          terraform validate
   warehouse-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 90

@@ -1,0 +1,7 @@
+*
+!design/mapping/
+!scripts/loader/
+!scripts/aws/
+!scripts/reset-demo.sql
+!cdc/awcdc/
+**/__pycache__

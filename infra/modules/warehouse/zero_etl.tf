@@ -1,8 +1,9 @@
 # One DynamoDB zero-ETL integration per domain table (an integration has exactly one source table).
 # In Redshift each one is materialised with: CREATE DATABASE aw_zetl_<domain> FROM INTEGRATION '<id>'
 # (warehouse/sql/redshift/00_setup.sql). Data lands as ("PK", "SK", value SUPER) in DynamoDB JSON.
-# Prerequisites on the source tables (phase 3/4 stack): PITR enabled (already in mapping.yaml table_settings) and
-# encryption with an AWS-owned key or a customer-managed key (AWS-managed keys are not supported - see ADR 0007).
+# Prerequisites on the source tables (infra/modules/dynamodb): PITR enabled and encryption with an AWS-owned key or a
+# customer-managed key (AWS-managed keys are not supported). Decision W-1 (ADR 0007): AWS-owned keys on five tables,
+# CMKs on aw-hr / aw-customer whose key policies grant redshift.amazonaws.com Decrypt/CreateGrant for integrations.
 
 # Source side: let the Redshift service export from each table.
 resource "aws_dynamodb_resource_policy" "zero_etl" {
@@ -18,7 +19,7 @@ resource "aws_dynamodb_resource_policy" "zero_etl" {
       Resource  = "*"
       Condition = {
         StringEquals = { "aws:SourceAccount" = local.account }
-        ArnEquals    = { "aws:SourceArn" = "arn:${local.part}:redshift:${var.region}:${local.account}:integration:*" }
+        ArnEquals    = { "aws:SourceArn" = "arn:${local.part}:redshift:${local.region}:${local.account}:integration:*" }
       }
     }]
   })

@@ -1,7 +1,8 @@
 locals {
   account   = data.aws_caller_identity.me.account_id
   part      = data.aws_partition.p.partition
-  table_arn = { for t in var.dynamodb_tables : t => "arn:${local.part}:dynamodb:${var.region}:${local.account}:table/${t}" }
+  region    = data.aws_region.r.region
+  table_arn = var.dynamodb_table_arns
 }
 
 resource "aws_kms_key" "warehouse" {
@@ -60,7 +61,7 @@ resource "aws_redshiftserverless_workgroup" "aw" {
 resource "aws_redshiftserverless_usage_limit" "monthly" {
   resource_arn  = aws_redshiftserverless_workgroup.aw.arn
   usage_type    = "serverless-compute"
-  amount        = 200
+  amount        = var.monthly_rpu_hours_limit
   period        = "monthly"
   breach_action = "deactivate"
 }

@@ -23,7 +23,7 @@ Totals: 7 tables, 13 GSIs. Exact item counts per table/entity: [`load-stats.json
 - **PITR:** enabled; on-demand backup before every migration step. *(Operations supp. ch. 5)*
 - **Streams:** `NEW_AND_OLD_IMAGES` — needed by cross-domain refresh (CDC-03: old image tells which copies to fix) and by aggregate maintenance (stock_qty, sales YTD). DynamoDB zero-ETL to Redshift does not use the stream but requires PITR.
 - **TTL attribute:** `ttl` (epoch seconds). Used for carts (7 days, D3) and later for tombstones (D10).
-- **Encryption:** customer-managed KMS keys for `aw-customer` and `aw-hr` (PII, pay, national id); AWS-managed key (`aws/dynamodb`) for the other five tables (decision P3-2).
+- **Encryption:** customer-managed KMS keys for `aw-customer` and `aw-hr` (PII, pay, national id); AWS-owned key for the other five tables (decision P3-2, amended by W-1 / ADR 0007: zero-ETL rejects the AWS-managed `aws/dynamodb` key). The CMK key policies grant Redshift zero-ETL `kms:Decrypt`/`CreateGrant` (`infra/modules/dynamodb`).
 - **Deletion protection** on; **GSI projection ALL** (items are small; keeps the zero-ETL/debug story simple). Projection ALL on every GSI for now (decision P3-3); revisit only if GSI storage/write cost matters.
 - **Generic key names** `PK`, `SK`, `GSI1PK/SK`, `GSI2PK/SK` (overloaded) + `type` on every item. *(Book ch. 9 "From modeling to implementation")*
 
@@ -62,7 +62,7 @@ Totals: 7 tables, 13 GSIs. Exact item counts per table/entity: [`load-stats.json
 | # | Decision |
 |---|---|
 | P3-1 | One atomic counter increment (`ADD next_id 1`) per DynamoDB-native order; no id blocks. |
-| P3-2 | Customer-managed KMS keys for `aw-customer` and `aw-hr` only; AWS-managed key elsewhere. |
+| P3-2 | Customer-managed KMS keys for `aw-customer` and `aw-hr` only; AWS-owned key elsewhere (amended by W-1, ADR 0007). |
 | P3-3 | GSI projection ALL on every GSI for now. |
 | P3-4 | Tombstone TTL = 7 days after the delete is captured (`ttl = capture time + 604800`). |
 | P3-5 | ~95-line checkout cap (100-action transaction limit incl. cart cleanup) is acceptable. |

@@ -1,0 +1,76 @@
+name: deploy (AWS, manual)
+# Manual only. Authenticates with GitHub OIDC -> IAM role aw-github-deploy (infra/bootstrap); no AWS keys stored in
+# GitHub. Configure per GitHub environment (demo, dev): variables AWS_DEPLOY_ROLE_ARN, TF_STATE_BUCKET, AWS_REGION,
+# ALLOWED_CIDRS (e.g. ["198.51.100.7/32"]). Add required reviewers on the environment for a second approval gate.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment (tfvars in infra/envs)
+        type: choice
+        options: [demo, dev]
+        default: demo
+      action:
+        description: plan | apply (infra + app images) | app-only | destroy (teardown)
+        type: choice
+        options: [plan, apply, app-only, destroy]
+        default: plan
+      confirm:
+        description: Type the environment name to confirm destroy
+        required: false
+        default: ""
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+env:
+  TF_VERSION: 1.11.4
+  TF_IN_AUTOMATION: "1"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 120
+    env:
+      ENVNAME: ${{ inputs.environment }}
+      CIDRS: ${{ vars.ALLOWED_CIDRS }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Guard
+        run: |
+          test -n "${{ vars.TF_STATE_BUCKET }}" || { echo "set TF_STATE_BUCKET on the environment"; exit 1; }
+          test -n "$CIDRS" || { echo "set ALLOWED_CIDRS on the environment"; exit 1; }
+          if [ "${{ inputs.action }}" = destroy ] && [ "${{ inputs.confirm }}" != "$ENVNAME" ]; then echo "confirm must equal $ENVNAME"; exit 1; fi
+      - name: Build CDC Lambda package
+        run: cdc/lambda/build.sh
+      - name: terraform init
+        run: scripts/aws/tf.sh "$ENVNAME" init
+      - name: terraform plan
+        if: inputs.action == 'plan' || inputs.action == 'apply'
+        run: scripts/aws/tf.sh "$ENVNAME" plan -var "allowed_cidrs=$CIDRS" -out=tfplan
+      - name: terraform apply (infra)
+        if: inputs.action == 'apply'
+        run: terraform -chdir=infra/live apply -input=false tfplan
+      - name: Build + push images, roll ECS (after .NET 10 app, before app, tools)
+        if: inputs.action == 'apply' || inputs.action == 'app-only'
+        run: scripts/aws/push-images.sh "$ENVNAME" "${GITHUB_SHA::12}" -var "allowed_cidrs=$CIDRS"
+      - name: Outputs
+        if: inputs.action == 'apply' || inputs.action == 'app-only'
+        run: terraform -chdir=infra/live output
+      - name: Teardown
+        if: inputs.action == 'destroy'
+        run: scripts/aws/teardown.sh "$ENVNAME" --yes -var "allowed_cidrs=$CIDRS"

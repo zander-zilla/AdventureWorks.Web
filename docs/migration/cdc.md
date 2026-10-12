@@ -53,6 +53,10 @@ retry 3×, then the event goes to the `dlq` state (`GET /api/dlq`) and processin
 and the inbox persist.
 
 ## AWS path (code + config; no AWS calls in this phase)
+> **Phase 7 as built:** Terraform `infra/modules/cdc` (DMS, Kinesis, Lambda, DLQ) + `infra/modules/source_db` (RDS SQL Server SE).
+> CDC enablement runs as the ECS tools task `db-init` (`scripts/aws/db_init.py`), not a Terraform `null_resource`; the DMS task
+> is created stopped and started from the UTC time `db-init` captured before the bulk load (`scripts/aws/start-cdc.sh`,
+> `--cdc-start-time` instead of an LSN). Runbook: docs/aws-setup.md.
 - `aws/dms/`: `sqlserver-source-endpoint.json` (RDS, `msdb.dbo.rds_cdc_enable_db` + per-table enable), `kinesis-endpoint.json`
   (JSON, include transaction details, partition by schema.table + PK), `table-mappings.json` (68 selection rules + an
   `add-column ar_h_change_seq = $AR_H_CHANGE_SEQ` per table), `task-settings.json` (before images on), `replication-task.json`

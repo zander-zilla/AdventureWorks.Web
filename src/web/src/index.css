@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* Design tokens (ADR 0010). One token set, two themes:
+   dark  = B "Ops console" (back office, showcase; default)
+   light = A "Trail" palette (shop). Components only use the semantic utilities below (bg-bg, text-ink, ...). */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+:root, [data-theme="dark"] {
+  --aw-bg: #0f1420; --aw-panel: #171e2e; --aw-raised: #1e2740; --aw-ink: #e6ebf5; --aw-mute: #8a94a8; --aw-line: #263049;
+  --aw-accent: #6c7cff; --aw-accent-ink: #ffffff; --aw-accent2: #2dd4bf;
+  --aw-ok: #22c55e; --aw-warn: #f59e0b; --aw-danger: #f87171; --aw-info: #60a5fa;
+  --aw-font-display: "Inter", system-ui, sans-serif; --aw-radius: 8px;
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  --aw-bg: #f7f4ee; --aw-panel: #ffffff; --aw-raised: #efe9dd; --aw-ink: #1f2a24; --aw-mute: #6b7468; --aw-line: #e6e0d4;
+  --aw-accent: #2f6b4f; --aw-accent-ink: #ffffff; --aw-accent2: #d98c3a;
+  --aw-ok: #15803d; --aw-warn: #b45309; --aw-danger: #b91c1c; --aw-info: #1d4ed8;
+  --aw-font-display: Georgia, "Times New Roman", serif; --aw-radius: 14px;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--aw-bg); --color-panel: var(--aw-panel); --color-raised: var(--aw-raised);
+  --color-ink: var(--aw-ink); --color-mute: var(--aw-mute); --color-line: var(--aw-line);
+  --color-accent: var(--aw-accent); --color-accent-ink: var(--aw-accent-ink); --color-accent2: var(--aw-accent2);
+  --color-ok: var(--aw-ok); --color-warn: var(--aw-warn); --color-danger: var(--aw-danger); --color-info: var(--aw-info);
+  --font-display: var(--aw-font-display);
+  --radius-aw: var(--aw-radius);
+  --text-kpi: 1.875rem; --text-kpi--line-height: 2.25rem;
+}
+
+html, body, #root { height: 100%; }
+body { @apply bg-bg text-ink antialiased; font: 14px/1.45 system-ui, sans-serif; }
+:focus-visible { outline: 2px solid var(--aw-accent2); outline-offset: 2px; }

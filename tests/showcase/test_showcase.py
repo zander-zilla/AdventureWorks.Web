@@ -163,7 +163,9 @@ def test_write_in_before_app_shows_in_live_replication(page):
     bf.locator('input[name="email"]').fill("catherine0@adventure-works.com")
     bf.locator('input[name="password"]').fill("Demo!2026")
     bf.get_by_role("button", name="Log in").click()
+    expect(bf.locator('input[name="password"]')).to_have_count(0, timeout=15000)  # login POST finished
     page.locator("#beforeside").evaluate("f => f.src = new URL('/Shop', f.src).href")
+    expect(bf.get_by_role("button", name="Order").first).to_be_visible(timeout=15000)
     bf.get_by_role("button", name="Order").first.click()
     expect(bf.locator("body")).to_contain_text("SO", timeout=15000)
     mon = page.frame_locator("#monitor")

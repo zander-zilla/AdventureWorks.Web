@@ -41,6 +41,6 @@ def test_mapping_json_keeps_every_transform_input():
     import awmap as A
     y = A.load_mapping()
     for t, src in y["sources"].items():
-        for k in ("omit", "transforms", "source_sql", "items"):
+        for k in ("omit", "transforms", "source_sql"):  # items are expanded (extra keys), checked by the identity test
             if src.get(k):
                 assert M["sources"][t].get(k) == src[k], (t, k)

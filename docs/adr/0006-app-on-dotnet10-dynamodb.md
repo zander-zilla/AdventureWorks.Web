@@ -15,7 +15,7 @@ writes orders straight to DynamoDB.
   - Every method implements one documented access pattern (docs/modernization/app.md), and key templates are kept
     in one place (`Keys`).
   - We chose this over the object-persistence model because overloaded `PK`/`SK`/`GSI` items, transactions and condition
-    expressions are explicit (The DynamoDB Book, ch. 9 and 19).
+    expressions are explicit (The DynamoDB Book, ch. 6.4 for condition expressions and ch. 9 From modeling to implementation).
 - **Consistency:** strong reads only for login, the cart and read-after-checkout (D8).
 - **App-written item metadata:** `src = "ddb"`, `ver`, `updated_at`, so Redshift and CDC can tell them from SQL-sourced
   items (ADR 0002).

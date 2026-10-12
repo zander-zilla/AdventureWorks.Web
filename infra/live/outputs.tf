@@ -1,4 +1,6 @@
 output "after_url" { value = module.app.after_url }
+# Chapter 2 SPA, served by the same container under /app/ (ADR 0010)
+output "spa_url" { value = "${module.app.after_url}app/" }
 output "before_url" { value = module.app.before_url }
 output "ecr_repositories" { value = module.app.ecr_repositories }
 output "ecs_cluster" { value = module.app.cluster }

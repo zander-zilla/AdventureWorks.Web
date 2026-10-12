@@ -1,6 +1,6 @@
 # Chapter 2 – Extend and modernize (plan, for John's sign-off)
 
-Status: **Proposed** (2026-10-12). Docs only; nothing built or applied. Builds on PR #15 (merged)
+Status: **Accepted** by John (2026-10-12, all 9 recommendations; decisions log in the root PLAN.md, ADR 0010). C2-0 built in PR #17. Builds on PR #15 (merged)
 ([docs/business-processes/](../business-processes/README.md)), which is the evidence base for every feature below.
 
 Chapter 1 ("Migration", phases 0-8) is done and frozen at tag **`v1.0-migration`** (`45b8584`, GitHub release):
@@ -72,6 +72,19 @@ modes), i.e. tokens support both, default dark in back office, light in shop.
 DynamoDB: no new access patterns. Risks: front-end stack is new to the repo (supply chain: pinned lockfile, `npm audit` in CI,
 Dependabot); two UIs coexist during migration (mitigation: per-screen cut-over, Razor removed only in C2-2+ when replaced).
 Demo talking points: "same data, same API, new face"; theme switch live; Lighthouse scores before/after.
+
+### C2-0 as built (PR #17)
+- `src/web`: React 19, TS strict, Vite, Tailwind v4, ESLint, Vitest, Playwright; tokens for both themes; the 12 components;
+  app shell (nav rail with later phases shown disabled, chapter switch, theme toggle, sign-in); gallery at `/app/design`;
+  product list over `/api/v2/products`.
+- `.NET`: `Api/V2.cs` (`/api/v2` me, login/logout, products, categories, cart; OpenAPI at `/api/v2/openapi.json`; 401/problem+json;
+  CSRF header guard); SPA served at `/app/`; framed-cookie fix; Docker `web` build stage; Terraform output `spa_url`.
+- CI: new `web.yml` (lint, typecheck, Vitest, build, audit, Playwright with screenshots; `/api/v2` in-process tests);
+  `after.yml` runs the same Playwright suite against the real image.
+- Screenshots: [docs/showcase-screenshots/chapter-2/](../showcase-screenshots/chapter-2/).
+- **Changes from initial design**: see [ADR 0010](../adr/0010-chapter-2-front-end.md#changes-from-initial-design-c2-0-as-built)
+  (`src/web` instead of `web/`; hand-written typed client instead of a generated one; SVG chart wrapper instead of Recharts;
+  product list as the proof screen, shop home with C2-2; framed login fixed by `SameSite=None; Secure` over HTTPS).
 
 ## C2-1 Redesigned showcase with a chapter switch
 

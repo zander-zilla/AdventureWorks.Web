@@ -4,6 +4,14 @@
     <TargetFramework>netcoreapp2.1</TargetFramework>
   </PropertyGroup>
 
+  <!-- The modernized (.NET 10) app lives in src/; keep it out of this 'before' project's globs. -->
+  <ItemGroup>
+    <Compile Remove="src/**;tests/**" />
+    <Content Remove="src/**;tests/**" />
+    <None Remove="src/**;tests/**" />
+    <EmbeddedResource Remove="src/**;tests/**" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.AspNetCore.Razor.Design" Version="2.1.2" PrivateAssets="All" />

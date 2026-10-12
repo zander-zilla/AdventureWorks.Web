@@ -1,0 +1,18 @@
+@model Category
+@{ var sub = ViewData["Sub"] as Subcategory; var products = ViewData["Products"] as List<Product>; ViewData["Title"] = sub?.Name ?? Model.Name;
+   var deleting = Context.Request.Path.Value!.Contains("/Delete"); }
+<h1>@(deleting ? "Delete " : "")@Model.Name @if (sub is not null) { <text>/ @sub.Name</text> }</h1>
+@if (sub is null)
+{
+    <ul>@foreach (var s in Model.Subcategories) { <li><a asp-action="Details" asp-route-id="@Model.Id" asp-route-sub="@s.Id">@s.Name</a></li> }</ul>
+}
+else if (products is not null)
+{
+    <p>@products.Count active products.</p>
+    <ul>@foreach (var p in products) { <li><a asp-controller="Products" asp-action="Details" asp-route-id="@p.Id">@p.Name</a></li> }</ul>
+}
+@if (deleting)
+{
+    <form asp-action="Delete" asp-route-id="@Model.Id" asp-route-sub="@sub?.Id" method="post"><button type="submit">Confirm delete</button></form>
+}
+<p><a asp-action="Edit" asp-route-id="@Model.Id" asp-route-sub="@sub?.Id">Edit</a> | <a asp-action="Delete" asp-route-id="@Model.Id" asp-route-sub="@sub?.Id">Delete</a> | <a asp-action="Index">Back to list</a></p>

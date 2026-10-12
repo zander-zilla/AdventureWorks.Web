@@ -1,0 +1,14 @@
+@model CustomerView
+@{ ViewData["Title"] = Model.DisplayName; }
+<h1>@Model.DisplayName</h1>
+<table>
+<tr><th>Customer id / account</th><td>@Model.CustomerId / @Model.AccountNumber</td></tr>
+<tr><th>Person</th><td>@Model.Title @Model.FirstName @Model.MiddleName @Model.LastName</td></tr>
+<tr><th>Store</th><td>@Model.StoreName</td></tr>
+<tr><th>Territory</th><td>@Model.TerritoryName</td></tr>
+<tr><th>Email</th><td>@string.Join(", ", Model.Emails)</td></tr>
+<tr><th>Phone</th><td>@string.Join(", ", Model.Phones)</td></tr>
+<tr><th>Addresses</th><td>@foreach (var a in Model.Addresses) { <div>@a.Line1 @a.Line2, @a.City @a.State @a.PostalCode @a.Country</div> }</td></tr>
+<tr><th>Cards</th><td>@foreach (var c in Model.Cards) { <div>@c.CardType ••••@c.Last4</div> }</td></tr>
+</table>
+<p><a asp-action="Edit" asp-route-id="@Model.CustomerId">Edit</a> | <a asp-action="Index">Back to list</a></p>

@@ -1,0 +1,13 @@
+@model List<Category>
+@{ ViewData["Title"] = "Categories"; }
+<h1>Product categories</h1>
+<p><a asp-action="Create">Create new</a></p>
+<table>
+<tr><th>Category</th><th>Subcategories</th><th></th></tr>
+@foreach (var c in Model)
+{
+    <tr><td><a asp-action="Details" asp-route-id="@c.Id">@c.Name</a></td>
+        <td>@foreach (var s in c.Subcategories) { <a asp-action="Details" asp-route-id="@c.Id" asp-route-sub="@s.Id">@s.Name</a><text> · </text> }</td>
+        <td><a asp-action="Edit" asp-route-id="@c.Id">Edit</a> | <a asp-action="Delete" asp-route-id="@c.Id">Delete</a></td></tr>
+}
+</table>

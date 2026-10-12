@@ -351,4 +351,5 @@ MigrationBackup/
 bin/
 obj/
 docker/before/baks/*.bak
-dist/
+src/**/bin/
+src/**/obj/

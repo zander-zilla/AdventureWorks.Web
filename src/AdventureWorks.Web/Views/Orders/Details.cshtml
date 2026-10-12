@@ -1,0 +1,13 @@
+@model Order
+@{ ViewData["Title"] = Model.Number; }
+<h1>Order <span data-testid="order-number">@Model.Number</span></h1>
+<p>@Model.OrderDate.ToString("yyyy-MM-dd HH:mm") UTC · @Order.StatusName(Model.Status) · ship to: @Model.ShipTo</p>
+<table data-testid="order-lines">
+<tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Line total</th></tr>
+@foreach (var l in Model.Lines) { <tr data-testid="order-line"><td>@l.LineNo</td><td>@l.Name</td><td class="num">@l.Quantity</td><td class="num">@l.UnitPrice.ToString("C")</td><td class="num">@l.LineTotal.ToString("C")</td></tr> }
+<tr><td colspan="4">Subtotal</td><td class="num">@Model.SubTotal.ToString("C")</td></tr>
+<tr><td colspan="4">Tax</td><td class="num">@Model.TaxAmt.ToString("C")</td></tr>
+<tr><td colspan="4">Freight</td><td class="num">@Model.Freight.ToString("C")</td></tr>
+<tr><th colspan="4">Total due</th><th class="num" data-testid="order-total">@Model.TotalDue.ToString("C")</th></tr>
+</table>
+<p><a asp-action="Index">All my orders</a></p>

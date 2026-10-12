@@ -1,0 +1,12 @@
+@model Product
+@{ var subs = (List<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)ViewData["Subcategories"]!; }
+<div asp-validation-summary="All" class="err"></div>
+<input type="hidden" asp-for="Version" />
+<label>Name <input asp-for="Name" size="50" /></label>
+<label>Product number <input asp-for="ProductNumber" /></label>
+<label>Subcategory <select asp-for="SubcategoryId" asp-items="subs"><option value="">(none)</option></select></label>
+<label>Color <input asp-for="Color" /></label>
+<label>Size <input asp-for="Size" /></label>
+<label>List price <input asp-for="ListPrice" /></label>
+<label>Standard cost <input asp-for="StandardCost" /></label>
+<label><input asp-for="Active" /> Active (sold in the shop)</label>

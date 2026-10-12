@@ -5,6 +5,21 @@ This fork is used for an AWS modernization demo; see [docs/modernization/PLAN.md
 
 Original description: *AdventureWorks Sample Web App. This App connects to the sample database Adventure Works.*
 
+## After environment
+
+The modernized app is in `src/AdventureWorks.Web`: .NET 10 on DynamoDB, with shopper pages and the admin screens. See
+[docs/modernization/app.md](docs/modernization/app.md).
+
+```bash
+scripts/after-up.sh                       # SQL restore (if needed) -> DynamoDB Local x7 loaded by the Phase 3 loader -> app on :5090
+(cd src && dotnet test AdventureWorks.slnx)   # unit tests (AW_DDB_IT=1 adds the DynamoDB Local integration tests)
+pip install playwright && python -m playwright install chromium && pytest tests/after   # browser smoke test
+```
+
+- Demo logins are the same 5 customers as the before app (for example `catherine0@adventure-works.com`), password `Demo!2026`.
+- Orders placed here are `SO-DDB-…`. They live only in DynamoDB and flow to Redshift through zero-ETL.
+- The image is chiseled and runs as non-root (UID 1654).
+
 ## Before environment
 
 The **before** baseline is the original ASP.NET Core 2.1 MVC + EF Core app over `AdventureWorksLT2022`,

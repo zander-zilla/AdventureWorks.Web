@@ -1,0 +1,6 @@
+@model Product
+@{ ViewData["Title"] = "Delete product"; }
+<h1>Delete @Model.Name?</h1>
+<partial name="_Details" />
+<p class="muted">Only products without history can be deleted; otherwise deactivate them.</p>
+<form asp-action="Delete" asp-route-id="@Model.Id" method="post"><button type="submit">Delete</button> | <a asp-action="Index">Back to list</a></form>

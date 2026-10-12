@@ -9,3 +9,6 @@ cp "$ROOT/design/mapping/mapping.json" "$ROOT/design/mapping/cdc-refresh.yaml" "
 pip install -q --target "$OUT" --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.12 "pyyaml==6.*"  # no SQL driver: the Lambda never reads SQL Server (ADR 0005)
 (cd "$OUT" && find . -name __pycache__ -prune -exec rm -rf {} + && zip -qr ../aw-cdc-lambda.zip .)
 ls -la "$ROOT/dist/aw-cdc-lambda.zip"
+# Phase 8b (S-2): replication monitor API for the showcase (boto3 comes with the runtime) -> dist/aw-monitor-api.zip
+rm -f "$ROOT/dist/aw-monitor-api.zip"; (cd "$ROOT/cdc/monitor_api" && zip -q "$ROOT/dist/aw-monitor-api.zip" handler.py)
+ls -la "$ROOT/dist/aw-monitor-api.zip"

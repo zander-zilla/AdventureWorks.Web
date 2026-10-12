@@ -12,6 +12,21 @@ variable "price_class" {
   type    = string
   default = "PriceClass_100"
 }
+variable "enable_monitor_api" {
+  description = "Route /api/* to the replication monitor API Lambda (Phase 8b, S-2), failing over to the recorded replay in S3."
+  type        = bool
+  default     = false
+}
+variable "monitor_api_url" {
+  description = "Function URL of the monitor API Lambda (modules/cdc output monitor_api_url)."
+  type        = string
+  default     = ""
+}
+variable "monitor_api_function" {
+  description = "Function name of the monitor API Lambda (for the CloudFront invoke permission)."
+  type        = string
+  default     = ""
+}
 variable "force_destroy" {
   description = "Let teardown delete the bucket with its (rebuildable) content."
   type        = bool
@@ -49,10 +64,23 @@ resource "aws_cloudfront_origin_access_control" "site" {
 
 # AWS managed policies: CachingOptimized for the site, CachingDisabled for config.json and the replay API.
 locals {
-  caching_optimized = "658327ea-f89d-4fab-a63d-7e88639e58f6"
-  caching_disabled  = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-  security_headers  = "67f7725c-6f97-4210-82d7-5512b31e9d03" # Managed-SecurityHeadersPolicy
-  origin_id         = "s3-showcase"
+  caching_optimized  = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+  caching_disabled   = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+  security_headers   = "67f7725c-6f97-4210-82d7-5512b31e9d03" # Managed-SecurityHeadersPolicy
+  origin_id          = "s3-showcase"
+  all_viewer_no_host = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader (query string to the Function URL)
+  monitor_origin_id  = "lambda-monitor-api"
+  api_group_id       = "api-live-or-replay"
+  monitor_domain     = replace(trimsuffix(var.monitor_api_url, "/"), "https://", "")
+}
+
+# Phase 8b (S-2): CloudFront signs requests to the AWS_IAM Function URL (origin access control for Lambda).
+resource "aws_cloudfront_origin_access_control" "monitor" {
+  count                             = var.enable_monitor_api ? 1 : 0
+  name                              = "${var.name}-monitor-api"
+  origin_access_control_origin_type = "lambda"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
 }
 
 resource "aws_cloudfront_distribution" "site" {
@@ -67,6 +95,31 @@ resource "aws_cloudfront_distribution" "site" {
     origin_id                = local.origin_id
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
+  dynamic "origin" {
+    for_each = var.enable_monitor_api ? [1] : []
+    content {
+      domain_name              = local.monitor_domain
+      origin_id                = local.monitor_origin_id
+      origin_access_control_id = aws_cloudfront_origin_access_control.monitor[0].id
+      custom_origin_config {
+        http_port              = 80
+        https_port             = 443
+        origin_protocol_policy = "https-only"
+        origin_ssl_protocols   = ["TLSv1.2"]
+      }
+    }
+  }
+  # Live first, recorded sample second: any 5xx/403/404 from the monitor API (stack paused or torn down, CDC not
+  # started, throttled) makes CloudFront answer /api/* from the replay files in the bucket.
+  dynamic "origin_group" {
+    for_each = var.enable_monitor_api ? [1] : []
+    content {
+      origin_id = local.api_group_id
+      failover_criteria { status_codes = [403, 404, 500, 502, 503, 504] }
+      member { origin_id = local.monitor_origin_id }
+      member { origin_id = local.origin_id }
+    }
+  }
   default_cache_behavior {
     target_origin_id           = local.origin_id
     viewer_protocol_policy     = "redirect-to-https"
@@ -77,7 +130,21 @@ resource "aws_cloudfront_distribution" "site" {
     response_headers_policy_id = local.security_headers
   }
   dynamic "ordered_cache_behavior" {
-    for_each = ["config.json", "api/*", "data/*"]
+    for_each = var.enable_monitor_api ? ["api/*"] : []
+    content {
+      path_pattern               = ordered_cache_behavior.value
+      target_origin_id           = local.api_group_id
+      viewer_protocol_policy     = "redirect-to-https"
+      allowed_methods            = ["GET", "HEAD"]
+      cached_methods             = ["GET", "HEAD"]
+      compress                   = true
+      cache_policy_id            = local.caching_disabled
+      origin_request_policy_id   = local.all_viewer_no_host
+      response_headers_policy_id = local.security_headers
+    }
+  }
+  dynamic "ordered_cache_behavior" {
+    for_each = var.enable_monitor_api ? ["config.json", "data/*"] : ["config.json", "api/*", "data/*"]
     content {
       path_pattern               = ordered_cache_behavior.value
       target_origin_id           = local.origin_id
@@ -117,6 +184,26 @@ resource "aws_s3_bucket_policy" "site" {
   depends_on = [aws_s3_bucket_public_access_block.site]
 }
 
+# The distribution may invoke the Function URL (both permissions are required for Lambda origin access control).
+resource "aws_lambda_permission" "monitor_url" {
+  count                  = var.enable_monitor_api ? 1 : 0
+  statement_id           = "AllowShowcaseCloudFrontUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = var.monitor_api_function
+  principal              = "cloudfront.amazonaws.com"
+  source_arn             = aws_cloudfront_distribution.site.arn
+  function_url_auth_type = "AWS_IAM"
+}
+resource "aws_lambda_permission" "monitor_invoke" {
+  count         = var.enable_monitor_api ? 1 : 0
+  statement_id  = "AllowShowcaseCloudFrontInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.monitor_api_function
+  principal     = "cloudfront.amazonaws.com"
+  source_arn    = aws_cloudfront_distribution.site.arn
+}
+
+output "monitor_api" { value = var.enable_monitor_api }
 output "bucket" { value = aws_s3_bucket.site.bucket }
 output "distribution_id" { value = aws_cloudfront_distribution.site.id }
 output "url" { value = "https://${aws_cloudfront_distribution.site.domain_name}/" }

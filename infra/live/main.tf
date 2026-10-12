@@ -44,6 +44,8 @@ module "cdc" {
   dms_instance_class       = var.dms_instance_class
   kinesis_shards           = var.kinesis_shards
   lambda_zip               = var.lambda_zip
+  monitor_api_zip          = var.monitor_api_zip
+  enable_monitor_api       = var.enable_showcase && var.enable_monitor_api
   create_dms_service_roles = var.create_dms_service_roles
   dms_config_dir           = "${path.module}/../../aws/dms"
 }
@@ -54,7 +56,9 @@ module "app" {
   vpc_id                = module.network.vpc_id
   public_subnet_ids     = module.network.public_subnet_ids
   allowed_cidrs         = var.allowed_cidrs
-  certificate_arn       = var.certificate_arn
+  certificate_arn       = local.certificate_arn
+  enable_https          = local.https
+  domain_name           = var.domain_name
   image_tag             = var.image_tag
   desired_count         = var.app_desired_count
   enable_before_app     = var.enable_source && var.enable_before_app
@@ -69,9 +73,16 @@ module "app" {
 
 # Phase 8 showcase (ADR 0009): static site on S3 + CloudFront; content via scripts/aws/push-showcase.sh.
 module "showcase" {
-  count  = var.enable_showcase ? 1 : 0
-  source = "../modules/showcase"
-  name   = local.name
+  count                = var.enable_showcase ? 1 : 0
+  source               = "../modules/showcase"
+  name                 = local.name
+  enable_monitor_api   = local.monitor_api
+  monitor_api_url      = local.monitor_api ? module.cdc[0].monitor_api_url : ""
+  monitor_api_function = local.monitor_api ? module.cdc[0].monitor_api_function : ""
+}
+
+locals {
+  monitor_api = var.enable_showcase && var.enable_source && var.enable_monitor_api
 }
 
 resource "aws_security_group" "redshift" {

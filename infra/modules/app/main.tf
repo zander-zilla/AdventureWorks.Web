@@ -17,6 +17,16 @@ variable "certificate_arn" {
   type    = string
   default = ""
 }
+variable "enable_https" {
+  description = "HTTPS listeners (443 after, 8080 before) with certificate_arn (required when true). Known at plan time even when the ACM certificate is created in the same apply."
+  type        = bool
+  default     = false
+}
+variable "domain_name" {
+  description = "Public host name of the ALB (ACM certificate / Route 53 alias); empty = the ALB DNS name."
+  type        = string
+  default     = ""
+}
 variable "image_tag" { type = string }
 variable "desired_count" { type = number }
 variable "enable_before_app" { type = bool }
@@ -40,7 +50,8 @@ data "aws_partition" "p" {}
 
 locals {
   region = data.aws_region.r.region
-  https  = var.certificate_arn != ""
+  https  = var.enable_https # a known bool: certificate_arn may be unknown until the ACM certificate is validated
+  host   = var.domain_name != "" ? var.domain_name : aws_lb.app.dns_name
   repos  = toset(concat(["after", "tools"], var.enable_before_app ? ["before"] : []))
 }
 
@@ -255,7 +266,9 @@ resource "aws_lb_listener" "before" {
   count             = var.enable_before_app ? 1 : 0
   load_balancer_arn = aws_lb.app.arn
   port              = 8080
-  protocol          = "HTTP"
+  protocol          = local.https ? "HTTPS" : "HTTP"
+  ssl_policy        = local.https ? "ELBSecurityPolicy-TLS13-1-2-2021-06" : null
+  certificate_arn   = local.https ? var.certificate_arn : null
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.before[0].arn
@@ -409,8 +422,10 @@ resource "aws_ecs_task_definition" "tools" {
 }
 
 output "alb_dns" { value = aws_lb.app.dns_name }
-output "after_url" { value = "${local.https ? "https" : "http"}://${aws_lb.app.dns_name}/" }
-output "before_url" { value = var.enable_before_app ? "http://${aws_lb.app.dns_name}:8080/" : null }
+output "after_url" { value = "${local.https ? "https" : "http"}://${local.host}/" }
+output "before_url" { value = var.enable_before_app ? "${local.https ? "https" : "http"}://${local.host}:8080/" : null }
+output "alb_zone_id" { value = aws_lb.app.zone_id }
+output "https" { value = local.https }
 output "ecr_repositories" { value = { for k, v in aws_ecr_repository.r : k => v.repository_url } }
 output "cluster" { value = aws_ecs_cluster.c.name }
 output "tools_task_definition" { value = aws_ecs_task_definition.tools.family }

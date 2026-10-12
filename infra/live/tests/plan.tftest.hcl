@@ -122,3 +122,40 @@ run "no_budget_without_email" {
     error_message = "no budget without alert e-mails"
   }
 }
+
+run "showcase_s3_cloudfront" {
+  command = plan
+  assert {
+    condition     = length(module.showcase) == 1
+    error_message = "showcase (S3 + CloudFront) expected by default"
+  }
+}
+
+run "showcase_bucket_private" {
+  command = plan
+  module {
+    source = "../modules/showcase"
+  }
+  variables {
+    name = "aw-ci"
+  }
+  assert {
+    condition     = aws_s3_bucket_public_access_block.site.block_public_policy && aws_s3_bucket_public_access_block.site.restrict_public_buckets
+    error_message = "showcase bucket must stay private (CloudFront OAC only)"
+  }
+  assert {
+    condition     = aws_cloudfront_distribution.site.default_cache_behavior[0].viewer_protocol_policy == "redirect-to-https"
+    error_message = "HTTPS only"
+  }
+}
+
+run "showcase_off" {
+  command = plan
+  variables {
+    enable_showcase = false
+  }
+  assert {
+    condition     = length(module.showcase) == 0
+    error_message = "enable_showcase = false must drop the showcase"
+  }
+}

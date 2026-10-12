@@ -42,6 +42,9 @@ namespace AdventureWorks.Web
             services.AddSingleton<AdventureWorks.Web.Demo.FullDb>();
             services.Configure<CookieTempDataProviderOptions>(o => o.Cookie.IsEssential = true);
 
+            // Phase 8 (ADR 0009): Showcase:FrameAncestors = origins allowed to embed this app in the showcase "Before App" tab.
+            if (!string.IsNullOrWhiteSpace(Configuration["Showcase:FrameAncestors"]))
+                services.AddAntiforgery(o => o.SuppressXFrameOptionsHeader = true);
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
             services.AddDbContext<sampledbContext>(options =>
         options.UseSqlServer(Configuration.GetConnectionString("sampledbContext")));
@@ -65,6 +68,9 @@ namespace AdventureWorks.Web
 
             // BEFORE BASELINE: HTTPS redirect is skipped when no HTTPS endpoint is configured (containers/CI).
             if (Configuration["DisableHttpsRedirection"] != "true") app.UseHttpsRedirection();
+            var frameAncestors = Configuration["Showcase:FrameAncestors"]?.Trim();
+            if (!string.IsNullOrEmpty(frameAncestors))
+                app.Use((ctx, next) => { ctx.Response.Headers["Content-Security-Policy"] = "frame-ancestors 'self' " + frameAncestors; return next(); });
             app.UseStaticFiles();
             app.UseCookiePolicy();
             app.UseAuthentication();

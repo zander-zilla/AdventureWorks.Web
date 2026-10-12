@@ -1,0 +1,121 @@
+[
+ {
+  "id": 3,
+  "table": "Sales.SalesOrderHeader",
+  "op": "d",
+  "pk": {
+   "SalesOrderID": 75124
+  },
+  "position": "0000a1f9:00000210:0002",
+  "lag_ms": 1270,
+  "row": {
+   "SalesOrderID": 75124,
+   "RevisionNumber": 8,
+   "OrderDate": "2026-10-11T14:30:00",
+   "Status": 5,
+   "OnlineOrderFlag": true,
+   "CustomerID": 29825,
+   "SubTotal": 2443.35,
+   "TaxAmt": 195.47,
+   "Freight": 61.08,
+   "TotalDue": 2699.9
+  },
+  "puts": [],
+  "tombstones": [
+   [
+    "aw-sales",
+    {
+     "PK": "ORDER#0000075124",
+     "SK": "ORDER",
+     "type": "Order",
+     "deleted": true,
+     "ttl": 1760800200
+    }
+   ]
+  ],
+  "refreshed": 0,
+  "skipped": 0
+ },
+ {
+  "id": 2,
+  "table": "Sales.SalesOrderDetail",
+  "op": "c",
+  "pk": {
+   "SalesOrderID": 75124,
+   "SalesOrderDetailID": 121318
+  },
+  "position": "0000a1f2:00001e40:0004",
+  "lag_ms": 1405,
+  "row": {
+   "SalesOrderID": 75124,
+   "SalesOrderDetailID": 121318,
+   "ProductID": 749,
+   "OrderQty": 1,
+   "UnitPrice": 2443.35,
+   "LineTotal": 2443.35
+  },
+  "puts": [
+   [
+    "aw-sales",
+    {
+     "PK": "ORDER#0000075124",
+     "SK": "LINE#0121318",
+     "type": "OrderLine",
+     "product_id": 749,
+     "product_name": "Road-150 Red, 62",
+     "product_number": "BK-R93R-62",
+     "order_qty": 1,
+     "unit_price": 2443.35
+    }
+   ]
+  ],
+  "tombstones": [],
+  "refreshed": 0,
+  "skipped": 0
+ },
+ {
+  "id": 1,
+  "table": "Sales.SalesOrderHeader",
+  "op": "c",
+  "pk": {
+   "SalesOrderID": 75124
+  },
+  "position": "0000a1f2:00001e40:0003",
+  "lag_ms": 1147,
+  "row": {
+   "SalesOrderID": 75124,
+   "RevisionNumber": 8,
+   "OrderDate": "2026-10-11T14:30:00",
+   "Status": 5,
+   "OnlineOrderFlag": true,
+   "CustomerID": 29825,
+   "SubTotal": 2443.35,
+   "TaxAmt": 195.47,
+   "Freight": 61.08,
+   "TotalDue": 2699.9
+  },
+  "puts": [
+   [
+    "aw-sales",
+    {
+     "PK": "ORDER#0000075124",
+     "SK": "ORDER",
+     "GSI1PK": "CUSTOMER#029825",
+     "GSI1SK": "ORDER#2026-10-11T14:30:00#0000075124",
+     "type": "Order",
+     "sales_order_id": 75124,
+     "status": 5,
+     "customer_name": "Jon Yang",
+     "ship_to_city": "Rockhampton",
+     "card_type": "Vista",
+     "card_last4": "4414",
+     "total_due": 2699.9,
+     "src_lsn": "0000a1f2:00001e40:0003"
+    }
+   ]
+  ],
+  "tombstones": [],
+  "refreshed": 0,
+  "skipped": 0
+ }
+]

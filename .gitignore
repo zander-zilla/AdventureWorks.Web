@@ -357,3 +357,4 @@ src/**/obj/
 # terraform
 .terraform/
 *.tfstate*
+showcase/dist/

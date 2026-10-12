@@ -30,4 +30,5 @@ services:
       ASPNETCORE_URLS: "http://+:5080"
       ASPNETCORE_ENVIRONMENT: Development
       DisableHttpsRedirection: "true"
+      Showcase__FrameAncestors: "http://localhost:* http://127.0.0.1:*"  # Phase 8 showcase Before App tab
       ConnectionStrings__sampledbContext: "Server=localhost,1433;Database=AdventureWorksLT2022;User Id=sa;Password=${MSSQL_SA_PASSWORD:-AdvWorks!2026};TrustServerCertificate=True"

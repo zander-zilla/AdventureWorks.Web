@@ -102,6 +102,21 @@ jobs:
         run: AW_E2E=1 DDB_MULTI=1 python -m pytest -q tests/cdc/test_e2e.py
       - name: Reconcile SQL vs DynamoDB (counts + checksums)
         run: DDB_MULTI=1 python scripts/reconcile.py --out /tmp/reconcile.json
+      - name: Showcase live - write in the Before App frame, watch it in Live Replication (Playwright)
+        run: |
+          pip install -q playwright && python -m playwright install --with-deps chromium
+          python showcase/build.py --app-url stub-app.html --before-url http://localhost:5080 --monitor-mode live
+          echo "<h1 id=stub>After app (not running in this job)</h1>" > showcase/dist/stub-app.html
+          (python showcase/serve.py --live-api http://localhost:8090 > /tmp/showcase.log 2>&1 &)
+          sleep 2
+          SHOWCASE_LIVE=1 SHOWCASE_URL=http://localhost:8088 SHOWCASE_APP_URL=stub SHOWCASE_BEFORE_URL=http://localhost:5080 \
+            SHOWCASE_SCREENSHOTS=showcase-live python -m pytest -q -p no:cacheprovider tests/showcase
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: showcase-live
+          path: showcase-live/
+          if-no-files-found: ignore
       - name: Results
         if: always()
         run: |

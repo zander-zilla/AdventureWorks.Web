@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AdventureWorks on AWS: modernization showcase</title>
+<link rel="stylesheet" href="styles.css"></head>
+<body>
+<header>
+ <div class="brand"><span class="logo">AW</span> AdventureWorks <small>SQL Server → DynamoDB · Redshift on AWS</small></div>
+ <nav role="tablist" id="tabs">
+  <button role="tab" data-tab="presentation">Presentation</button>
+  <button role="tab" data-tab="archbefore">Before Architecture</button>
+  <button role="tab" data-tab="archafter">After Architecture</button>
+  <button role="tab" data-tab="mapping">Data Mapping</button>
+  <button role="tab" data-tab="patterns">Access Patterns</button>
+  <button role="tab" data-tab="replication">Live Replication</button>
+  <button role="tab" data-tab="before">Before App</button>
+  <button role="tab" data-tab="app">After App</button>
+ </nav>
+</header>
+<main>
+ <section id="presentation" role="tabpanel"></section>
+ <section id="archbefore" role="tabpanel"></section>
+ <section id="archafter" role="tabpanel"></section>
+ <section id="mapping" role="tabpanel"></section>
+ <section id="patterns" role="tabpanel"></section>
+ <section id="replication" role="tabpanel"></section>
+ <section id="before" role="tabpanel"></section>
+ <section id="app" role="tabpanel"></section>
+</main>
+<footer>Generated from <code>design/mapping/mapping.json</code>, <code>docs/design/access-patterns.json</code> and the Phase 4–6 results · <span id="build"></span></footer>
+<script src="app.js"></script>
+</body></html>

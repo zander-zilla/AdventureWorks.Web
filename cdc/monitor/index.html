@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Replication monitor component (Phase 4). Standalone page now; the Phase 8 showcase "Data Mapping" tab embeds the
+<!-- Replication monitor component (Phase 4). Standalone page now; the Phase 8 showcase "Live Replication" tab embeds the
      same markup/script (<div id="aw-replication-monitor" data-api="..."></div>). API: cdc/consumer/consumer.py -->
 <html lang="en"><head><meta charset="utf-8"><title>AdventureWorks replication monitor</title>
 <style>
@@ -25,7 +25,7 @@
  async function tick(){
   try{
    const st=await (await fetch(api+'/api/status')).json();
-   document.getElementById('stats').innerHTML=[['Changes applied',st.changes],['Queued',st.queued],['DLQ',st.dlq],['Lag last',fmt(st.lag_ms.last)],['Lag p50',fmt(st.lag_ms.p50)],['Lag max (200)',fmt(st.lag_ms.max)],['State',st.paused?'paused (bulk load)':'streaming']]
+   document.getElementById('stats').innerHTML=[['Changes applied',st.changes],['Queued',st.queued],['DLQ',st.dlq],['Lag last',fmt(st.lag_ms.last)],['Lag p50',fmt(st.lag_ms.p50)],['Lag max (200)',fmt(st.lag_ms.max)],['State',st.replay?'recorded replay':(st.paused?'paused (bulk load)':'streaming')]]
      .map(([k,v])=>`<div class="stat">${k}<b>${v??'–'}</b></div>`).join('');
    const f=document.getElementById('flt').value.trim();
    const ch=await (await fetch(api+'/api/changes?limit=50'+(f?'&table='+encodeURIComponent(f):''))).json();

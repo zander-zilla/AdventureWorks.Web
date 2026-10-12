@@ -1359,7 +1359,7 @@
     {
      "column": "Type",
      "sql_type": "nvarchar",
-     "attribute": "type",
+     "attribute": "sql_type",
      "transform": "copy"
     },
     {

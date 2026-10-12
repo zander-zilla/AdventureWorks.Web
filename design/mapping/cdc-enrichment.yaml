@@ -15,7 +15,7 @@ lookup:
     lookups: [{table: aw-catalog, PK: "PHOTO#{ProductPhotoID:04d}", SK: "PHOTO", attrs: {thumbnail_file_name: thumbnail_photo_file_name}}]
   Sales.SpecialOfferProduct:
     lookups: [{table: aw-catalog, PK: "OFFER#{SpecialOfferID:03d}", SK: "OFFER",
-               attrs: {offer_description: description, discount_pct: discount_pct, offer_type: type, offer_category: category,
+               attrs: {offer_description: description, discount_pct: discount_pct, offer_type: sql_type, offer_category: category,
                        offer_start: start_date, offer_end: end_date, min_qty: min_qty, max_qty: max_qty}}]
   Production.ProductInventory:
     lookups: [{table: aw-inventory, PK: "LOCATION", SK: "{LocationID:03d}", attrs: {location_name: name}}]

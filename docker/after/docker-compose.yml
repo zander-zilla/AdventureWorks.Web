@@ -1,0 +1,20 @@
+# AFTER stack: the .NET 10 app + DynamoDB Local (one instance per table, as the Phase 3 loader runs them).
+# Host networking (this box cannot do container-to-container networking). Data is loaded by scripts/after-up.sh
+# (Phase 3 loader from the before stack's SQL Server).
+name: aw-after
+services:
+  app:
+    build:
+      context: ../../src
+      dockerfile: ../docker/after/Dockerfile
+    image: aw-after-app:local
+    network_mode: host
+    environment:
+      ASPNETCORE_URLS: http://+:5090
+      DynamoDb__Endpoints__aw-catalog: http://localhost:8001
+      DynamoDb__Endpoints__aw-customer: http://localhost:8002
+      DynamoDb__Endpoints__aw-sales: http://localhost:8007
+    read_only: true
+    healthcheck:
+      test: ["CMD", "dotnet", "--info"]
+      disable: true

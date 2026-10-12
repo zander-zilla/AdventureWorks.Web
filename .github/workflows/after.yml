@@ -1,0 +1,37 @@
+name: after (.NET 10 + DynamoDB)
+on:
+  push:
+    branches: [master, "phase-*"]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  after-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: src/global.json
+      - name: Cache AdventureWorks backups
+        uses: actions/cache@v4
+        with:
+          path: docker/before/baks
+          key: aw-baks-2022-v1
+      - run: pip install -r requirements-design.txt playwright && python -m playwright install --with-deps chromium
+      - name: Build + unit tests (.NET 10)
+        run: dotnet test src/AdventureWorks.slnx -c Release
+      - name: SQL Server + DynamoDB Local loaded by the Phase 3 loader; access-pattern tests still pass
+        run: PYTHON=python scripts/design-validate.sh
+      - name: Integration tests against DynamoDB Local
+        run: AW_DDB_IT=1 dotnet test src/AdventureWorks.slnx -c Release --no-build
+      - name: After stack (chiseled non-root image) up
+        run: SKIP_LOAD=1 PYTHON=python scripts/after-up.sh && test "$(docker inspect -f '{{.Config.User}}' aw-after-app-1)" = 1654
+      - name: Playwright smoke (login, browse, search, cart, checkout, history)
+        run: python -m pytest -q -p no:cacheprovider tests/after
+      - name: App logs
+        if: always()
+        run: docker logs aw-after-app-1 2>&1 | tail -100 || true

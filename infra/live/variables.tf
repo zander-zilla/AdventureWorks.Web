@@ -119,3 +119,15 @@ variable "quicksight_principal_arn" {
     error_message = "quicksight_principal_arn is required when enable_quicksight = true."
   }
 }
+
+# --- cost guardrail (Phase 7 decision 5) ---
+variable "budget_monthly_usd" {
+  description = "AWS Budgets monthly cost limit (USD) for this account; alerts at 80% actual and 100% forecast."
+  type        = number
+  default     = 50
+}
+variable "budget_alert_emails" {
+  description = "E-mail addresses notified by the AWS Budgets alert. Empty = no budget created."
+  type        = list(string)
+  default     = []
+}

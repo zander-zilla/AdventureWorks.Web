@@ -56,9 +56,10 @@ Keep `infra/bootstrap/terraform.tfstate` safe (it is git-ignored) or move it int
 
 ## 2. Configure
 - `infra/envs/demo.s3.tfbackend`: set `bucket` to `state_bucket` (or `export TF_STATE_BUCKET=<state_bucket>`; the scripts use it).
-- `infra/envs/demo.tfvars`: `allowed_cidrs`, optionally `certificate_arn` (ACM, for HTTPS), `sql_instance_class`.
-- GitHub (only if deploying from Actions): *Settings → Environments* → create `demo` (and `dev`), optionally with
-  required reviewers; environment **variables** (not secrets): `AWS_DEPLOY_ROLE_ARN`, `TF_STATE_BUCKET`, `AWS_REGION`,
+- `infra/envs/demo.tfvars`: `budget_alert_emails` (AWS Budgets alert, USD `budget_monthly_usd` = 50/month), `allowed_cidrs`, optionally `certificate_arn` (ACM, for HTTPS), `sql_instance_class`.
+- GitHub (only if deploying from Actions): *Settings → Environments* → create `demo` (and `dev`). **Required for `demo`:** under
+  *Deployment protection rules* tick *Required reviewers* and add John (decision 5, ADR 0008), so every
+  plan/apply/destroy from Actions waits for approval; environment **variables** (not secrets): `AWS_DEPLOY_ROLE_ARN`, `TF_STATE_BUCKET`, `AWS_REGION`,
   `ALLOWED_CIDRS` (e.g. `["198.51.100.7/32"]`). Repository variables `AWS_PLAN_ROLE_ARN` + `TF_STATE_BUCKET` enable the
   real-plan CI job (read-only role). No access keys are stored anywhere.
 

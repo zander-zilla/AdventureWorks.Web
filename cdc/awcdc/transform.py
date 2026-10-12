@@ -286,6 +286,9 @@ class Transformer:
             rep["refreshed"] = self.refresh(ch, now)
         return rep
 
+    def copy_attrs(self, table):
+        return _copy_attrs(self.m, table)
+
     def refresh(self, ch, now):
         img = ch.after or ch.before
         n = 0
@@ -295,10 +298,19 @@ class Transformer:
             vals = {tcol: img.get(scol) for tcol, scol in r["where"].items()}
             if any(v is None for v in vals.values()):
                 continue
+            copies = self.copy_attrs(r["refresh"])
             for row in self.rows.by_columns(r["refresh"], vals):
                 for t, item in self.items(r["refresh"], row, None, now):
-                    n += self.sink.refresh(t, item)
+                    # copied attributes whose source became NULL are absent from the new item -> REMOVE them
+                    n += self.sink.refresh(t, item, remove=[a for a in copies if a not in item])
         return n
+
+
+def _copy_attrs(mapping, table):
+    out = []
+    for sn in mapping["sources"][table].get("snapshots") or []:
+        out += [a for a in sn.get("attrs", []) if "*" not in a]
+    return out
 
 
 def tombstone(item, table, position, now, now_epoch):
@@ -326,16 +338,20 @@ class DynamoDBSink:
         except t.meta.client.exceptions.ConditionalCheckFailedException:
             return False
 
-    def refresh(self, table, item):
-        """Snapshot copy refresh: update non-key attributes in place; never resurrects tombstones, never moves src_lsn."""
+    def refresh(self, table, item, remove=()):
+        """Snapshot copy refresh: SET non-key attributes in place and REMOVE copied attributes whose source is now NULL;
+        never resurrects tombstones, never moves src_lsn."""
         t = self.r.Table(table)
         attrs = {k: v for k, v in item.items() if k not in META and k != "updated_at"}
-        if not attrs:
+        if not attrs and not remove:
             return 0
         names = {"#a%d" % i: k for i, k in enumerate(attrs)}
+        names.update({"#r%d" % i: k for i, k in enumerate(remove)})
         values = {":v%d" % i: v for i, v in enumerate(attrs.values())}
         values[":u"] = item["updated_at"]
-        expr = "SET " + ", ".join("#a%d = :v%d" % (i, i) for i in range(len(attrs))) + ", updated_at = :u"
+        expr = "SET " + ", ".join(["#a%d = :v%d" % (i, i) for i in range(len(attrs))] + ["updated_at = :u"])
+        if remove:
+            expr += " REMOVE " + ", ".join("#r%d" % i for i in range(len(remove)))
         try:
             t.update_item(Key={"PK": item["PK"], "SK": item["SK"]}, UpdateExpression=expr, ExpressionAttributeNames=names,
                           ExpressionAttributeValues=values, ConditionExpression="attribute_exists(PK) AND attribute_not_exists(deleted)")
@@ -360,11 +376,13 @@ class MemorySink:
         self.tables.setdefault(table, {})[(item["PK"], item["SK"])] = dict(item)
         return True
 
-    def refresh(self, table, item):
-        cur = self.get(table, item["PK"], item["SK"])
+    def refresh(self, table, item, remove=()):
+        cur = self.tables.get(table, {}).get((item["PK"], item["SK"]))
         if cur is None or cur.get("deleted"):
             return 0
         cur.update({k: v for k, v in item.items() if k not in META})
+        for a in remove:
+            cur.pop(a, None)
         return 1
 
 

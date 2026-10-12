@@ -163,3 +163,35 @@ def test_xml_demographics_identical_via_bulk_load_and_cdc():
     assert cdc == bulk
     person = [i for _, i in cdc if i["type"] == "Person"][0]
     assert person["demographics"] == {"total_purchase_ytd": "-3307.7544"}
+
+
+def _product(**kw):
+    p = dict(ProductID=680, Name="HL Road Frame - Black, 58", ProductNumber="FR-R92B-58", MakeFlag=True, FinishedGoodsFlag=True,
+             Color="Black", SafetyStockLevel=500, ReorderPoint=375, StandardCost=decimal.Decimal("1059.31"), ListPrice=decimal.Decimal("1431.50"),
+             Size="58", ProductSubcategoryID=14, ProductModelID=6, SellStartDate=datetime.datetime(2008, 4, 30), SellEndDate=None,
+             DiscontinuedDate=None, ModifiedDate=datetime.datetime(2014, 2, 8), subcategory_name="Road Frames", category_id=2,
+             category_name="Components", model_name="HL Road Frame", stock_qty=100, x_active="A", x_name_lower="hl road frame - black, 58")
+    p.update(kw); return p
+
+
+def test_refresh_removes_copy_when_source_becomes_null():
+    rows, sink, tr = setup(); p = _product(); rows.set("Production.Product", p)
+    tr.apply(T.Change("Production.Product", "c", lsn(1), after=p))
+    assert sink.get("aw-catalog", "PRODUCT#000680", "PRODUCT")["model_name"] == "HL Road Frame"
+    rows.set("Production.Product", _product(model_name=None))  # e.g. the model row lost its name/link
+    model = dict(ProductModelID=6, Name="HL Road Frame", ModifiedDate=datetime.datetime(2026, 1, 1))
+    rep = tr.apply(T.Change("Production.ProductModel", "u", lsn(5), before=model, after=model))
+    item = sink.get("aw-catalog", "PRODUCT#000680", "PRODUCT")
+    assert rep["refreshed"] >= 1 and "model_name" not in item and item["src_lsn"] == lsn(1)
+
+
+def test_dynamodb_sink_refresh_emits_remove():
+    calls = {}
+    class Tbl:
+        meta = type("M", (), {"client": type("C", (), {"exceptions": type("E", (), {"ConditionalCheckFailedException": KeyError})})})
+        def update_item(self, **kw):
+            calls.update(kw)
+    sink = T.DynamoDBSink(type("R", (), {"Table": lambda self, n: Tbl()})())
+    assert sink.refresh("aw-catalog", {"PK": "P", "SK": "S", "name": "x", "updated_at": "t"}, remove=["model_name"]) == 1
+    assert calls["UpdateExpression"].endswith("REMOVE #r0") and calls["ExpressionAttributeNames"]["#r0"] == "model_name"
+    assert "attribute_not_exists(deleted)" in calls["ConditionExpression"]

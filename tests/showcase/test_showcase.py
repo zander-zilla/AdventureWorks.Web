@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(ROOT, "showcase"))
 import build  # noqa: E402
 
 SHOTS = os.environ.get("SHOWCASE_SCREENSHOTS")
+LIVE = os.environ.get("SHOWCASE_LIVE") == "1"
 M = json.load(open(os.path.join(ROOT, "design", "mapping", "mapping.json")))
 AP = json.load(open(os.path.join(ROOT, "docs", "design", "access-patterns.json")))
 
@@ -21,10 +22,15 @@ AP = json.load(open(os.path.join(ROOT, "docs", "design", "access-patterns.json")
 @pytest.fixture(scope="module")
 def base(tmp_path_factory):
     out = str(tmp_path_factory.mktemp("showcase") / "dist")
-    app_url = os.environ.get("SHOWCASE_APP_URL", "stub-app.html")
-    build.build(out, app_url=app_url)
+    if os.environ.get("SHOWCASE_URL"):  # an already running scripts/showcase-up.sh (live mode)
+        yield os.environ["SHOWCASE_URL"].rstrip("/") + "/"
+        return
+    build.build(out, app_url=os.environ.get("SHOWCASE_APP_URL", "stub-app.html"),
+                before_url=os.environ.get("SHOWCASE_BEFORE_URL", "stub-before.html"))
     with open(os.path.join(out, "stub-app.html"), "w") as f:
-        f.write("<h1 id='stub'>AdventureWorks app (stub)</h1>")
+        f.write("<h1 id='stub'>AdventureWorks After app (stub)</h1>")
+    with open(os.path.join(out, "stub-before.html"), "w") as f:
+        f.write("<h1 id='stub'>AdventureWorks Before app (stub)</h1>")
     srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(SimpleHTTPRequestHandler, directory=out))
     srv.RequestHandlerClass.log_message = lambda *a: None
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -62,16 +68,26 @@ def test_presentation(page):
     tab(page, "Presentation", "1-presentation.png")
 
 
-def test_architecture(page):
-    page.get_by_role("tab", name="Architecture").click()
-    expect(page.locator("#arch .node")).to_have_count(12)
-    page.locator('#arch .node[data-id="lambda"]').click()
-    expect(page.locator("#archd")).to_contain_text("awcdc")
-    page.get_by_role("button", name="Before").click()
-    expect(page.locator("#arch .node")).to_have_count(6)
-    page.get_by_role("button", name="After (AWS)").click()
-    page.locator('#arch .node[data-id="ddb"]').click()
-    tab(page, "Architecture", "2-architecture.png")
+def test_before_architecture(page):
+    page.get_by_role("tab", name="Before Architecture").click()
+    sec = page.locator("#archbefore")
+    expect(sec.locator(".node")).to_have_count(7)
+    sec.locator('.node[data-id="ef"]').click()
+    expect(sec.locator(".archd")).to_contain_text("Entity Framework Core 2.1")
+    sec.locator('.node[data-id="dw"]').click()
+    expect(sec.locator(".archd")).to_contain_text("AdventureWorksDW2022")
+    tab(page, "Before Architecture", "2a-before-architecture.png")
+
+
+def test_after_architecture(page):
+    page.get_by_role("tab", name="After Architecture").click()
+    sec = page.locator("#archafter")
+    expect(sec.locator(".node")).to_have_count(13)
+    sec.locator('.node[data-id="cicd"]').click()
+    expect(sec.locator(".archd")).to_contain_text("OIDC")
+    sec.locator('.node[data-id="lambda"]').click()
+    expect(sec.locator(".archd")).to_contain_text("awcdc")
+    tab(page, "After Architecture", "2b-after-architecture.png")
 
 
 def test_data_mapping(page):
@@ -105,20 +121,57 @@ def test_access_patterns(page):
 def test_live_replication(page):
     page.get_by_role("tab", name="Live Replication").click()
     fr = page.frame_locator("#monitor")
-    expect(fr.locator("#rows tr.c")).to_have_count(3)
-    fr.locator("#rows tr.c").last.click()
-    expect(fr.locator("pre").nth(1)).to_contain_text("ORDER#0000075124")
-    tab(page, "Live Replication", "5-live-replication.png")
+    if LIVE:
+        expect(fr.locator("#rows tr.c").first).to_be_visible(timeout=30000)
+    else:
+        expect(fr.locator("#rows tr.c")).to_have_count(3)
+        fr.locator("#rows tr.c").last.click()
+        expect(fr.locator("pre").nth(1)).to_contain_text("ORDER#0000075124")
+    tab(page, "Live Replication", "5a-live-replication.png")
+    page.get_by_role("button", name="Side by side with the Before App").click()
+    expect(page.locator("#beforeside")).to_be_visible()
+    if SHOTS:
+        page.screenshot(path=os.path.join(SHOTS, "5b-live-replication-side-by-side.png"), full_page=True)
 
 
-def test_app(page):
-    page.get_by_role("tab", name="The App").click()
+def test_before_app(page):
+    page.get_by_role("tab", name="Before App").click()
+    expect(page.locator("#beforeframe")).to_be_visible()
+    expect(page.locator("#before")).to_contain_text("catherine0@adventure-works.com")
+    if not os.environ.get("SHOWCASE_BEFORE_URL"):
+        expect(page.frame_locator("#beforeframe").locator("#stub")).to_contain_text("Before")
+    tab(page, "Before App", "6-before-app.png")
+
+
+def test_after_app(page):
+    page.get_by_role("tab", name="After App").click()
     expect(page.locator("#appframe")).to_be_visible()
     if not os.environ.get("SHOWCASE_APP_URL"):
         expect(page.frame_locator("#appframe").locator("#stub")).to_be_visible()
     else:
         page.wait_for_timeout(2500)
-    tab(page, "The App", "6-app.png")
+    tab(page, "After App", "7-after-app.png")
+
+
+@pytest.mark.skipif(not LIVE, reason="SHOWCASE_LIVE=1 with scripts/cdc-up.sh + before app running")
+def test_write_in_before_app_shows_in_live_replication(page):
+    """Demo flow: order in the Before App frame (SQL Server) -> monitor shows it applied to DynamoDB."""
+    page.get_by_role("tab", name="Live Replication").click()
+    page.get_by_role("button", name="Side by side with the Before App").click()
+    bf = page.frame_locator("#beforeside")
+    page.locator("#beforeside").evaluate("f => f.src = new URL('/Account/Login', f.src).href")
+    bf.locator('input[name="email"]').fill("catherine0@adventure-works.com")
+    bf.locator('input[name="password"]').fill("Demo!2026")
+    bf.get_by_role("button", name="Log in").click()
+    page.locator("#beforeside").evaluate("f => f.src = new URL('/Shop', f.src).href")
+    bf.get_by_role("button", name="Order").first.click()
+    expect(bf.locator("body")).to_contain_text("SO", timeout=15000)
+    mon = page.frame_locator("#monitor")
+    expect(mon.locator("#rows tr.c", has_text="Sales.SalesOrderHeader").first).to_be_visible(timeout=60000)
+    mon.locator("#rows tr.c", has_text="Sales.SalesOrderHeader").first.click()
+    expect(mon.locator("pre").nth(1)).to_contain_text("ORDER#", timeout=10000)
+    if SHOTS:
+        page.screenshot(path=os.path.join(SHOTS, "5c-live-replication-before-app-write.png"), full_page=True)
 
 
 def test_deep_link(page, base):

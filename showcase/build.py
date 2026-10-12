@@ -20,7 +20,7 @@ DATA = {
 }
 
 
-def build(out, app_url="", monitor_api="", monitor_mode="replay"):
+def build(out, app_url="", monitor_api="", monitor_mode="replay", before_url=""):
     if os.path.isdir(out):
         shutil.rmtree(out)
     shutil.copytree(os.path.join(HERE, "site"), out)
@@ -40,7 +40,7 @@ def build(out, app_url="", monitor_api="", monitor_mode="replay"):
     with open(os.path.join(out, "data", "build.json"), "w") as f:
         json.dump({"commit": commit, "built": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}, f)
     with open(os.path.join(out, "config.json"), "w") as f:
-        json.dump({"appUrl": app_url, "monitorApi": monitor_api, "monitorMode": monitor_mode}, f, indent=1)
+        json.dump({"appUrl": app_url, "beforeUrl": before_url, "monitorApi": monitor_api, "monitorMode": monitor_mode}, f, indent=1)
     return out
 
 
@@ -48,7 +48,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=os.path.join(HERE, "dist"))
     ap.add_argument("--app-url", default=os.environ.get("SHOWCASE_APP_URL", ""))
+    ap.add_argument("--before-url", default=os.environ.get("SHOWCASE_BEFORE_URL", ""))
     ap.add_argument("--monitor-api", default="")
     ap.add_argument("--monitor-mode", choices=["replay", "live"], default="replay")
     a = ap.parse_args()
-    print("built", build(a.out, a.app_url, a.monitor_api, a.monitor_mode))
+    print("built", build(a.out, a.app_url, a.monitor_api, a.monitor_mode, a.before_url))

@@ -333,6 +333,7 @@ resource "aws_ecs_task_definition" "before" {
     portMappings = [{ containerPort = 8080, protocol = "tcp" }]
     environment = [
       { name = "ASPNETCORE_URLS", value = "http://+:8080" },
+      { name = "Showcase__FrameAncestors", value = var.frame_ancestors },
       { name = "DisableHttpsRedirection", value = "true" },
     ]
     # host/username/password come from the secret; the connection string is assembled at start (FullDb derives the

@@ -3,8 +3,8 @@
 Status: Proposed (Phase 8). Code only, nothing applied (no AWS calls).
 
 ## Context
-Phase 8 needs a site for managers, directors and prospective customers with six tabs: Presentation, Architecture,
-Data Mapping, Access Patterns, Live Replication, App. It must be static-buildable with optional live APIs, run locally from
+Phase 8 needs a site for managers, directors and prospective customers with eight tabs: Presentation, Before Architecture,
+After Architecture, Data Mapping, Access Patterns, Live Replication, Before App, After App. It must be static-buildable with optional live APIs, run locally from
 one script, be part of the Terraform deployment, and reuse what earlier phases built (mapping.json, access-patterns.json,
 the Phase 4 replication monitor, the Phase 5 app).
 
@@ -26,8 +26,8 @@ the Phase 4 replication monitor, the Phase 5 app).
      Architecture, Mapping, Access Patterns and the replay need no backend), and content updates don't need an apply.
      It's chosen.
    - *Amplify Hosting*: works, but it's a second deployment system next to Terraform/GitHub Actions.
-4. **App tab**: iframe of the app URL (`config.json` `appUrl`, set from the `after_url` output on deploy) plus an *Open in new
-   tab* link. The app gains `Showcase:FrameAncestors`: when set, it sends `Content-Security-Policy: frame-ancestors 'self' <origins>`
+4. **Before App / After App tabs**: iframes of `beforeUrl`/`appUrl` (`before_url`/`after_url` outputs on deploy) plus *Open in new
+   tab* links. Live Replication can show the Before App side by side with the monitor. Both apps gain `Showcase:FrameAncestors`: when set, it sends `Content-Security-Policy: frame-ancestors 'self' <origins>`
    instead of antiforgery's `X-Frame-Options: SAMEORIGIN` (Terraform sets it to the CloudFront origin; local compose to
    `localhost:*`). On AWS the ALB is HTTP unless `certificate_arn` is set. Then the HTTPS site can't frame it (mixed
    content), so the tab shows a link instead.

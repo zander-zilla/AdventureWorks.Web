@@ -79,15 +79,16 @@
       lanes: [['Users', 20], ['Application', 200], ['Data', 400], ['Reporting', 600]],
       nodes: [
         ['shopper', 'Shopper / staff', 'browser', 40, 60, 'u'],
-        ['oldapp', 'AdventureWorks.Web', 'ASP.NET MVC (.NET Fw) on IIS', 220, 60, 'old'],
-        ['sql', 'SQL Server', 'AdventureWorks OLTP · 68 tables', 420, 60, 'old'],
-        ['etl', 'Nightly ETL', 'SSIS-style jobs', 420, 200, 'old'],
+        ['oldapp', 'AdventureWorks.Web', 'ASP.NET Core 2.1 MVC', 220, 60, 'old'],
+        ['ef', 'EF Core 2.1', 'DbContext · LINQ → T-SQL', 220, 200, 'old'],
+        ['sql', 'SQL Server 2022', 'AdventureWorks2022 OLTP · 68 tables', 420, 60, 'old'],
+        ['etl', 'DW ETL', 'batch OLTP → DW loads', 420, 200, 'old'],
         ['dw', 'AdventureWorksDW', 'star schema on SQL Server', 620, 200, 'old'],
         ['rep', 'Reports', 'SSRS / Excel', 620, 60, 'old']],
-      edges: [['shopper', 'oldapp'], ['oldapp', 'sql'], ['sql', 'etl'], ['etl', 'dw'], ['dw', 'rep']],
+      edges: [['shopper', 'oldapp'], ['oldapp', 'ef'], ['ef', 'sql'], ['sql', 'etl'], ['etl', 'dw'], ['dw', 'rep']],
     },
     after: {
-      lanes: [['Users', 20], ['Apps (ECS Fargate + ALB)', 200], ['Change data capture', 400], ['Operational data', 600], ['Analytics', 800]],
+      lanes: [['Users & delivery', 20], ['Apps (ECS Fargate + ALB)', 200], ['Change data capture', 400], ['Operational data', 600], ['Analytics', 800]],
       nodes: [
         ['shopper', 'Shopper', 'browser', 40, 60, 'u'],
         ['showcase', 'Showcase site', 'S3 + CloudFront', 40, 230, 'new'],
@@ -100,13 +101,16 @@
         ['ddb', 'DynamoDB × 7 domain tables', tables.join(' · ').replace(/aw-/g, ''), 620, 60, 'new'],
         ['zetl', 'Zero-ETL integrations', 'one per table', 820, 60, 'dw'],
         ['rs', 'Redshift Serverless', 'stg MVs → star schema hourly', 820, 200, 'dw'],
-        ['qs', 'QuickSight', 'dashboards (optional)', 820, 330, 'dw']],
-      edges: [['shopper', 'newapp'], ['shopper', 'oldapp2'], ['newapp', 'ddb'], ['oldapp2', 'rds'], ['rds', 'dms'], ['dms', 'kin'], ['kin', 'lambda'], ['lambda', 'ddb'], ['ddb', 'zetl'], ['zetl', 'rs'], ['rs', 'qs']],
+        ['qs', 'QuickSight', 'dashboards (optional)', 820, 330, 'dw'],
+        ['cicd', 'GitHub Actions (OIDC)', 'Terraform plan/apply, images', 40, 430, 'new']],
+      edges: [['shopper', 'newapp'], ['shopper', 'oldapp2'], ['newapp', 'ddb'], ['oldapp2', 'rds'], ['rds', 'dms'], ['dms', 'kin'], ['kin', 'lambda'], ['lambda', 'ddb'], ['ddb', 'zetl'], ['zetl', 'rs'], ['rs', 'qs'], ['cicd', 'newapp']],
     },
   };
   const DETAILS = {
     shopper: ['People using the store.', ''],
-    oldapp: ['The archived Azure-Samples ASP.NET MVC app: every page is a SQL query against the normalised schema.', 'Controllers/, Views/'],
+    oldapp: ['The archived Azure-Samples ASP.NET Core 2.1 MVC app (plus the demo shop/login/order pages): every page is a query against the normalised schema.', 'Controllers/, Views/, Startup.cs'],
+    ef: ['Entity Framework Core 2.1 DbContext; joins across Product, Category, Customer, Address… at request time.', 'Models/, Demo/FullDb.cs'],
+    cicd: ['GitHub Actions: CI on every push (build, Playwright, Terraform offline tests); manual deploy via OIDC role aw-github-deploy, required reviewer on the demo environment, no AWS keys stored.', '.github/workflows, infra/bootstrap, ADR 0008'],
     sql: ['One large relational database shared by every domain: 68 business tables, ~760k rows.', 'docs/discovery/inventory.md'],
     etl: ['Batch jobs copy OLTP data into the warehouse; reports are a day behind.', 'docs/discovery/dw-lineage.md'],
     dw: ['AdventureWorksDW2022: 12 dimensions and 6 facts plus finance/survey data.', 'docs/discovery/dw-lineage.md'],
@@ -123,12 +127,11 @@
     rs: ['Typed staging materialized views generated from mapping.json; dw.sp_build_star() rebuilds the star schema hourly.', 'warehouse/, docs/design/warehouse.md'],
     qs: ['QuickSight Enterprise dashboards, only for the showcase (decision W-4).', 'infra/modules/warehouse/quicksight.tf'],
   };
-  R.architecture = () => {
-    const el = $('#architecture');
-    el.innerHTML = `<div class="row" style="align-items:center;justify-content:space-between"><h2>Architecture</h2>
-      <div class="seg" id="archseg"><button data-v="before">Before</button><button data-v="after" class="on">After (AWS)</button></div></div>
-      <div class="row"><div class="card grow" style="flex:3"><svg id="arch" viewBox="0 0 1000 540" width="100%"></svg></div>
-      <div class="card grow" id="archd" style="flex:1"><b>Click a component</b><p class="note">for what it does, why, and where it lives in the repo.</p></div></div>`;
+  const archTab = (v, title) => () => {
+    const el = $('#arch' + v);
+    el.innerHTML = `<h2>${title}</h2>
+      <div class="row"><div class="card grow" style="flex:3"><svg class="arch" viewBox="0 0 1000 540" width="100%"></svg></div>
+      <div class="card grow archd" style="flex:1"><b>Click a component</b><p class="note">for what it does, why, and where it lives in the repo.</p></div></div>`;
     const draw = v => {
       const A = ARCH[v], W = 150, H = 52, pos = {};
       A.nodes.forEach(n => pos[n[0]] = n);
@@ -142,17 +145,18 @@
           : `<path class="edge" d="M${xs},${y1} C${(xs + xe) / 2},${y1} ${(xs + xe) / 2},${y2} ${xe},${y2}"/>`;
       });
       A.nodes.forEach(([id, t, sub, x, y, c]) => s += `<g class="node ${c}" data-id="${id}" tabindex="0"><rect x="${x}" y="${y}" width="${W}" height="${H}" rx="8"/><text class="t" x="${x + 8}" y="${y + 20}">${esc(t)}</text><text x="${x + 8}" y="${y + 38}" font-size="10">${esc(sub.length > 26 ? sub.slice(0, 25) + '…' : sub)}</text></g>`);
-      $('#arch').innerHTML = s;
+      $('.arch', el).innerHTML = s;
     };
-    $('#archseg').onclick = e => { const v = e.target.dataset.v; if (!v) return; el.querySelectorAll('#archseg button').forEach(b => b.classList.toggle('on', b === e.target)); draw(v); };
-    $('#arch').addEventListener('click', e => {
+    $('.arch', el).addEventListener('click', e => {
       const g = e.target.closest('.node'); if (!g) return;
       el.querySelectorAll('.node').forEach(n => n.classList.toggle('sel', n === g));
       const id = g.dataset.id, n = [...ARCH.before.nodes, ...ARCH.after.nodes].find(x => x[0] === id), d = DETAILS[id] || ['', ''];
-      $('#archd').innerHTML = `<h3 style="margin-top:0">${esc(n[1])}</h3><div class="note">${esc(n[2])}</div><p>${esc(d[0])}</p>${d[1] ? `<p class="note">Repo: <code>${esc(d[1])}</code></p>` : ''}`;
+      $('.archd', el).innerHTML = `<h3 style="margin-top:0">${esc(n[1])}</h3><div class="note">${esc(n[2])}</div><p>${esc(d[0])}</p>${d[1] ? `<p class="note">Repo: <code>${esc(d[1])}</code></p>` : ''}`;
     });
-    draw('after');
+    draw(v);
   };
+  R.archbefore = archTab('before', 'Before: ASP.NET Core 2.1 MVC + EF Core on SQL Server, AdventureWorksDW via batch ETL');
+  R.archafter = archTab('after', 'After: AWS serverless data, .NET 10 on Fargate, CDC, zero-ETL analytics');
 
   // ---------- Data mapping ----------
   R.mapping = () => {
@@ -235,25 +239,46 @@
     draw();
   };
 
-  // ---------- Live replication (Phase 4 monitor, embedded) ----------
+  // ---------- shared: embed an app (iframe + new-tab link; link only for http apps on an https page) ----------
+  const frame = (id, url, h, startCmd) => {
+    if (!url) return `<p class="note">No URL configured. Start it locally (<code>${startCmd}</code>) and pass it to <code>scripts/showcase-up.sh</code>, or deploy to AWS (the URL is filled in from Terraform outputs).</p>`;
+    const mixed = location.protocol === 'https:' && /^http:/i.test(url); // mixed content cannot be framed
+    return mixed ? `<p>Runs at <a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>. It's served over HTTP, so it opens in a new tab (set <code>certificate_arn</code> to embed it here).</p>`
+      : `<iframe id="${id}" title="${id}" src="${esc(url)}" style="height:${h}px"></iframe>`;
+  };
+  const openLink = (id, url) => url ? `<a class="b" id="${id}" href="${esc(url)}" target="_blank" rel="noopener" style="text-decoration:none">Open in a new tab ↗</a>` : '';
+  const DEMO_LOGINS = ['catherine0@adventure-works.com', 'cory0@adventure-works.com', 'christopher1@adventure-works.com', 'donald0@adventure-works.com', 'walter0@adventure-works.com'];
+  const loginsHtml = `<p><b>Test logins</b> <span class="note">(password <code>Demo!2026</code>, seeded demo customers)</span></p><ul class="mono">${DEMO_LOGINS.map(e => `<li>${e}</li>`).join('')}</ul>`;
+
+  // ---------- Live replication (Phase 4 monitor, embedded; optionally side by side with the Before App) ----------
   R.replication = () => {
     const api = cfg.monitorApi ?? '';
     const live = cfg.monitorMode === 'live';
-    $('#replication').innerHTML = `<h2>Live replication <span class="pill ${live ? 'ddb' : ''}">${live ? 'live API' : 'recorded replay'}</span></h2>
-      <p class="note">${live ? 'Streaming from the CDC consumer API.' : 'Showing a recorded sample of the Phase 4 end-to-end test (demo order → DynamoDB). Run <code>scripts/showcase-up.sh --live</code> with the CDC stack up to stream real changes.'} Click a row to compare the SQL row with the DynamoDB items it became.</p>
-      <iframe id="monitor" title="Replication monitor" src="monitor.html?api=${encodeURIComponent(api)}" style="height:640px"></iframe>`;
+    const el = $('#replication');
+    el.innerHTML = `<div class="row" style="align-items:center;justify-content:space-between"><h2>Live replication <span class="pill ${live ? 'ddb' : ''}">${live ? 'live API' : 'recorded replay'}</span></h2>
+      <div class="seg" id="repseg"><button data-v="mon" class="on">Monitor</button><button data-v="side">Side by side with the Before App</button></div></div>
+      <p class="note">${live ? 'Streaming from the CDC consumer API.' : 'Showing a recorded sample of the Phase 4 end-to-end test (demo order → DynamoDB). Run <code>scripts/cdc-up.sh</code> and <code>scripts/showcase-up.sh --before-url http://localhost:5080 --live</code> to stream real changes.'}
+      Place an order in the Before App (SQL Server) and watch it arrive in DynamoDB. Click a row to compare the SQL row with the DynamoDB items it became.</p>
+      <div class="row" id="repbody"><div class="grow" id="repbefore" style="display:none;flex:1">${frame('beforeside', cfg.beforeUrl, 640, 'scripts/before-up.sh')}</div>
+      <div class="grow" style="flex:1"><iframe id="monitor" title="Replication monitor" src="monitor.html?api=${encodeURIComponent(api)}" style="height:640px"></iframe></div></div>`;
+    $('#repseg').onclick = e => { const v = e.target.dataset.v; if (!v) return; el.querySelectorAll('#repseg button').forEach(b => b.classList.toggle('on', b === e.target)); $('#repbefore').style.display = v === 'side' ? '' : 'none'; };
   };
 
-  // ---------- The app ----------
+  // ---------- Before App (original ASP.NET app on SQL Server) ----------
+  R.before = () => {
+    const url = cfg.beforeUrl || '';
+    $('#before').innerHTML = `<div class="row" style="align-items:center;justify-content:space-between"><h2>Before: the original app on SQL Server</h2>${openLink('beforelink', url)}</div>
+      <div class="row"><div class="card grow" style="flex:3">${frame('beforeframe', url, 640, 'scripts/before-up.sh')}</div>
+      <div class="card grow" style="flex:1"><b>Show a write</b><ol><li>Log in with a test login</li><li><i>Shop</i> → <i>Order</i> on any product</li><li>Open <a href="#replication">Live Replication</a>: the SalesOrderHeader/Detail rows arrive in <code>aw-sales</code> within ~1.5 s</li><li>See the same order in the After App's <i>My orders</i></li></ol>${loginsHtml}
+      <p class="note">ASP.NET Core 2.1 MVC + EF Core on SQL Server (port 8080 on AWS, 5080 locally). It keeps writing SQL during the side-by-side period (decision D4); CDC carries every change one way to DynamoDB.</p></div></div>`;
+  };
+
+  // ---------- After App (.NET 10 on DynamoDB) ----------
   R.app = () => {
     const url = cfg.appUrl || '';
-    // An https page cannot frame an http app (mixed content): link only until the ALB has a certificate.
-    const mixed = location.protocol === 'https:' && /^http:/i.test(url);
-    $('#app').innerHTML = `<div class="row" style="align-items:center;justify-content:space-between"><h2>The .NET 10 shopper app</h2>
-      ${url ? `<a class="b" id="applink" href="${esc(url)}" target="_blank" rel="noopener" style="text-decoration:none">Open in a new tab ↗</a>` : ''}</div>
-      <div class="row"><div class="card grow" style="flex:3">${mixed ? `<p>The app runs at <a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>. It is served over HTTP, so it opens in a new tab (set <code>certificate_arn</code> to embed it here).</p>` : url ? `<iframe id="appframe" title="AdventureWorks app" src="${esc(url)}" style="height:640px"></iframe>`
-        : `<p>No app URL configured. Start it locally (<code>scripts/after-up.sh</code>) and run <code>scripts/showcase-up.sh --app-url http://localhost:5080</code>, or deploy it to AWS (ALB URL is set automatically).</p>`}</div>
-      <div class="card grow" style="flex:1"><b>Try it</b><ol><li>Log in with the demo customer</li><li>Browse a category, search “mountain”</li><li>Add to cart, check out</li><li>Open <i>My orders</i>: read-after-write, strongly consistent</li></ol>
+    $('#app').innerHTML = `<div class="row" style="align-items:center;justify-content:space-between"><h2>After: the .NET 10 shopper app on DynamoDB</h2>${openLink('applink', url)}</div>
+      <div class="row"><div class="card grow" style="flex:3">${frame('appframe', url, 640, 'scripts/after-up.sh')}</div>
+      <div class="card grow" style="flex:1"><b>Try it</b><ol><li>Log in with the demo customer</li><li>Browse a category, search “mountain”</li><li>Add to cart, check out</li><li>Open <i>My orders</i>: read-after-write, strongly consistent</li></ol>${loginsHtml}
       <p class="note">Pages are served by DynamoDB queries (see Access Patterns CAT-*, SAL-*, CUS-*). The task role can only reach aw-catalog, aw-sales and aw-customer.</p></div></div>`;
   };
 

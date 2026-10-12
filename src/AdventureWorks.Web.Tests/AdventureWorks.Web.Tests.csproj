@@ -18,4 +18,8 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\AdventureWorks.Web\AdventureWorks.Web.csproj" />
+  </ItemGroup>
+
 </Project>

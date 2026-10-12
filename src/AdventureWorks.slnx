@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="AdventureWorks.Web.Tests/AdventureWorks.Web.Tests.csproj" />
+  <Project Path="AdventureWorks.Web/AdventureWorks.Web.csproj" />
+</Solution>

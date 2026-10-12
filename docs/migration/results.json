@@ -1,0 +1,5 @@
+{"source": "GitHub Actions run 38188847266 (job cdc-e2e), 2026-10-11",
+ "end_to_end": {"order_id": 75124, "demo_order_to_aw_sales_s": 1.5, "reset_demo_to_tombstones_s": 1.45,
+                "consumer_lag_ms": {"last": 1147, "p50": 1270, "max": 1405}, "dlq": 0},
+ "bulk_load": {"source_rows": 759240, "items": 815361, "seconds": 223.8},
+ "reconciliation": {"ok": true, "sources_matching": "68/68", "orphans": 0}}

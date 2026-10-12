@@ -41,6 +41,10 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 2026-10-12 | Phase 7 decisions accepted (John; ADR 0008 → Accepted): (1) ECS Fargate + ALB; (2) RDS SQL Server SE db.m6i.large, torn down after demos; (3) deploy role as-is, tighten after first apply; (4) DB password in encrypted state; (5) AWS Budgets alert USD 50/month (`budget_alert_emails`, `infra/live/budget.tf`) + required reviewer on the GitHub `demo` environment. |
 | 2026-10-12 | Phase 8 (proposed, ADR 0009): showcase as a static site on S3 + CloudFront (OAC), generated from mapping.json / access-patterns.json / results; Phase 4 monitor reused (replay by default); both apps embedded via `Showcase:FrameAncestors`; 8 tabs per John (before/after architecture, before/after app, Live Replication side by side with the Before App). Open for John: S-1 public access, S-2 live replication API on AWS, S-3 HTTPS ALB for the embedded app, S-4 accept ADR 0009. |
 
+## Progress note (Phase 8, 2026-10-12)
+- Done: #11 Phase 7 decisions (green). #12 showcase with 8 tabs (John's order), S3 + CloudFront module, Playwright in `showcase`, `after` (real app) and `before-stack` (live: order in the Before App frame shows up in the monitor).
+- Remaining: John's review; S-1..S-4 decisions.
+
 ## Status
 
 | Phase | Status | PR |

@@ -3,7 +3,7 @@
 Builds showcase/dist into a temp dir with a stub app page, serves it, and walks each tab.
 SHOWCASE_SCREENSHOTS=<dir> saves one full-page screenshot per tab (used for the PR); SHOWCASE_APP_URL embeds a real app.
 """
-import functools, json, os, sys, threading
+import functools, json, os, re, sys, threading
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 import pytest
@@ -167,11 +167,14 @@ def test_write_in_before_app_shows_in_live_replication(page):
     page.locator("#beforeside").evaluate("f => f.src = new URL('/Shop', f.src).href")
     expect(bf.get_by_role("button", name="Order").first).to_be_visible(timeout=15000)
     bf.get_by_role("button", name="Order").first.click()
-    expect(bf.locator("body")).to_contain_text("SO", timeout=15000)
+    placed = bf.locator("text=/Order \\d+ placed/")
+    expect(placed).to_be_visible(timeout=15000)
+    oid = re.search(r"Order (\d+) placed", placed.inner_text()).group(1)
     mon = page.frame_locator("#monitor")
-    expect(mon.locator("#rows tr.c", has_text="Sales.SalesOrderHeader").first).to_be_visible(timeout=60000)
-    mon.locator("#rows tr.c", has_text="Sales.SalesOrderHeader").first.click()
-    expect(mon.locator("pre").nth(1)).to_contain_text("ORDER#", timeout=10000)
+    row = mon.locator("#rows tr.c", has_text='"SalesOrderID":%s}' % oid).filter(has_text="insert").filter(has_text="Sales.SalesOrderHeader")
+    expect(row.first).to_be_visible(timeout=60000)  # the new order, not an older change
+    row.first.click()
+    expect(mon.locator("pre").nth(1)).to_contain_text("ORDER#%010d" % int(oid), timeout=10000)
     if SHOTS:
         page.screenshot(path=os.path.join(SHOTS, "5c-live-replication-before-app-write.png"), full_page=True)
 

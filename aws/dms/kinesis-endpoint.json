@@ -1,0 +1,13 @@
+{
+ "_comment": "Kinesis target endpoint settings (aws dms create-endpoint --endpoint-type target --engine-name kinesis --kinesis-settings file://...). ARNs filled by Terraform (phase 7).",
+ "StreamArn": "${kinesis_stream_arn}",
+ "MessageFormat": "json",
+ "ServiceAccessRoleArn": "${dms_kinesis_role_arn}",
+ "IncludeTransactionDetails": true,
+ "IncludePartitionValue": true,
+ "PartitionIncludeSchemaTable": true,
+ "IncludeTableAlterOperations": false,
+ "IncludeControlDetails": false,
+ "IncludeNullAndEmpty": true,
+ "NoHexPrefix": true
+}

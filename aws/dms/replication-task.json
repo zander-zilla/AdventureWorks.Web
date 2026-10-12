@@ -1,0 +1,11 @@
+{
+ "_comment": "Replication task (aws dms create-replication-task). Endpoints/instance ARNs filled by Terraform (phase 7).",
+ "ReplicationTaskIdentifier": "aw-oltp-to-kinesis",
+ "MigrationType": "cdc",
+ "SourceEndpointArn": "${rds_sqlserver_source_endpoint_arn}",
+ "TargetEndpointArn": "${kinesis_target_endpoint_arn}",
+ "ReplicationInstanceArn": "${dms_replication_instance_arn}",
+ "TableMappings": "file://table-mappings.json",
+ "ReplicationTaskSettings": "file://task-settings.json",
+ "CdcStartPosition": "${cdc_start_lsn_captured_before_bulk_load}"
+}

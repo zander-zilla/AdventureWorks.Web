@@ -21,6 +21,15 @@ def snake(name):
     return s.lower()
 
 
+# Meta attribute names; a SQL column that would collide (only Sales.SpecialOffer.Type) is stored as sql_<name>.
+RESERVED = {"type", "ver", "src", "src_table", "src_pk", "src_lsn", "updated_at", "deleted", "deleted_at", "ttl", "derived"}
+
+
+def attr(name):
+    a = snake(name)
+    return "sql_" + a if a in RESERVED else a
+
+
 def _iso(v):
     if isinstance(v, datetime.datetime):
         return v.replace(microsecond=0).isoformat()
@@ -125,7 +134,7 @@ def business_attrs(row, spec, src):
         else:
             v = to_ddb(v)
         if v is not None and v != {}:
-            out[snake(c)] = v
+            out[attr(c)] = v
     return out
 
 

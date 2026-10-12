@@ -43,3 +43,8 @@ CLOSE c; DEALLOCATE c;
 GO
 SELECT COUNT(*) AS cdc_tracked_tables_oltp FROM AdventureWorks2022.cdc.change_tables;
 SELECT COUNT(*) AS cdc_tracked_tables_lt FROM AdventureWorksLT2022.cdc.change_tables;
+GO
+-- CDC retention 7 days (decision P4-4, same as on RDS): cleanup job keeps 10080 minutes of change data.
+USE AdventureWorks2022;
+EXEC sys.sp_cdc_change_job @job_type = N'cleanup', @retention = 10080;
+SELECT job_type, retention FROM msdb.dbo.cdc_jobs WHERE database_id = DB_ID();

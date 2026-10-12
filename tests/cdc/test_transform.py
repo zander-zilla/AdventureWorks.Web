@@ -195,3 +195,15 @@ def test_dynamodb_sink_refresh_emits_remove():
     assert sink.refresh("aw-catalog", {"PK": "P", "SK": "S", "name": "x", "updated_at": "t"}, remove=["model_name"]) == 1
     assert calls["UpdateExpression"].endswith("REMOVE #r0") and calls["ExpressionAttributeNames"]["#r0"] == "model_name"
     assert "attribute_not_exists(deleted)" in calls["ConditionExpression"]
+
+
+def test_debezium_and_dms_images_normalise_guid_and_time_like_pymssql():
+    types = lambda t: [{"name": "rowguid", "st": "uniqueidentifier"}, {"name": "StartTime", "st": "time"}, {"name": "Flag", "st": "bit"}]
+    ev = {"payload": {"op": "u", "source": {"schema": "HumanResources", "table": "Shift", "change_lsn": "0000002e:00000a10:0003", "ts_ms": 1},
+                      "before": None, "after": {"rowguid": "D54E0552-C226-4C22-AF3B-762CA854CDD3", "StartTime": 25200000, "Flag": True}}}
+    a = T.from_debezium(ev, types).after
+    assert a["rowguid"] == "d54e0552-c226-4c22-af3b-762ca854cdd3" and a["StartTime"] == datetime.time(7, 0)
+    rec = {"metadata": {"schema-name": "HumanResources", "table-name": "Shift", "operation": "update", "timestamp": "2026-10-11T00:00:00Z"},
+           "data": {"rowguid": "D54E0552-C226-4C22-AF3B-762CA854CDD3", "StartTime": "07:00:00.0000000", "Flag": "1", "AR_H_CHANGE_SEQ": "1"}}
+    d = T.from_dms(rec, types).after
+    assert d["rowguid"] == a["rowguid"] and d["StartTime"] == datetime.time(7, 0) and d["Flag"] is True

@@ -401,6 +401,18 @@ def _from_debezium_value(v, typ):
         return base64.b64decode(v) if isinstance(v, str) else v
     if typ == "bit":
         return bool(v)
+    return _common_value(v, typ)
+
+
+def _common_value(v, typ):
+    """Make image values look like the pymssql values the bulk loader sees (image-mode tables have no SQL re-read)."""
+    if typ == "uniqueidentifier":
+        return str(v).lower()          # Debezium/DMS send upper-case GUIDs; pymssql's UUID renders lower-case
+    if typ == "time":
+        if isinstance(v, int):         # Debezium connect mode: ms since midnight
+            return (datetime.datetime(1970, 1, 1) + datetime.timedelta(milliseconds=v)).time()
+        if isinstance(v, str):         # DMS: '07:00:00.0000000'
+            return datetime.time.fromisoformat(v[:15] if "." in v else v)
     return v
 
 
@@ -445,4 +457,6 @@ def _dms_value(v, typ):
         return decimal.Decimal(str(v))
     if typ in ("varbinary", "binary", "hierarchyid", "geography", "geometry") and isinstance(v, str):
         return base64.b64decode(v)
-    return v
+    if typ == "bit" and isinstance(v, (int, str)):
+        return str(v).lower() in ("1", "true")
+    return _common_value(v, typ)

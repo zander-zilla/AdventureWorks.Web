@@ -1,4 +1,12 @@
 # AFTER app: .NET 10, chiseled (distroless-style) non-root runtime. Build context: src/
+# Chapter 2 (ADR 0010): the React SPA (src/web) is built here and served by the app under /app/.
+FROM node:22-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npm run build
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY global.json ./
@@ -6,6 +14,7 @@ COPY AdventureWorks.Web/AdventureWorks.Web.csproj AdventureWorks.Web/
 RUN dotnet restore AdventureWorks.Web/AdventureWorks.Web.csproj
 COPY AdventureWorks.Web/ AdventureWorks.Web/
 RUN dotnet publish AdventureWorks.Web/AdventureWorks.Web.csproj -c Release -o /app --no-restore /p:UseAppHost=false
+COPY --from=web /web/dist /app/wwwroot/app
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra
 WORKDIR /app

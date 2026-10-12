@@ -1,7 +1,7 @@
 name: after (.NET 10 + DynamoDB)
 on:
   push:
-    branches: [master, "phase-*"]
+    branches: [master, "phase-*", "c2-*"]
   pull_request:
   workflow_dispatch:
 jobs:
@@ -30,6 +30,11 @@ jobs:
         run: cd src && AW_DDB_IT=1 dotnet test AdventureWorks.slnx -c Release --no-build
       - name: After stack (chiseled non-root image) up
         run: SKIP_LOAD=1 PYTHON=python scripts/after-up.sh && test "$(docker inspect -f '{{.Config.User}}' aw-after-app-1)" = 1654
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Chapter 2 SPA in the real image at /app/ (real /api/v2 + DynamoDB Local, same-origin cookie login)
+        run: cd src/web && npm ci --no-audit --no-fund && npx playwright install chromium && AW_E2E_BASE=http://localhost:5090/app/ npx playwright test --reporter=line
       - name: Playwright smoke (login, browse, search, cart, checkout, history)
         run: python -m pytest -q -p no:cacheprovider tests/after
       - name: Showcase embeds the real .NET 10 app (App tab)

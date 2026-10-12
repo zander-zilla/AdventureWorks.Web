@@ -33,6 +33,7 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 2026-10-11 | Phase 2 decisions D1–D10 (docs/design/access-patterns.md): name-prefix search, logged-in carts with 7-day TTL, .NET 10 app writes DynamoDB directly (old app → SQL → CDC), native order ids above SQL's with prefix, all 7 domains incl. back office, territory/sales-person lists in Redshift, strong reads only for login/cart/read-after-checkout, 6 cultures, tombstones for deletes. |
 | 2026-10-11 | (4) CDC on all 68 AdventureWorks2022 business tables; dbo housekeeping (AWBuildVersion, DatabaseLog, ErrorLog) excluded. |
 | 2026-10-11 | Phase 4 (P4-1..5, ADR 0005 accepted): (1) AWS Lambda builds items from DMS full row images + DynamoDB lookups; SQL re-read only for 15 join tables (configurable, `cdc-enrichment.yaml`); (2) copy refreshes run inside the CDC transform; (3) refreshes REMOVE copies whose source became NULL; (4) CDC retention 7 days (RDS `sp_cdc_change_job @retention=10080`); (5) ADR 0005 accepted. |
+| 2026-10-11 | CDC enrichment without SQL (John; ADR 0005 amended): the 15 join tables are built from the event image + lookups of the already-replicated related items in DynamoDB (+ re-implemented computed columns, hierarchyid/geography); snapshot refreshes find dependents in DynamoDB; a missing referenced item is retried with backoff (4 attempts, 0.1/0.2/0.4 s) and then fails the event to the batch retry / DLQ. SQL read dependency and the RDS read-replica recommendation removed. |
 
 ## Status
 

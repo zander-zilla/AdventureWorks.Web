@@ -7,15 +7,15 @@ Event source mapping (Terraform, phase 7):
   - ParallelizationFactor = 1 (per-shard order; DMS partitions by schema.table + primary key so one row = one shard)
 Idempotency: every write is conditional on src_lsn < position (DMS AR_H_CHANGE_SEQ), so Lambda retries, Kinesis
 re-delivery and DLQ replays are safe; older events are ignored instead of overwriting newer state.
-Enrichment (design/mapping/cdc-enrichment.yaml): most tables are built from the DMS full row image (+ GetItem lookups
-in DynamoDB for copied parent attributes and re-implemented computed columns). Only the tables listed under `sql` (15)
-and snapshot refreshes re-read from an RDS read replica; set CDC_SQL_ENABLED=false to run without SQL access (those
-tables then fail into the DLQ).
+Enrichment (design/mapping/cdc-enrichment.yaml, ADR 0005): rows are built from the DMS full row image + lookups of the
+related items already replicated to DynamoDB + re-implemented computed columns. No SQL Server / RDS access at all (no
+read replica). A referenced item that has not arrived yet is retried briefly in-process (CDC_LOOKUP_ATTEMPTS, default 4,
+backoff from CDC_LOOKUP_BACKOFF_MS, default 100 ms); then the record fails and the batch is retried / sent to the DLQ.
 """
 import base64, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)  # package layout: handler.py, awcdc/, awmap.py, sqlsrc.py, mapping.json, cdc-refresh.yaml
+sys.path.insert(0, HERE)  # package layout: handler.py, awcdc/ (+ mapping.json, cdc-*.yaml), awmap.py
 sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "scripts", "loader"))
 from awcdc import transform as T  # noqa: E402
@@ -28,11 +28,7 @@ def _ctx():
         import boto3
         m = T.load_json(T.default_mapping_path())
         sink = T.DynamoDBSink(boto3.resource("dynamodb"))
-        sql = None
-        if os.environ.get("CDC_SQL_ENABLED", "true").lower() == "true":  # only sql-mode tables + snapshot refresh use it
-            import sqlsrc
-            sql = T.SqlRows(sqlsrc.connect(), m)
-        rows = T.Enricher(m, sink, sql)
+        rows = T.Enricher(m, sink)
         _state.update(rows=rows, tr=T.Transformer(rows, sink, mapping=m))
     return _state
 

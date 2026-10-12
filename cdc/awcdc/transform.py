@@ -2,9 +2,10 @@
 
 Ordering/idempotency: every item carries src_lsn (fixed-width hex position); puts are conditional on
 `attribute_not_exists(PK) OR src_lsn < :pos`, so replays and older events are ignored.
-Row shape: inserts/updates re-read the row through the mapping's source_sql (same query as the bulk loader, so CDC and
-bulk load produce identical items). Deletes and before-images are evaluated by running the same source_sql with the base
-table replaced by the event image, so joined/computed key columns are available even though the row is gone.
+Row shape (ADR 0005): the event's full row image + lookups of the related items already replicated to DynamoDB +
+re-implemented computed columns/source_sql expressions (design/mapping/cdc-enrichment.yaml), so CDC and the bulk load
+(which runs the mapping's source_sql) produce identical items without any SQL read. A referenced item that has not
+arrived yet is retried briefly with backoff, then the event fails (Lambda batch retry -> DLQ; consumer DLQ).
 """
 import base64, dataclasses, datetime, decimal, json, os, re, sys, time
 
@@ -54,113 +55,98 @@ def lsn_from_debezium(change_lsn):
     return "0x" + change_lsn.replace(":", "").lower()
 
 
-# ---------------------------------------------------------------- SQL row access
+# ---------------------------------------------------------------- SQL Server types re-implemented (no SQL access)
 
-def _base_alias(sql, table):
-    m = re.search(r"FROM\s+" + re.escape(table) + r"(?![\w.])(\s+(?:AS\s+)?(?!JOIN|LEFT|WHERE|INNER)(\w+))?", sql, re.I)
-    return m
-
-
-class SqlRows:
-    """Reads rows exactly like the bulk loader (awmap source_sql). conn: DB-API connection returning dict rows (pymssql as_dict)."""
-
-    def __init__(self, conn, mapping):
-        self.conn, self.m = conn, mapping
-        self._types = {}
-
-    def query(self, table):
-        src = self.m["sources"][table]
-        return src.get("source_sql") or "SELECT * FROM %s" % table
-
-    def pk(self, table):
-        return self.m["sources"][table]["primary_key"]
-
-    def _run(self, sql, params):
-        cur = self.conn.cursor(); cur.execute(sql, tuple(params)); return cur.fetchall()
-
-    def by_columns(self, table, values):
-        """Current rows of `table` (source_sql output) where output columns equal values."""
-        conds, params = [], []
-        for c, v in values.items():
-            if isinstance(v, (bytes, bytearray)):  # binary keys (hierarchyid DocumentNode): inline literal, compare as varbinary
-                conds.append("CAST(q.[%s] AS varbinary(892)) = %s" % (c, "0x" + bytes(v).hex() if v else "0x"))
-            else:
-                conds.append("q.[%s] = %%s" % c); params.append(v)
-        return self._run("SELECT * FROM (%s) q WHERE %s" % (self.query(table), " AND ".join(conds)), params)
-
-    def current(self, table, image):
-        rows = self.by_columns(table, {c: image[c] for c in self.pk(table)})
-        return rows[0] if rows else None
-
-    def column_types(self, table):
-        if table not in self._types:
-            s, t = table.split(".")
-            rows = self._run("""SELECT c.name, TYPE_NAME(c.user_type_id) AS t, COALESCE(TYPE_NAME(c.system_type_id), TYPE_NAME(c.user_type_id)) AS st,
-                                       c.max_length, c.precision, c.scale, c.is_computed, cc.definition
-                                FROM sys.columns c LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id
-                                WHERE c.object_id = OBJECT_ID(%s) ORDER BY c.column_id""", [s + "." + t])
-            self._types[table] = rows
-        return self._types[table]
-
-    def from_image(self, table, image):
-        """Run source_sql with the base table replaced by the image (for deletes / before images)."""
-        cols, params, computed = [], [], []
-        for c in self.column_types(table):
-            n, st = c["name"], c["st"]
-            if c["is_computed"]:  # CDC does not capture computed columns: recompute from the definition
-                computed.append("%s AS [%s]" % (c["definition"], n)); continue
-            v = image.get(n)
-            if isinstance(v, str) and st in ("hierarchyid", "geography", "geometry") and not v.startswith("/"):
-                v = v.encode("latin-1")  # raw CLR bytes delivered as a string by some drivers
-            if isinstance(v, (bytes, bytearray)) or (v is None and st in ("hierarchyid", "geography", "geometry")):
-                lit = "NULL" if v is None else ("hierarchyid::GetRoot()" if st == "hierarchyid" and not v else "0x" + bytes(v).hex())
-                cols.append("CAST(%s AS %s) AS [%s]" % (lit, _sql_type(c), n))
-            else:
-                cols.append("CAST(%%s AS %s) AS [%s]" % (_sql_type(c), n)); params.append(v)
-        derived = "(SELECT %s)" % ", ".join(cols)
-        if computed:
-            derived = "(SELECT z.*, %s FROM %s z)" % (", ".join(computed), derived)
-        sql = self.query(table)
-        m = _base_alias(sql, table)
-        if m is None:
-            raise ValueError("cannot find base table in source_sql of " + table)
-        alias = m.group(2) or table.split(".")[1]
-        sql = sql[:m.start()] + "FROM %s AS %s" % (derived, alias) + sql[m.end():]
-        # parent rows may be gone too (cascading delete in the same transaction): keep the row with LEFT JOINs
-        sql_left = re.sub(r"(?<!LEFT )(?<!OUTER )\bJOIN\b", "LEFT JOIN", sql)
-        rows = self._run(sql_left, params)
-        return rows[0] if rows else dict(image)
+_HID = [("000100", "..............0.....................0......0...0.1...", -281479271682120),
+        ("000101", "...................0......0...0.1...", -4294971464), ("000110", ".....0...0.1...", -4168),
+        ("0010", "..0.1...", -72), ("00111", "...", -8), ("01", "..", 0), ("100", "..", 4), ("101", "...", 8),
+        ("110", "..0.1...", 16), ("1110", "...0...0.1...", 80), ("11110", ".....0...0.1...", 1104),
+        ("111110", "...................0......0...0.1...", 5200),
+        ("111111", "..............0.....................0......0...0.1...", 4294972496)]
 
 
-def _sql_type(c):
-    st = c["st"]
-    if st in ("nvarchar", "varchar", "nchar", "char", "varbinary", "binary"):
-        n = c["max_length"]
-        if n == -1:
-            return st + "(max)"
-        return "%s(%d)" % (st, n // 2 if st.startswith("n") else n)
-    if st in ("decimal", "numeric"):
-        return "%s(%d,%d)" % (st, c["precision"], c["scale"])
-    if st in ("datetime2", "datetimeoffset", "time"):
-        return "%s(%d)" % (st, c["scale"])
-    return st
+def hid_levels(b):
+    """hierarchyid binary (MS-SSCLRT 2.1.11 L/O/F triples) -> [[int, ...], ...] one list per level (dotted parts)."""
+    bits = "".join(format(x, "08b") for x in bytes(b)).rstrip("0")
+    i, out, cur = 0, [], []
+    while i < len(bits):
+        for pre, fmt, lo in _HID:
+            if bits.startswith(pre, i):
+                break
+        else:
+            raise ValueError("invalid hierarchyid 0x" + bytes(b).hex())
+        i += len(pre); payload = ""
+        for f in fmt:
+            if f == ".":
+                payload += bits[i]
+            i += 1
+        v = lo + int(payload, 2); last = bits[i] == "1"; i += 1
+        cur.append(v if last else v - 1)  # F=0: followed by a dot, value stored +1
+        if last:
+            out.append(cur); cur = []
+    return out
 
 
-# ---------------------------------------------------------------- enrichment (image / lookup / sql)
+def _hid_bytes(v):
+    if isinstance(v, str) and not v.startswith("/"):
+        v = v.encode("latin-1")
+    return v
 
-def load_enrichment(path=None):
-    import yaml
-    for p in (path, os.path.join(ROOT, "design", "mapping", "cdc-enrichment.yaml"), os.path.join(HERE, "cdc-enrichment.yaml")):
-        if p and os.path.exists(p):
-            return yaml.safe_load(open(p))
-    return {"lookup": {}, "sql": []}
+
+def hid_to_string(v):
+    """hierarchyid.ToString(); NULL -> None. Strings already in '/1/2/' form pass through."""
+    v = _hid_bytes(v)
+    if v is None or isinstance(v, str):
+        return v
+    return "/" + "".join(".".join(map(str, lv)) + "/" for lv in hid_levels(v))
+
+
+def hid_level(v):
+    v = _hid_bytes(v)
+    if v is None:
+        return None
+    return v.strip("/").count("/") + 1 if isinstance(v, str) and v != "/" else (0 if isinstance(v, str) else len(hid_levels(v)))
+
+
+def geo_point(v):
+    """geography point -> (lat, long), like SpatialLocation.Lat/.Long (NULL for non-points).
+    Accepts SQL Server CLR bytes (SRID, version, flags, lat, long), Debezium's {wkb, srid} struct, OGC WKB or WKT."""
+    import struct
+    if v is None:
+        return None, None
+    if isinstance(v, dict):
+        v = v.get("wkb")
+        v = base64.b64decode(v) if isinstance(v, str) else v
+    if isinstance(v, str):
+        m = re.match(r"\s*POINT\s*\(\s*([-0-9.eE]+)\s+([-0-9.eE]+)", v)
+        return (float(m.group(2)), float(m.group(1))) if m else (None, None)
+    v = bytes(v)
+    if len(v) >= 21 and v[0] in (0, 1) and struct.unpack("<I" if v[0] else ">I", v[1:5])[0] & 0xFF == 1:  # WKB point (x=long, y=lat)
+        x, y = struct.unpack("<dd" if v[0] else ">dd", v[5:21]); return y, x
+    if len(v) >= 22 and v[5] & 0x08:  # CLR serialisation, single point
+        return struct.unpack("<dd", v[6:22])
+    return None, None
+
+
+def _full_name(first, last):
+    return first + " " + last if first is not None and last is not None else None
+
+
+def _right(v, n, pad="0"):
+    return None if v is None else (pad * n + str(v))[-n:]
 
 
 def _q(v, places):
     return decimal.Decimal(v).quantize(decimal.Decimal(places)) if v is not None else None
 
 
-# SQL Server computed columns (CDC/DMS images never include them), re-implemented with the same types/scale.
+def _sum_money(r):
+    vals = [r.get(c) for c in ("SubTotal", "TaxAmt", "Freight")]
+    return _q(sum(vals), "0.0001") if all(v is not None for v in vals) else decimal.Decimal("0.0000")
+
+
+# SQL Server computed columns and source_sql expressions (CDC/DMS images never carry them), same types/scale/NULL rules.
+# Functions run after the lookups, so they can use copied parent attributes (x_ columns are never stored).
 COMPUTED = {
     "sod_line_total": lambda r: _q((r["UnitPrice"] * (decimal.Decimal("1.0") - r["UnitPriceDiscount"]) * r["OrderQty"]) if r["UnitPrice"] is not None else 0, "0.000001"),
     "pod_line_total": lambda r: _q((r["OrderQty"] * r["UnitPrice"]) if r["UnitPrice"] is not None else 0, "0.0001"),
@@ -168,67 +154,163 @@ COMPUTED = {
     "wo_stocked_qty": lambda r: (r["OrderQty"] - r["ScrappedQty"]) if r["OrderQty"] is not None else 0,
     "email_lower": lambda r: r["EmailAddress"].strip().lower() if r.get("EmailAddress") is not None else None,
     "card_last4": lambda r: r["CardNumber"][-4:] if r.get("CardNumber") is not None else None,
+    "total_due": _sum_money,                                                         # SOH / POH TotalDue
+    "so_number": lambda r: "SO%d" % r["SalesOrderID"],                               # SOH SalesOrderNumber
+    "aw_account_number": lambda r: "AW" + _right(r["CustomerID"], 8),                # Customer AccountNumber (ufnLeadingZeros)
+    "product_active": lambda r: "A" if r.get("SellEndDate") is None and r.get("DiscontinuedDate") is None else "X",
+    "name_lower": lambda r: r["Name"].strip(" ").lower() if r.get("Name") is not None else None,
+    "document_path": lambda r: hid_to_string(r.get("DocumentNode")),
+    "document_level": lambda r: hid_level(r.get("DocumentNode")),
+    # Employee: ISNULL(OrganizationNode.ToString(), '/'); a refresh rebuilds from the item (node omitted) -> keep org_path
+    "org_path": lambda r: hid_to_string(r["OrganizationNode"]) if r.get("OrganizationNode") is not None else (r.get("org_path") or "/"),
+    "org_level": lambda r: hid_level(r["OrganizationNode"]) if r.get("OrganizationNode") is not None else r.get("OrganizationLevel"),
+    "bom_assembly": lambda r: "ROOT" if r.get("ProductAssemblyID") is None else _right(r["ProductAssemblyID"], 6),
+    "customer_owner": lambda r: _right(r["PersonID"] if r.get("PersonID") is not None else r.get("StoreID"), 6),
+    "person_name": lambda r: _full_name(r.get("x_first_name"), r.get("x_last_name")),
+    "customer_display_name": lambda r: _full_name(r.get("x_first_name"), r.get("x_last_name")) or r.get("store_name"),
+    "customer_sort_name": lambda r: (r["x_last_name"] + ", " + r["x_first_name"] if r.get("x_first_name") is not None and r.get("x_last_name") is not None
+                                     else r.get("store_name") or "").upper() or None,
+    "latitude": lambda r: geo_point(r.get("SpatialLocation"))[0],
+    "longitude": lambda r: geo_point(r.get("SpatialLocation"))[1],
 }
 
 
-class Enricher:
-    """Builds the mapping row for a change: from the image, image + DynamoDB lookups, or a SQL re-read
-    (design/mapping/cdc-enrichment.yaml). sql_rows: SqlRows or None. lookup: object with get(table, pk, sk)."""
+# ---------------------------------------------------------------- enrichment (image / lookup in DynamoDB)
 
-    def __init__(self, mapping, lookup, sql_rows=None, config=None, force=None):
-        self.m, self.lookup, self.sql = mapping, lookup, sql_rows
+def load_enrichment(path=None):
+    import yaml
+    for p in (path, os.path.join(ROOT, "design", "mapping", "cdc-enrichment.yaml"), os.path.join(HERE, "cdc-enrichment.yaml")):
+        if p and os.path.exists(p):
+            return yaml.safe_load(open(p))
+    return {"lookup": {}}
+
+
+class MissingParent(LookupError):
+    """A referenced item is not (yet) in DynamoDB after the bounded retry: the event fails (Lambda: partial batch failure ->
+    Kinesis retry -> DLQ; local consumer: retried in order, then parked in its DLQ state)."""
+
+
+def _template_cols(*templates):
+    return [m.group(1) for t in templates if t for m in awmap._FIELD.finditer(str(t))]
+
+
+class Enricher:
+    """Builds the mapping row for a change from the event's full row image plus GetItem/Query lookups of the related items
+    already replicated to DynamoDB, plus re-implemented computed columns (design/mapping/cdc-enrichment.yaml).
+    No SQL access. lookup: sink with get(table, pk, sk) and query(table, pk, index=, sk=, sk_begins=).
+    A referenced item that has not arrived yet is retried `attempts` times with exponential backoff, then MissingParent."""
+
+    def __init__(self, mapping, lookup, config=None, attempts=None, backoff_ms=None, sleep=time.sleep):
+        self.m, self.lookup = mapping, lookup
         self.cfg = config if config is not None else load_enrichment()
-        self.force = force if force is not None else os.environ.get("CDC_ENRICHMENT")
-        self.stats = {"image": 0, "lookup": 0, "sql": 0}
+        self.attempts = int(attempts if attempts is not None else os.environ.get("CDC_LOOKUP_ATTEMPTS", "4"))
+        self.backoff_ms = float(backoff_ms if backoff_ms is not None else os.environ.get("CDC_LOOKUP_BACKOFF_MS", "100"))
+        self.sleep = sleep
+        self.stats = {"image": 0, "lookup": 0, "retries": 0, "missing": 0}
 
     def mode(self, table):
-        if self.force:
-            return self.force
-        if table in (self.cfg.get("lookup") or {}):
-            return "lookup"
-        if table in (self.cfg.get("sql") or []) or self.m["sources"][table].get("source_sql"):
-            return "sql"
-        return "image"
+        return "lookup" if table in (self.cfg.get("lookup") or {}) else "image"
 
     def column_types(self, table):
-        """Types for event normalisation: from SQL if connected, else from mapping.json (no SQL needed)."""
-        if self.sql:
-            return self.sql.column_types(table)
+        """Types for event normalisation, from mapping.json (no SQL needed)."""
         return [{"name": c["column"], "st": c["sql_type"]} for c in self.m["sources"][table].get("columns", [])]
 
-    def by_columns(self, table, values):
-        if not self.sql:
-            raise RuntimeError("snapshot refresh needs SQL read access (%s)" % table)
-        return self.sql.by_columns(table, values)
-
     def current(self, table, image):
-        mode = self.mode(table); self.stats[mode] += 1
-        if mode == "sql":
-            return self.sql.current(table, image) if self.sql else None
-        return self._build(table, image, mode)
+        """Row for an insert/update image: every referenced item must exist (bounded retry, then MissingParent)."""
+        self.stats[self.mode(table)] += 1
+        return self._build(table, image, strict=True)
 
     def from_image(self, table, image):
-        if self.mode(table) == "sql":
-            return self.sql.from_image(table, image) if self.sql else dict(image)
-        return self._build(table, image, self.mode(table))
+        """Row for a delete / before image: only the keys matter, so missing parents just leave copies empty."""
+        return self._build(table, image, strict=False)
 
-    def _build(self, table, image, mode):
+    def rebuild(self, table, image):
+        """Row for a snapshot refresh (no retry: the dependent is skipped if one of its other parents is missing)."""
+        return self._build(table, image, strict=True, attempts=1)
+
+    def _build(self, table, image, strict, attempts=None):
         row = dict(image)
-        if mode == "image":
+        spec = (self.cfg.get("lookup") or {}).get(table)
+        if not spec:
             return row
-        spec = self.cfg["lookup"][table]
+        for lk in spec.get("lookups") or []:
+            self._lookup(table, lk, row, strict, attempts or self.attempts)
         for col, fn in (spec.get("computed") or {}).items():
             row[col] = COMPUTED[fn](row)
-        for lk in spec.get("lookups") or []:
-            item = self.lookup.get(lk["table"], awmap.render(lk["PK"], row), awmap.render(lk["SK"], row))
-            if item is None:
-                if self.sql:  # parent copy not there (yet): fall back to the join
-                    self.stats["sql"] += 1
-                    return self.sql.current(table, image) or self.sql.from_image(table, image)
-                raise LookupError("%s: parent %s %s/%s not found" % (table, lk["table"], lk["PK"], lk["SK"]))
-            for col, attr in lk["attrs"].items():
-                row[col] = item.get(attr)
         return row
+
+    def _fetch(self, lk, row):
+        pk = awmap.render(lk["PK"], row)
+        if lk.get("index"):
+            sk = awmap.render(lk["SK"], row) if lk.get("SK") else None
+            items = self.lookup.query(lk["table"], pk, index=lk["index"], sk=sk)
+            return items[0] if items else None
+        return self.lookup.get(lk["table"], pk, awmap.render(lk["SK"], row))
+
+    def _lookup(self, table, lk, row, strict, attempts):
+        if "sum" in lk:  # aggregate over child items (absent children -> 0, like ISNULL(SUM(..),0))
+            items = self.lookup.query(lk["table"], awmap.render(lk["PK"], row), sk_begins=awmap.render(lk["SK_begins"], row))
+            row[lk["sum"]["col"]] = sum(int(i.get(lk["sum"]["attr"]) or 0) for i in items)
+            return
+        if any(row.get(c) is None for c in _template_cols(lk.get("PK"), lk.get("SK"))):
+            # NULL foreign key (LEFT JOIN in the bulk load's source_sql): nothing to copy
+            for col in (lk.get("attrs") or {}):
+                row[col] = None
+            if "exists" in lk:
+                row[lk["exists"]] = 0
+            return
+        if "exists" in lk:  # EXISTS flag (e.g. x_is_vendor); tombstones count, so deletes still find the copy to tombstone
+            pk, sk = awmap.render(lk["PK"], row), awmap.render(lk["SK"], row)
+            row[lk["exists"]] = 1 if self.lookup.get(lk["table"], pk, sk, include_deleted=True) is not None else 0
+            return
+        item = None
+        tries = attempts if strict else 1
+        for attempt in range(tries):
+            item = self._fetch(lk, row)
+            if item is not None:
+                break
+            if attempt + 1 < tries:
+                self.stats["retries"] += 1
+                self.sleep(self.backoff_ms * (2 ** attempt) / 1000.0)
+        if item is None:
+            if strict:
+                self.stats["missing"] += 1
+                raise MissingParent("%s: referenced item %s %s/%s not in DynamoDB yet" % (
+                    table, lk["table"], awmap.render(lk["PK"], row), awmap.render(lk["SK"], row) if lk.get("SK") else "*"))
+            item = {}
+        for col, attr in (lk.get("attrs") or {}).items():
+            row[col] = item.get(attr)
+
+
+_TO_INT = {"int", "smallint", "tinyint", "bigint"}
+
+
+def image_from_item(mapping, table, item):
+    """Inverse of awmap.business_attrs for a snapshot refresh: the dependent's own replicated item -> event-like image
+    (base columns with SQL-ish Python types; derived attributes kept so refresh can fall back to them)."""
+    src = mapping["sources"][table]
+    row = {}
+    for c in src.get("columns", []):
+        v = item.get(awmap.attr(c["column"]))
+        st = c["sql_type"]
+        if v is not None:
+            if st in _TO_INT or (st in ("bit",) and not isinstance(v, bool)):
+                v = int(v) if st != "bit" else bool(v)
+            elif st in ("float", "real"):
+                v = float(v)
+            elif st in ("datetime", "datetime2", "smalldatetime") and isinstance(v, str):
+                v = datetime.datetime.fromisoformat(v)
+            elif st == "date" and isinstance(v, str):
+                v = datetime.date.fromisoformat(v[:10])
+            elif st == "time" and isinstance(v, str):
+                v = datetime.time.fromisoformat(v)
+            elif st in ("varbinary", "binary", "image", "timestamp") and not isinstance(v, (bytes, bytearray)):
+                v = bytes(v.value if hasattr(v, "value") else v)
+        row[c["column"]] = v
+    for d in src.get("derived_attributes") or []:
+        if d in item:
+            row.setdefault(d, item[d])
+    return row
 
 
 # ---------------------------------------------------------------- transform
@@ -290,20 +372,50 @@ class Transformer:
         return _copy_attrs(self.m, table)
 
     def refresh(self, ch, now):
+        """Snapshot-copy refresh (design/mapping/cdc-refresh.yaml): find the dependent items in DynamoDB, rebuild their rows
+        from the items themselves + lookups (the changed parent is already written), update copies in place."""
         img = ch.after or ch.before
         n = 0
         for r in self.rules:
             if r["changed"] != ch.table:
                 continue
-            vals = {tcol: img.get(scol) for tcol, scol in r["where"].items()}
-            if any(v is None for v in vals.values()):
-                continue
             copies = self.copy_attrs(r["refresh"])
-            for row in self.rows.by_columns(r["refresh"], vals):
+            seen = set()
+            for dep in self.find(r, img):
+                if dep.get("src_table") != r["refresh"] or dep.get("deleted") or dep.get("derived") or dep["src_pk"] in seen:
+                    continue
+                seen.add(dep["src_pk"])
+                try:
+                    row = self.rows.rebuild(r["refresh"], image_from_item(self.m, r["refresh"], dep))
+                except MissingParent:
+                    continue
                 for t, item in self.items(r["refresh"], row, None, now):
                     # copied attributes whose source became NULL are absent from the new item -> REMOVE them
                     n += self.sink.refresh(t, item, remove=[a for a in copies if a not in item])
         return n
+
+    def find(self, rule, img):
+        """Dependent items for a refresh rule: a chain of Query/GetItem steps (each step's templates use the previous
+        step's item, the first uses the changed row's image) or a filtered Scan for rare, unindexed parents."""
+        level = [img]
+        for i, st in enumerate(rule["find"]):
+            nxt = []
+            for ctx in level:
+                if "scan" in st:
+                    if any(ctx.get(c) is None for c in (st.get("match") or {}).values()):
+                        continue
+                    nxt += self.sink.scan(st["table"], dict(st["scan"], **{a: ctx[c] for a, c in (st.get("match") or {}).items()}))
+                    continue
+                try:
+                    pk = awmap.render(st["PK"], ctx)
+                    if st.get("SK") and not st.get("index"):
+                        it = self.sink.get(st["table"], pk, awmap.render(st["SK"], ctx)); nxt += [it] if it else []
+                    else:
+                        nxt += self.sink.query(st["table"], pk, index=st.get("index"), sk_begins=awmap.render(st["SK_begins"], ctx) if st.get("SK_begins") else None)
+                except KeyError:
+                    continue
+            level = nxt
+        return level
 
 
 def _copy_attrs(mapping, table):
@@ -325,10 +437,47 @@ class DynamoDBSink:
     def __init__(self, resource):
         self.r = resource
 
-    def get(self, table, pk, sk):
-        """Lookup for enrichment (eventually consistent); tombstones count as missing."""
-        it = self.r.Table(table).get_item(Key={"PK": pk, "SK": sk}).get("Item")
-        return None if it is None or it.get("deleted") else it
+    def get(self, table, pk, sk, include_deleted=False):
+        """Lookup for enrichment (strongly consistent: the parent may have been written a moment ago); tombstones count
+        as missing unless include_deleted."""
+        it = self.r.Table(table).get_item(Key={"PK": pk, "SK": sk}, ConsistentRead=True).get("Item")
+        return None if it is None or (it.get("deleted") and not include_deleted) else it
+
+    def query(self, table, pk, index=None, sk=None, sk_begins=None):
+        """Live items under a partition (base table or GSI1/GSI2, eventually consistent), optionally by SK / SK prefix."""
+        from boto3.dynamodb.conditions import Key
+        kp, ks = (index + "PK", index + "SK") if index else ("PK", "SK")
+        cond = Key(kp).eq(pk)
+        if sk is not None:
+            cond = cond & Key(ks).eq(sk)
+        elif sk_begins:
+            cond = cond & Key(ks).begins_with(sk_begins)
+        kw = {"KeyConditionExpression": cond}
+        if index:
+            kw["IndexName"] = index
+        else:
+            kw["ConsistentRead"] = True
+        out, t = [], self.r.Table(table)
+        while True:
+            r = t.query(**kw)
+            out += [i for i in r["Items"] if not i.get("deleted")]
+            if "LastEvaluatedKey" not in r:
+                return out
+            kw["ExclusiveStartKey"] = r["LastEvaluatedKey"]
+
+    def scan(self, table, equals):
+        """Filtered scan (only for rare refreshes of unindexed parents, e.g. a territory rename)."""
+        from boto3.dynamodb.conditions import Attr
+        cond = None
+        for k, v in equals.items():
+            c = Attr(k).eq(v); cond = c if cond is None else cond & c
+        out, t, kw = [], self.r.Table(table), {"FilterExpression": cond}
+        while True:
+            r = t.scan(**kw)
+            out += [i for i in r["Items"] if not i.get("deleted")]
+            if "LastEvaluatedKey" not in r:
+                return out
+            kw["ExclusiveStartKey"] = r["LastEvaluatedKey"]
 
     def put(self, table, item, position):
         t = self.r.Table(table)
@@ -366,11 +515,24 @@ class MemorySink:
     def __init__(self):
         self.tables = {}
 
-    def get(self, table, pk, sk):
+    def get(self, table, pk, sk, include_deleted=False):
+        it = self.tables.get(table, {}).get((pk, sk))
+        return None if it is None or (it.get("deleted") and not include_deleted) else it
+
+    def raw(self, table, pk, sk):
         return self.tables.get(table, {}).get((pk, sk))
 
+    def query(self, table, pk, index=None, sk=None, sk_begins=None):
+        kp, ks = (index + "PK", index + "SK") if index else ("PK", "SK")
+        out = [i for i in self.tables.get(table, {}).values() if not i.get("deleted") and i.get(kp) == pk
+               and (sk is None or i.get(ks) == sk) and (not sk_begins or str(i.get(ks, "")).startswith(sk_begins))]
+        return sorted(out, key=lambda i: str(i.get(ks)))
+
+    def scan(self, table, equals):
+        return [i for i in self.tables.get(table, {}).values() if not i.get("deleted") and all(i.get(k) == v for k, v in equals.items())]
+
     def put(self, table, item, position):
-        cur = self.get(table, item["PK"], item["SK"])
+        cur = self.raw(table, item["PK"], item["SK"])
         if cur is not None and not cur.get("src_lsn", "") < position:
             return False
         self.tables.setdefault(table, {})[(item["PK"], item["SK"])] = dict(item)

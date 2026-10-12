@@ -1,6 +1,6 @@
 # Chapter 2 – Extend and modernize (plan, for John's sign-off)
 
-Status: **Proposed** (2026-10-12). Docs only; nothing built or applied. Depends on PR #15
+Status: **Proposed** (2026-10-12). Docs only; nothing built or applied. Builds on PR #15 (merged)
 ([docs/business-processes/](../business-processes/README.md)), which is the evidence base for every feature below.
 
 Chapter 1 ("Migration", phases 0-8) is done and frozen at tag **`v1.0-migration`** (`45b8584`, GitHub release):

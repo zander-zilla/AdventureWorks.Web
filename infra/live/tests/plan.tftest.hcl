@@ -15,6 +15,9 @@ mock_provider "aws" {
   mock_data "aws_iam_policy_document" {
     defaults = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
   }
+  mock_resource "aws_cloudfront_function" { # C2-1 showcase paths function (distribution validates the ARN)
+    defaults = { arn = "arn:aws:cloudfront::123456789012:function/aw-ci-showcase-paths" }
+  }
 }
 mock_provider "random" {}
 

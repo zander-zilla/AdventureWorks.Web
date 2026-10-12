@@ -29,7 +29,7 @@ jobs:
         run: python -m pytest -q -p no:cacheprovider tests/cdc/test_monitor_api.py tests/cdc/test_lambda.py
       - name: static build (no AWS, no app/CDC stack) - Chapter 2 at /, Chapter 1 at /c1/
         run: |
-          (cd src/web && npm ci --no-audit --no-fund && npm run build:showcase)
+          (cd src/web && npm ci --no-audit --no-fund && npm run build:showcase && npx playwright install chromium)
           python showcase/build.py && bash -n scripts/showcase-up.sh scripts/aws/push-showcase.sh scripts/showcase-lighthouse.sh
       - name: Playwright - Chapter 1 every tab (stub app, recorded replication replay)
         run: SHOWCASE_SCREENSHOTS=screenshots python -m pytest -q -p no:cacheprovider tests/showcase

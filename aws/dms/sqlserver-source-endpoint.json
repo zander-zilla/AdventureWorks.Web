@@ -8,5 +8,13 @@
   "QuerySingleAlwaysOnNode": false,
   "TlogAccessMode": "PreferTlog",
   "UseThirdPartyBackupDevice": false
+ },
+ "_cdc_setup": {
+  "enable_db": "EXEC msdb.dbo.rds_cdc_enable_db 'AdventureWorks2022';",
+  "enable_tables": "per table: EXEC sys.sp_cdc_enable_table @source_schema, @source_name, @role_name = NULL, @supports_net_changes = 1 (same loop as docker/before/sql/02-enable-cdc.sql)",
+  "retention_7_days": "EXEC sys.sp_cdc_change_job @job_type = N'cleanup', @retention = 10080;  -- minutes (7 days); then sp_cdc_stop_job/sp_cdc_start_job N'cleanup'",
+  "capture_polling": "EXEC sys.sp_cdc_change_job @job_type = N'capture', @pollinginterval = 1;",
+  "dms_requirement": "DMS reads the CDC tables/transaction log; keep retention >= the longest expected DMS/Lambda outage. 7 days (decision P4-4).",
+  "terraform_hook_phase7": "null_resource/sqlcmd (or a one-shot Lambda) after aws_db_instance creation runs enable_db, enable_tables, retention_7_days; DMS task depends_on it."
  }
 }

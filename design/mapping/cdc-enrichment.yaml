@@ -1,0 +1,56 @@
+# How the CDC transform turns a change event's row image into the row the mapping expects (Phase 4b).
+# mode image : the event's full row image is the row (tables without source_sql and without computed columns; the default).
+# mode lookup: image + copies read from DynamoDB items (GetItem; key templates use image columns) + computed columns
+#              re-implemented here (SQL Server CDC / DMS images never carry computed columns).
+# mode sql   : re-read through the mapping's source_sql by primary key (needs SQL read access; on AWS an RDS read replica).
+#              Only for tables whose extra columns need real joins (many-way joins, EXISTS flags, hierarchyid paths, XML).
+# Override for all tables with env CDC_ENRICHMENT=sql (e.g. no DynamoDB parents yet) or per table here.
+# Tables with source_sql or computed columns that are not listed default to `sql` (safe); tests assert the lists below.
+lookup:
+  Production.ProductSubcategory:
+    lookups: [{table: aw-catalog, PK: "CATALOG", SK: "CAT#{ProductCategoryID:04d}", attrs: {category_name: name}}]
+  Production.ProductModelProductDescriptionCulture:
+    lookups: [{table: aw-catalog, PK: "DESCRIPTION#{ProductDescriptionID:05d}", SK: "DESCRIPTION", attrs: {description: description}}]
+  Production.ProductProductPhoto:
+    lookups: [{table: aw-catalog, PK: "PHOTO#{ProductPhotoID:04d}", SK: "PHOTO", attrs: {thumbnail_file_name: thumbnail_photo_file_name}}]
+  Sales.SpecialOfferProduct:
+    lookups: [{table: aw-catalog, PK: "OFFER#{SpecialOfferID:03d}", SK: "OFFER",
+               attrs: {offer_description: description, discount_pct: discount_pct, offer_type: type, offer_category: category,
+                       offer_start: start_date, offer_end: end_date, min_qty: min_qty, max_qty: max_qty}}]
+  Production.ProductInventory:
+    lookups: [{table: aw-inventory, PK: "LOCATION", SK: "{LocationID:03d}", attrs: {location_name: name}}]
+  Sales.SalesOrderDetail:
+    computed: {LineTotal: sod_line_total}
+    lookups: [{table: aw-catalog, PK: "PRODUCT#{ProductID:06d}", SK: "PRODUCT", attrs: {product_name: name, product_number: product_number}}]
+  Sales.SalesOrderHeaderSalesReason:
+    lookups: [{table: aw-sales, PK: "SALESREASON", SK: "{SalesReasonID:02d}", attrs: {reason_name: name, reason_type: reason_type}}]
+  Person.PersonPhone:
+    lookups: [{table: aw-customer, PK: "LOOKUP#PHONETYPE", SK: "{PhoneNumberTypeID:02d}", attrs: {phone_type: name}}]
+  Person.EmailAddress:
+    computed: {x_email_lower: email_lower}
+  HumanResources.EmployeeDepartmentHistory:
+    lookups:
+      - {table: aw-hr, PK: "DEPARTMENT#{DepartmentID:02d}", SK: "DEPARTMENT", attrs: {department_name: name}}
+      - {table: aw-hr, PK: "SHIFT", SK: "{ShiftID}", attrs: {shift_name: name}}
+  Person.StateProvince:
+    lookups: [{table: aw-reference, PK: "COUNTRIES", SK: "COUNTRY#{CountryRegionCode}", attrs: {country_name: name}}]
+  Sales.CreditCard:
+    computed: {card_last4: card_last4}
+  Production.WorkOrder:
+    computed: {StockedQty: wo_stocked_qty}
+    lookups: [{table: aw-catalog, PK: "PRODUCT#{ProductID:06d}", SK: "PRODUCT", attrs: {product_name: name}}]
+  Purchasing.PurchaseOrderDetail:
+    computed: {LineTotal: pod_line_total, StockedQty: pod_stocked_qty}
+    lookups: [{table: aw-catalog, PK: "PRODUCT#{ProductID:06d}", SK: "PRODUCT", attrs: {product_name: name}}]
+  Purchasing.ProductVendor:
+    lookups:
+      - {table: aw-catalog, PK: "PRODUCT#{ProductID:06d}", SK: "PRODUCT", attrs: {product_name: name, product_number: product_number}}
+      - {table: aw-purchasing, PK: "VENDOR#{BusinessEntityID:06d}", SK: "VENDOR", attrs: {vendor_name: name}}
+# Need SQL (documented): Production.Product (sub/category/model names + stock total), Production.Document and
+# Production.ProductDocument (hierarchyid paths), Production.BillOfMaterials, Sales.SalesOrderHeader (8-way join + computed),
+# Sales.SalesPerson, Sales.SalesTerritoryHistory, Sales.Customer (computed AccountNumber + names), Sales.Store,
+# Sales.PersonCreditCard, Person.Address (spatial lat/long), Person.BusinessEntityAddress and Person.BusinessEntityContact
+# (EXISTS vendor flag + joins), Purchasing.PurchaseOrderHeader (computed totals + names), HumanResources.Employee (org path).
+sql: [Production.Product, Production.Document, Production.ProductDocument, Production.BillOfMaterials, Sales.SalesOrderHeader,
+      Sales.SalesPerson, Sales.SalesTerritoryHistory, Sales.Customer, Sales.Store, Sales.PersonCreditCard, Person.Address,
+      Person.BusinessEntityAddress, Person.BusinessEntityContact, Purchasing.PurchaseOrderHeader, HumanResources.Employee]

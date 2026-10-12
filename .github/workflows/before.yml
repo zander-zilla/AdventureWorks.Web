@@ -24,6 +24,10 @@ jobs:
         run: |
           python3 scripts/design/access_patterns.py
           git diff --stat --exit-code docs/design
+      - name: Business-process docs are in sync with their generator
+        run: |
+          python3 scripts/business-processes/render.py
+          git diff --stat --exit-code docs/business-processes
   before-stack:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -49,6 +53,16 @@ jobs:
         run: |
           scripts/discovery/generate.sh
           git diff --stat --exit-code docs/discovery
+      - name: Business-process evidence is reproducible from live DB (after demo reset)
+        run: |
+          scripts/business-processes/run.sh
+          git diff --exit-code docs/business-processes/evidence.json
+      - name: Upload business-process evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: business-process-evidence
+          path: docs/business-processes/evidence.json
       - name: Logs on failure
         if: failure()
         run: docker compose -f docker/before/docker-compose.yml logs --tail 200

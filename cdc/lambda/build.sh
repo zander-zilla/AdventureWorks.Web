@@ -2,7 +2,7 @@
 # Package the CDC Lambda (phase 7 Terraform consumes dist/aw-cdc-lambda.zip). Python 3.12, x86_64.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; OUT="$ROOT/dist/aw-cdc-lambda"; rm -rf "$OUT"; mkdir -p "$OUT"
-cp "$ROOT/cdc/lambda/handler.py" "$OUT/"
+cp "$ROOT/cdc/lambda/handler.py" "$ROOT/cdc/lambda/monitor_feed.py" "$OUT/"
 cp -r "$ROOT/cdc/awcdc" "$OUT/awcdc"
 cp "$ROOT/scripts/loader/awmap.py" "$OUT/"
 cp "$ROOT/design/mapping/mapping.json" "$ROOT/design/mapping/cdc-refresh.yaml" "$ROOT/design/mapping/cdc-enrichment.yaml" "$OUT/awcdc/"

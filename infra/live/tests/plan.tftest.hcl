@@ -159,3 +159,113 @@ run "showcase_off" {
     error_message = "enable_showcase = false must drop the showcase"
   }
 }
+
+# ---------------- Phase 8b ----------------
+run "monitor_api_behind_cloudfront" {
+  command = plan
+  assert {
+    condition     = output.showcase_monitor_api && length(module.cdc[0].monitor_api_function) > 0
+    error_message = "S-2: monitor API Lambda expected with source + showcase"
+  }
+}
+
+run "monitor_api_off_without_source" {
+  command = plan
+  variables {
+    enable_source            = false
+    create_dms_service_roles = false
+  }
+  assert {
+    condition     = output.showcase_monitor_api == false
+    error_message = "no monitor API without the CDC path (the site keeps the recorded replay)"
+  }
+}
+
+run "showcase_api_failover_to_replay" {
+  command = apply # mock provider: sets with computed members are only known after (mock) apply
+  module {
+    source = "../modules/showcase"
+  }
+  override_resource {
+    target = aws_cloudfront_distribution.site
+    values = { arn = "arn:aws:cloudfront::123456789012:distribution/E2EXAMPLE", domain_name = "d111.cloudfront.net" }
+  }
+  variables {
+    name                 = "aw-ci"
+    enable_monitor_api   = true
+    monitor_api_url      = "https://abc123.lambda-url.us-east-1.on.aws/"
+    monitor_api_function = "aw-ci-monitor-api"
+  }
+  assert {
+    condition     = length(aws_cloudfront_distribution.site.origin_group) == 1 && length(aws_cloudfront_distribution.site.origin) == 2
+    error_message = "S-2: /api/* must use an origin group (Lambda first, S3 replay second)"
+  }
+  assert {
+    condition     = contains(one(aws_cloudfront_distribution.site.origin_group).failover_criteria[0].status_codes, 503)
+    error_message = "a 503 from the monitor API must fail over to the recorded sample"
+  }
+  assert {
+    condition     = one([for b in aws_cloudfront_distribution.site.ordered_cache_behavior : b.target_origin_id if b.path_pattern == "api/*"]) == "api-live-or-replay"
+    error_message = "api/* must target the origin group"
+  }
+  assert {
+    condition     = aws_cloudfront_origin_access_control.monitor[0].origin_access_control_origin_type == "lambda"
+    error_message = "Function URL must be reached through Lambda origin access control"
+  }
+  assert {
+    condition     = aws_lambda_permission.monitor_url[0].function_url_auth_type == "AWS_IAM"
+    error_message = "Function URL invoke permission for CloudFront expected"
+  }
+}
+
+run "https_with_existing_certificate" {
+  command = plan
+  variables {
+    certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+    domain_name     = "demo.example.com" # DNS managed elsewhere (no route53_zone_id)
+  }
+  assert {
+    condition     = output.https && length(aws_acm_certificate.alb) == 0
+    error_message = "S-3: an existing certificate turns on HTTPS without requesting a new one"
+  }
+  assert {
+    condition     = output.after_url == "https://demo.example.com/" && output.before_url == "https://demo.example.com:8080/" && length(aws_route53_record.alb) == 0
+    error_message = "both apps on HTTPS so the HTTPS showcase can frame them"
+  }
+}
+
+run "https_from_domain_name_with_route53" {
+  command = plan
+  variables {
+    domain_name     = "demo.example.com"
+    route53_zone_id = "Z0000000000000000000"
+  }
+  assert {
+    condition     = length(aws_acm_certificate.alb) == 1 && aws_acm_certificate.alb[0].validation_method == "DNS"
+    error_message = "S-3: domain_name requests a DNS-validated ACM certificate"
+  }
+  assert {
+    condition     = output.after_url == "https://demo.example.com/" && output.before_url == "https://demo.example.com:8080/"
+    error_message = "app URLs use the domain name over HTTPS"
+  }
+  assert {
+    condition     = length(aws_route53_record.alb) == 1
+    error_message = "alias record to the ALB expected with route53_zone_id"
+  }
+}
+
+run "domain_name_validation" {
+  command = plan
+  variables {
+    domain_name = "Not A Domain"
+  }
+  expect_failures = [var.domain_name]
+}
+
+run "http_by_default" {
+  command = plan
+  assert {
+    condition     = !output.https && length(aws_acm_certificate.alb) == 0
+    error_message = "HTTP only unless a certificate or domain is configured"
+  }
+}

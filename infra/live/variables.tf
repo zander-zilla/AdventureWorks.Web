@@ -23,7 +23,21 @@ variable "allowed_cidrs" {
   type        = list(string)
 }
 variable "certificate_arn" {
-  description = "Optional ACM certificate for HTTPS on the ALB."
+  description = "Optional existing ACM certificate (same region as the ALB) for HTTPS on the ALB. Takes precedence over domain_name's generated certificate."
+  type        = string
+  default     = ""
+}
+variable "domain_name" {
+  description = "Phase 8b (S-3): public host name for the apps, e.g. demo.example.com. With certificate_arn empty, Terraform requests an ACM certificate for it (DNS validation) and turns on HTTPS on the ALB (443 After App, 8080 Before App)."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.domain_name == "" || can(regex("^([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}$", var.domain_name))
+    error_message = "domain_name: a lowercase DNS name such as demo.example.com."
+  }
+}
+variable "route53_zone_id" {
+  description = "Optional Route 53 hosted zone of domain_name: creates the ACM validation records and an alias record to the ALB. Empty = add the records shown in output certificate_validation_records at your DNS provider."
   type        = string
   default     = ""
 }
@@ -58,6 +72,11 @@ variable "lambda_zip" {
   description = "Path of the CDC Lambda package built by cdc/lambda/build.sh."
   type        = string
   default     = "../../dist/aw-cdc-lambda.zip"
+}
+variable "monitor_api_zip" {
+  description = "Path of the replication monitor API Lambda package (cdc/lambda/build.sh)."
+  type        = string
+  default     = "../../dist/aw-monitor-api.zip"
 }
 variable "create_dms_service_roles" {
   type    = bool
@@ -135,6 +154,11 @@ variable "budget_alert_emails" {
 # --- showcase (Phase 8) ---
 variable "enable_showcase" {
   description = "Showcase website on S3 + CloudFront (ADR 0009)."
+  type        = bool
+  default     = true
+}
+variable "enable_monitor_api" {
+  description = "Phase 8b (S-2): Live Replication tab streams real CDC data via a small Lambda behind the showcase CloudFront (falls back to the recorded sample). Needs enable_source and enable_showcase."
   type        = bool
   default     = true
 }

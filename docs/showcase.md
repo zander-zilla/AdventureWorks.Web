@@ -29,6 +29,25 @@ for `config.json`/`data/*`/`api/*`), on by default (`enable_showcase`). `scripts
 the `after_url` output and syncs + invalidates. The deploy workflow runs it on `apply` and `app-only`. Output: `showcase_url`.
 The app's task gets `Showcase__FrameAncestors = <CloudFront origin>`. Teardown removes the site too (`force_destroy`).
 
+**Live Replication on AWS (S-2).** With `enable_source` (the CDC path) and `enable_monitor_api` (default true), the CDC
+Lambda also records every applied change in `aw-<env>-cdc-monitor` (DynamoDB, on-demand, 24 h TTL;
+`cdc/lambda/monitor_feed.py`, best effort, never fails a batch). A small Lambda, `aw-<env>-monitor-api`
+(`cdc/monitor_api/handler.py`, Function URL with `AWS_IAM` auth, reserved concurrency 5), serves the **Phase 4 monitor
+contract unchanged** (`/api/status`, `/api/changes?limit=&table=`, same keys as `cdc/consumer/consumer.py`). CloudFront
+routes `/api/*` to an **origin group**: the Function URL first (Lambda origin access control, so only this distribution can
+call it), the S3 replay second. Any 403/404/5xx (stack paused or torn down, CDC not started yet and nothing recorded,
+throttling) makes CloudFront answer from the recorded sample, and the monitor's *State* shows *recorded replay*.
+`push-showcase.sh` builds with `--monitor-mode aws` when output `showcase_monitor_api` is true. Tests:
+`tests/cdc/test_monitor_api.py` (contract keys vs. the replay fixture, 503 fallback, filter/limits, feed never fails the
+batch) and the Terraform runs `monitor_api_*` / `showcase_api_failover_to_replay`.
+
+**HTTPS and the embedded apps (S-3).** Set `domain_name` (Terraform requests a DNS-validated ACM certificate; with
+`route53_zone_id` it also creates the validation record and an alias to the ALB) or bring `certificate_arn`. Then both
+ALB listeners are HTTPS (After App on 443, Before App on 8080, HTTP 80 redirects), `after_url`/`before_url` are `https://`,
+and the HTTPS showcase can frame both apps (no mixed content). **Logged-in demos: use *Open in a new tab*.** The site
+(CloudFront domain) and the apps (ALB domain) are different sites, so the apps' `SameSite=Lax` auth cookie is not sent
+inside the frame; browsing works embedded, logging in and ordering do not. Without a certificate the tabs show a link.
+
 ## Changes from initial design
 - PLAN.md had five tabs (Presentation / Architecture / Data Mapping / Access Patterns / Live App). As built there are **eight**
   (John): Presentation, Before Architecture, After Architecture, Data Mapping, Access Patterns, Live Replication, Before App,
@@ -37,12 +56,22 @@ The app's task gets `Showcase__FrameAncestors = <CloudFront origin>`. Teardown r
   instead, unchanged except that it shows `recorded replay` when the API says so.
 - ADR 0008 suggested revisiting ECS Express Mode for Phase 8. That isn't needed: the site is static on S3 + CloudFront, and the app stays on
   Fargate + ALB.
-- On AWS there's no hosted CDC consumer API (AWS CDC is DMS → Kinesis → Lambda), so the hosted Live Replication tab is
-  the recorded replay. Live streaming is local only for now (open decision S-2).
+- On AWS there's no hosted CDC consumer (AWS CDC is DMS → Kinesis → Lambda). Phase 8 shipped the hosted tab as replay
+  only; Phase 8b (S-2) adds the monitor API Lambda. The S-2 recommendation said it would read the CDC Lambda's CloudWatch
+  logs; as built the CDC Lambda writes a small `cdc-monitor` table instead. Logs Insights queries are slow (seconds) and
+  paid per GB scanned on every 2 s poll, while a TTL'd DynamoDB table answers in milliseconds for cents.
+- Fallback is done by CloudFront (origin group) instead of the page: the monitor page stays unchanged, and the same
+  replay files serve local static mode, a torn-down stack and errors.
+- S-3: the ALB's Before App listener (8080) becomes HTTPS too (initially only 443 was), and `domain_name`/`route53_zone_id`
+  were added next to `certificate_arn`.
 - New setting `Showcase:FrameAncestors` (CSP `frame-ancestors`) in **both** apps (before: Startup.cs; after: Program.cs), off unless
   configured; set by Terraform (CloudFront origin) and the local compose files (`localhost:*`).
 
-## Open decisions (for John)
+## Decisions (John, 2026-10-12; ADR 0009 Accepted)
+- **S-1** keep the showcase public. **S-2** monitor API Lambda behind CloudFront, falling back to the recorded sample (Phase 8b).
+  **S-3** ACM / HTTPS on the ALB (`domain_name` or `certificate_arn`); logged-in demos use *Open in a new tab*. **S-4** ADR 0009 Accepted.
+
+## Original recommendations (Phase 8, kept for reference)
 - **S-1 Access**: the CloudFront URL is public (design content only). Recommendation: keep it public for prospects. Add a WAF IP
   allow-list later only if a customer-specific variant appears.
 - **S-2 Live replication on AWS**: recommendation: a small Lambda + Function URL that reads the CDC Lambda's CloudWatch

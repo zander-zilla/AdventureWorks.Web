@@ -27,6 +27,15 @@ variable "create_dms_service_roles" {
   type        = bool
   default     = true
 }
+variable "monitor_api_zip" {
+  description = "dist/aw-monitor-api.zip (cdc/lambda/build.sh): showcase Live Replication API (Phase 8b, S-2)."
+  type        = string
+}
+variable "enable_monitor_api" {
+  description = "Record applied changes in <name>-cdc-monitor and serve them via the monitor API Lambda (Function URL)."
+  type        = bool
+  default     = true
+}
 variable "dms_config_dir" {
   description = "aws/dms in the repo (table mappings, task settings)."
   type        = string
@@ -207,7 +216,9 @@ resource "aws_iam_role_policy" "lambda" {
         "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem", "dynamodb:DescribeTable"],
       Resource = flatten([for a in values(var.table_arns) : [a, "${a}/index/*"]]) },
       { Effect = "Allow", Action = ["sqs:SendMessage"], Resource = aws_sqs_queue.dlq.arn }
-      ], length(var.kms_key_arns) == 0 ? [] : [
+      ], var.enable_monitor_api ? [
+      { Effect = "Allow", Action = ["dynamodb:PutItem", "dynamodb:UpdateItem"], Resource = aws_dynamodb_table.monitor[0].arn }
+      ] : [], length(var.kms_key_arns) == 0 ? [] : [
       { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = values(var.kms_key_arns) }
     ])
   })
@@ -232,6 +243,7 @@ resource "aws_lambda_function" "cdc" {
     variables = {
       CDC_LOOKUP_ATTEMPTS   = "4"
       CDC_LOOKUP_BACKOFF_MS = "100"
+      CDC_MONITOR_TABLE     = var.enable_monitor_api ? aws_dynamodb_table.monitor[0].name : ""
     }
   }
   depends_on = [aws_cloudwatch_log_group.lambda]
@@ -253,6 +265,97 @@ resource "aws_lambda_event_source_mapping" "kinesis" {
   }
 }
 
+# ---------------- Replication monitor API (Phase 8b, S-2; ADR 0009 decision 2a) ----------------
+# The CDC Lambda records each applied change here (cdc/lambda/monitor_feed.py, 24 h TTL); cdc/monitor_api serves the
+# Phase 4 monitor contract from it. Function URL with AWS_IAM auth: only the showcase CloudFront distribution (origin
+# access control, permission granted in modules/showcase) can call it.
+resource "aws_dynamodb_table" "monitor" {
+  count        = var.enable_monitor_api ? 1 : 0
+  name         = "${var.name}-cdc-monitor"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "PK"
+  range_key    = "SK"
+  attribute {
+    name = "PK"
+    type = "S"
+  }
+  attribute {
+    name = "SK"
+    type = "S"
+  }
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+}
+
+resource "aws_iam_role" "monitor_api" {
+  count = var.enable_monitor_api ? 1 : 0
+  name  = "${var.name}-monitor-api"
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "monitor_api_logs" {
+  count      = var.enable_monitor_api ? 1 : 0
+  role       = aws_iam_role.monitor_api[0].name
+  policy_arn = "arn:${data.aws_partition.p.partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "monitor_api" {
+  count = var.enable_monitor_api ? 1 : 0
+  name  = "read-monitor"
+  role  = aws_iam_role.monitor_api[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { Effect = "Allow", Action = ["dynamodb:GetItem", "dynamodb:Query"], Resource = aws_dynamodb_table.monitor[0].arn },
+      { Effect = "Allow", Action = ["sqs:GetQueueAttributes"], Resource = aws_sqs_queue.dlq.arn },
+      { Effect = "Allow", Action = ["dms:DescribeReplicationTasks"], Resource = "*" },
+    ]
+  })
+}
+
+resource "aws_cloudwatch_log_group" "monitor_api" {
+  count             = var.enable_monitor_api ? 1 : 0
+  name              = "/aws/lambda/${var.name}-monitor-api"
+  retention_in_days = 14
+}
+
+resource "aws_lambda_function" "monitor_api" {
+  count            = var.enable_monitor_api ? 1 : 0
+  function_name    = "${var.name}-monitor-api"
+  role             = aws_iam_role.monitor_api[0].arn
+  runtime          = "python3.12"
+  architectures    = ["arm64"]
+  handler          = "handler.handler"
+  filename         = var.monitor_api_zip
+  source_code_hash = try(filebase64sha256(var.monitor_api_zip), null)
+  memory_size      = 256
+  timeout          = 10
+  # small cap: the site polls every 2 s per open tab; throttles return 5xx and CloudFront serves the recorded sample
+  reserved_concurrent_executions = 5
+  environment {
+    variables = {
+      MONITOR_TABLE = aws_dynamodb_table.monitor[0].name
+      DLQ_URL       = aws_sqs_queue.dlq.url
+      DMS_TASK_ARN  = aws_dms_replication_task.cdc.replication_task_arn
+    }
+  }
+  depends_on = [aws_cloudwatch_log_group.monitor_api]
+}
+
+resource "aws_lambda_function_url" "monitor_api" {
+  count              = var.enable_monitor_api ? 1 : 0
+  function_name      = aws_lambda_function.monitor_api[0].function_name
+  authorization_type = "AWS_IAM"
+}
+
+output "monitor_table" { value = var.enable_monitor_api ? aws_dynamodb_table.monitor[0].name : null }
+output "monitor_api_function" { value = var.enable_monitor_api ? aws_lambda_function.monitor_api[0].function_name : null }
+output "monitor_api_url" { value = var.enable_monitor_api ? aws_lambda_function_url.monitor_api[0].function_url : null }
 output "kinesis_stream_arn" { value = aws_kinesis_stream.cdc.arn }
 output "replication_task_arn" { value = aws_dms_replication_task.cdc.replication_task_arn }
 output "lambda_name" { value = aws_lambda_function.cdc.function_name }

@@ -40,10 +40,12 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 2026-10-12 | Phase 7 (proposed, ADR 0008): one Terraform root `infra/live` (modules network/dynamodb/source_db/cdc/app/warehouse) + `infra/bootstrap` (state bucket, GitHub OIDC roles); app on ECS Fargate + ALB; RDS SQL Server SE; db-init/bulk-load as ECS tools tasks; OIDC-only manual deploy workflow; teardown script. Runbook docs/aws-setup.md. |
 | 2026-10-12 | Phase 7 decisions accepted (John; ADR 0008 → Accepted): (1) ECS Fargate + ALB; (2) RDS SQL Server SE db.m6i.large, torn down after demos; (3) deploy role as-is, tighten after first apply; (4) DB password in encrypted state; (5) AWS Budgets alert USD 50/month (`budget_alert_emails`, `infra/live/budget.tf`) + required reviewer on the GitHub `demo` environment. |
 | 2026-10-12 | Phase 8 (proposed, ADR 0009): showcase as a static site on S3 + CloudFront (OAC), generated from mapping.json / access-patterns.json / results; Phase 4 monitor reused (replay by default); both apps embedded via `Showcase:FrameAncestors`; 8 tabs per John (before/after architecture, before/after app, Live Replication side by side with the Before App). Open for John: S-1 public access, S-2 live replication API on AWS, S-3 HTTPS ALB for the embedded app, S-4 accept ADR 0009. |
+| 2026-10-12 | Phase 8 decisions accepted (John; ADR 0009 → Accepted): **S-1** showcase stays public; **S-2** monitor API Lambda (Function URL behind the showcase CloudFront, Phase 4 contract, CDC Lambda feeds a 24 h `cdc-monitor` table) with CloudFront origin-group fallback to the recorded sample; **S-3** ACM/HTTPS on the ALB (`domain_name` or `certificate_arn`, 443 + 8080), logged-in demos via *Open in a new tab*; **S-4** ADR 0009 Accepted. Built in Phase 8b. |
 
 ## Progress note (Phase 8, 2026-10-12)
 - Done: #11 Phase 7 decisions (green). #12 showcase with 8 tabs (John's order), S3 + CloudFront module, Playwright in `showcase`, `after` (real app) and `before-stack` (live: order in the Before App frame shows up in the monitor).
-- Remaining: John's review; S-1..S-4 decisions.
+- Done: #13 carries #12 to master (#12 had merged into `phase-7-decisions`). Phase 8b: S-1..S-4 (monitor API, HTTPS, ADR 0009 Accepted).
+- Remaining: John's review/merge; the first real AWS apply (see docs/aws-setup.md "Verified only on AWS").
 
 ## Status
 
@@ -57,4 +59,12 @@ zero-ETL (rebuilding the AdventureWorksDW star schema), and show it live: a test
 | 5 App modernization | Merged (.NET 10 app on DynamoDB, ADR 0006); CDC enrichment from DynamoDB lookups merged | #7, #8 |
 | 6 Analytics | Merged; decisions W-1..W-4, R-1 accepted (ADR 0007): zero-ETL (7 integrations) → Redshift Serverless, stg MVs generated from the mapping, `dw.sp_build_star()` (12 dims + 6 facts), static carry-over, QuickSight; local Postgres verification + reconciliation vs AdventureWorksDW2022 in CI (`warehouse` workflow); ADR 0007, docs/design/warehouse.md | #9 |
 | 7 IaC / CI | Merged; decisions accepted (ADR 0008): Terraform for the whole deployment (`infra/`), offline plan tests, `infra` CI + manual OIDC `deploy` workflow, teardown, runbook docs/aws-setup.md, ADR 0008. Nothing applied | #10, #11 |
-| 8 Showcase | In review: static site `showcase/` (8 tabs, data from mapping.json/access-patterns.json, Phase 4 monitor embedded with recorded replay or live API), `scripts/showcase-up.sh`, S3 + CloudFront module + `push-showcase.sh`, Playwright tests in CI (`showcase` workflow, and with the real app in `after`), ADR 0009, docs/showcase.md. Stacked on #11 | this PR |
+| 8 Showcase | Merged (#12 via #13); decisions S-1..S-4 accepted (ADR 0009), follow-ups in review (Phase 8b: live replication API on AWS, HTTPS/ACM). Static site `showcase/` (8 tabs, data from mapping.json/access-patterns.json, Phase 4 monitor embedded with recorded replay or live API), `scripts/showcase-up.sh`, S3 + CloudFront module + `push-showcase.sh`, Playwright tests in CI (`showcase` workflow, and with the real app in `after`), ADR 0009, docs/showcase.md | #12, #13, Phase 8b PR |
+
+## Changes from initial design (as built, Phase 8b)
+- S-2 recommendation: the monitor API would read the CDC Lambda's CloudWatch logs. As built, the CDC Lambda writes a small TTL'd
+  `cdc-monitor` table that the API reads, because it's faster and cheaper per poll. Fallback to the recorded sample is
+  done by a CloudFront origin group, not in the page.
+- S-3: the Before App listener (8080) is HTTPS as well, and `domain_name`/`route53_zone_id` let Terraform request and
+  validate the ACM certificate (initially only a pre-made `certificate_arn` on 443).
+- Details: docs/showcase.md and docs/aws-setup.md "Changes from initial design".

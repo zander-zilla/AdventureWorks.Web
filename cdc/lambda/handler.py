@@ -11,6 +11,8 @@ Enrichment (design/mapping/cdc-enrichment.yaml, ADR 0005): rows are built from t
 related items already replicated to DynamoDB + re-implemented computed columns. No SQL Server / RDS access at all (no
 read replica). A referenced item that has not arrived yet is retried briefly in-process (CDC_LOOKUP_ATTEMPTS, default 4,
 backoff from CDC_LOOKUP_BACKOFF_MS, default 100 ms); then the record fails and the batch is retried / sent to the DLQ.
+Monitor feed (Phase 8b, S-2): when CDC_MONITOR_TABLE is set, every applied change is also recorded (best effort, never
+fails the batch) in the same shape as the local consumer's /api/changes, for cdc/monitor_api (the showcase's live API).
 """
 import base64, json, os, sys
 
@@ -19,6 +21,7 @@ sys.path.insert(0, HERE)  # package layout: handler.py, awcdc/ (+ mapping.json, 
 sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "scripts", "loader"))
 from awcdc import transform as T  # noqa: E402
+import monitor_feed  # noqa: E402
 
 _state = {}
 
@@ -29,7 +32,7 @@ def _ctx():
         m = T.load_json(T.default_mapping_path())
         sink = T.DynamoDBSink(boto3.resource("dynamodb"))
         rows = T.Enricher(m, sink)
-        _state.update(rows=rows, tr=T.Transformer(rows, sink, mapping=m))
+        _state.update(rows=rows, tr=T.Transformer(rows, sink, mapping=m), monitor=monitor_feed.from_env(m))
     return _state
 
 
@@ -43,7 +46,9 @@ def handler(event, context, ctx=None):
             if msg.get("metadata", {}).get("record-type") != "data":
                 continue  # control records
             ch = T.from_dms(msg, ctx["rows"].column_types)
-            ctx["tr"].apply(ch)
+            rep = ctx["tr"].apply(ch)
+            if ctx.get("monitor") and isinstance(rep, dict) and not rep.get("ignored"):
+                ctx["monitor"].record(ch, rep, seq)
         except Exception as e:  # noqa: BLE001
             print(json.dumps({"level": "error", "sequenceNumber": seq, "error": repr(e)[:1000]}))
             failures.append({"itemIdentifier": seq})

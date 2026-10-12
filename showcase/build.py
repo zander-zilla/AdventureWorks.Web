@@ -6,7 +6,7 @@ Copies site/ and the repo's sources of truth (no hand-maintained copies):
   docs/design/load-stats.json -> dist/data/
   cdc/monitor/index.html (Phase 4 replication monitor) -> dist/monitor.html
   fixtures/replication-replay/*.json -> dist/api/status, dist/api/changes (static replay; S3 ignores query strings)
-  config.json from --app-url / --monitor-api / --monitor-mode
+  config.json from --app-url / --monitor-api / --monitor-mode (replay | live = local consumer | aws = monitor API Lambda)
 """
 import argparse, datetime, json, os, shutil, subprocess
 
@@ -50,6 +50,6 @@ if __name__ == "__main__":
     ap.add_argument("--app-url", default=os.environ.get("SHOWCASE_APP_URL", ""))
     ap.add_argument("--before-url", default=os.environ.get("SHOWCASE_BEFORE_URL", ""))
     ap.add_argument("--monitor-api", default="")
-    ap.add_argument("--monitor-mode", choices=["replay", "live"], default="replay")
+    ap.add_argument("--monitor-mode", choices=["replay", "live", "aws"], default="replay")
     a = ap.parse_args()
     print("built", build(a.out, a.app_url, a.monitor_api, a.monitor_mode, a.before_url))

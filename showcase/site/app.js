@@ -243,7 +243,7 @@
   const frame = (id, url, h, startCmd) => {
     if (!url) return `<p class="note">No URL configured. Start it locally (<code>${startCmd}</code>) and pass it to <code>scripts/showcase-up.sh</code>, or deploy to AWS (the URL is filled in from Terraform outputs).</p>`;
     const mixed = location.protocol === 'https:' && /^http:/i.test(url); // mixed content cannot be framed
-    return mixed ? `<p>Runs at <a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>. It's served over HTTP, so it opens in a new tab (set <code>certificate_arn</code> to embed it here).</p>`
+    return mixed ? `<p>Runs at <a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>. It's served over HTTP, so it opens in a new tab (set <code>domain_name</code> or <code>certificate_arn</code> to embed it here).</p>`
       : `<iframe id="${id}" title="${id}" src="${esc(url)}" style="height:${h}px"></iframe>`;
   };
   const openLink = (id, url) => url ? `<a class="b" id="${id}" href="${esc(url)}" target="_blank" rel="noopener" style="text-decoration:none">Open in a new tab ↗</a>` : '';
@@ -253,11 +253,12 @@
   // ---------- Live replication (Phase 4 monitor, embedded; optionally side by side with the Before App) ----------
   R.replication = () => {
     const api = cfg.monitorApi ?? '';
-    const live = cfg.monitorMode === 'live';
+    const aws = cfg.monitorMode === 'aws';
+    const live = cfg.monitorMode === 'live' || aws;
     const el = $('#replication');
     el.innerHTML = `<div class="row" style="align-items:center;justify-content:space-between"><h2>Live replication <span class="pill ${live ? 'ddb' : ''}">${live ? 'live API' : 'recorded replay'}</span></h2>
       <div class="seg" id="repseg"><button data-v="mon" class="on">Monitor</button><button data-v="side">Side by side with the Before App</button></div></div>
-      <p class="note">${live ? 'Streaming from the CDC consumer API.' : 'Showing a recorded sample of the Phase 4 end-to-end test (demo order → DynamoDB). Run <code>scripts/cdc-up.sh</code> and <code>scripts/showcase-up.sh --before-url http://localhost:5080 --live</code> to stream real changes.'}
+      <p class="note">${aws ? 'Streaming from the CDC on AWS (DMS → Kinesis → Lambda → DynamoDB) through the monitor API. While the stack is paused or CDC is not started, the recorded sample is shown instead (the monitor\'s <i>State</i> says which).' : live ? 'Streaming from the CDC consumer API.' : 'Showing a recorded sample of the Phase 4 end-to-end test (demo order → DynamoDB). Run <code>scripts/cdc-up.sh</code> and <code>scripts/showcase-up.sh --before-url http://localhost:5080 --live</code> to stream real changes.'}
       Place an order in the Before App (SQL Server) and watch it arrive in DynamoDB. Click a row to compare the SQL row with the DynamoDB items it became.</p>
       <div class="row" id="repbody"><div class="grow" id="repbefore" style="display:none;flex:1">${frame('beforeside', cfg.beforeUrl, 640, 'scripts/before-up.sh')}</div>
       <div class="grow" style="flex:1"><iframe id="monitor" title="Replication monitor" src="monitor.html?api=${encodeURIComponent(api)}" style="height:640px"></iframe></div></div>`;

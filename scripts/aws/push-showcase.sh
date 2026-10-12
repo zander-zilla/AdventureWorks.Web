@@ -7,7 +7,9 @@ cd "$(dirname "$0")/../.."
 out() { terraform -chdir=infra/live output -raw "$1"; }
 BUCKET="$(out showcase_bucket)"; DIST="$(out showcase_distribution_id)"; APP_URL="$(out after_url)"; BEFORE_URL="$(out before_url 2>/dev/null || true)"; [ "$BEFORE_URL" = null ] && BEFORE_URL=""
 test -n "$BUCKET" && test "$BUCKET" != null || { echo "enable_showcase is false for $ENVNAME"; exit 1; }
-python3 showcase/build.py --out showcase/dist --app-url "$APP_URL" --before-url "$BEFORE_URL"
+# Phase 8b (S-2): /api/* on CloudFront goes to the monitor API Lambda (falls back to the replay files uploaded below)
+MODE=replay; [ "$(out showcase_monitor_api 2>/dev/null || echo false)" = true ] && MODE=aws
+python3 showcase/build.py --out showcase/dist --app-url "$APP_URL" --before-url "$BEFORE_URL" --monitor-mode "$MODE"
 aws s3 sync showcase/dist "s3://$BUCKET/" --delete --only-show-errors
 # extension-less replay API files need a JSON content type
 for f in status changes; do

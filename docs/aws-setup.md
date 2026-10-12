@@ -31,8 +31,9 @@ flowchart LR
 | `network` | VPC, 3 public + 3 private subnets, IGW, S3/DynamoDB gateway endpoints, Kinesis interface endpoint |
 | `dynamodb` | 7 tables from `design/mapping/mapping.json` (PK/SK, GSIs, ALL projection, TTL `ttl`, streams, PITR, deletion protection); **W-1**: AWS-owned key on 5 tables, CMKs on `aw-customer`/`aw-hr` with Redshift zero-ETL key-policy grants |
 | `source_db` | RDS SQL Server 2022 SE (license included, single-AZ, gp3, encrypted, private), option group `SQLSERVER_BACKUP_RESTORE`, backups bucket + restore role, master password in Secrets Manager |
-| `cdc` | Kinesis stream, DMS subnet group / instance / SQL Server source + Kinesis target endpoints / `cdc` task (created stopped; `aws/dms/table-mappings.json`, `task-settings.json`), Lambda (`dist/aw-cdc-lambda.zip`), Kinesis event source mapping (partial batch failures, bisect, 5 retries, SQS DLQ), IAM |
-| `app` | ECR repos (after, before, tools), ECS cluster, ALB (HTTP; HTTPS when `certificate_arn` set), after/before services, tools task definition, least-privilege task roles |
+| `cdc` | Kinesis stream, DMS subnet group / instance / SQL Server source + Kinesis target endpoints / `cdc` task (created stopped; `aws/dms/table-mappings.json`, `task-settings.json`), Lambda (`dist/aw-cdc-lambda.zip`), Kinesis event source mapping (partial batch failures, bisect, 5 retries, SQS DLQ), IAM; Phase 8b: `cdc-monitor` table + `monitor-api` Lambda (Function URL, AWS_IAM) for the showcase |
+| `showcase` | Phase 8: private S3 bucket + CloudFront (OAC); `/api/*` origin group monitor API → S3 replay (S-2) |
+| `app` | ECR repos (after, before, tools), ECS cluster, ALB (HTTP; HTTPS on 443 + 8080 when `domain_name`/`certificate_arn` set, ACM certificate in `infra/live/certificate.tf`), after/before services, tools task definition, least-privilege task roles |
 | `warehouse` | Phase 6: Redshift Serverless namespace/workgroup (case-sensitive identifiers), usage limit, resource policies, 7 zero-ETL integrations, static-data bucket, hourly scheduler (**W-2**), QuickSight data source/data set/refresh only when `enable_quicksight` (**W-4**) |
 
 Environments: `infra/envs/demo.tfvars` (full CDC story) and `dev.tfvars` (`enable_source = false`: DynamoDB + .NET 10 app +
@@ -56,7 +57,10 @@ Keep `infra/bootstrap/terraform.tfstate` safe (it is git-ignored) or move it int
 
 ## 2. Configure
 - `infra/envs/demo.s3.tfbackend`: set `bucket` to `state_bucket` (or `export TF_STATE_BUCKET=<state_bucket>`; the scripts use it).
-- `infra/envs/demo.tfvars`: `budget_alert_emails` (AWS Budgets alert, USD `budget_monthly_usd` = 50/month), `allowed_cidrs`, optionally `certificate_arn` (ACM, for HTTPS), `sql_instance_class`.
+- `infra/envs/demo.tfvars`: `budget_alert_emails` (AWS Budgets alert, USD `budget_monthly_usd` = 50/month), `allowed_cidrs`, `sql_instance_class`, and for HTTPS (S-3) either `domain_name` (+ `route53_zone_id` if the zone is in Route 53) or an existing `certificate_arn` (same region).
+- HTTPS without Route 53: the first apply waits on `aws_acm_certificate_validation` (up to 75 min). Meanwhile run
+  `terraform -chdir=infra/live output certificate_validation_records`, add that CNAME at your DNS provider, and point `domain_name` at
+  output `alb_dns` (CNAME). With Route 53 both records are created for you.
 - GitHub (only if deploying from Actions): *Settings → Environments* → create `demo` (and `dev`). **Required for `demo`:** under
   *Deployment protection rules* tick *Required reviewers* and add John (decision 5, ADR 0008), so every
   plan/apply/destroy from Actions waits for approval; environment **variables** (not secrets): `AWS_DEPLOY_ROLE_ARN`, `TF_STATE_BUCKET`, `AWS_REGION`,
@@ -69,7 +73,7 @@ It builds the Lambda package, plans + applies, builds/pushes the three images, a
 
 **From the terminal**:
 ```bash
-cdc/lambda/build.sh                                  # dist/aw-cdc-lambda.zip
+cdc/lambda/build.sh                                  # dist/aw-cdc-lambda.zip + dist/aw-monitor-api.zip
 scripts/aws/tf.sh demo init
 scripts/aws/tf.sh demo apply -var app_desired_count=0   # ~25-40 min (RDS SQL Server and Redshift dominate)
 scripts/aws/push-images.sh demo                      # build + push after/before/tools, apply with the new tag
@@ -99,6 +103,10 @@ and `CALL dw.sp_build_star();`. The hourly schedule takes over. QuickSight (show
 - Before app (`:8080`): log in as a demo customer, place an order → DMS → Kinesis → Lambda → `aw-sales` within seconds:
   `aws dynamodb query --table-name aw-sales --key-condition-expression 'PK = :p' --expression-attribute-values '{":p":{"S":"ORDER#<id>"}}'`
 - After app (`/`): the same order under *My orders*; `/healthz` is the ALB health check.
+- Showcase Live Replication: open `showcase_url` → *Live Replication*; *State* says *streaming* once CDC applied a change
+  (or the DMS task runs), *recorded replay* otherwise. Direct check: `curl -s <showcase_url>api/status` (no `replay` key = live).
+  Monitor API logs: `/aws/lambda/aw-demo-monitor-api`.
+- Logged-in demos from the showcase: use *Open in a new tab* (the auth cookie isn't sent inside the cross-site frame).
 - Lambda errors: CloudWatch `/aws/lambda/aw-demo-cdc-transform`; failed records land in the DLQ (`cdc_dlq_url` output).
 - Redshift: ~15-30 min zero-ETL lag, then the next hourly build (or `CALL dw.sp_build_star()`).
 - Reset the demo orders: `scripts/aws/run-tool.sh demo reset-demo` (CDC replicates the deletes as tombstones).
@@ -142,6 +150,10 @@ SQL Server instance is what matters — tear down rather than leave it idle. A B
   the chiseled after image pulling from ECR without a NAT gateway (public IP).
 - OIDC trust conditions (`environment:demo`) and that PowerUserAccess + scoped IAM covers every resource in the stack.
 - Real costs (Cost Explorer, by the `Project`/`Environment` tags).
+- Phase 8b: CloudFront → Lambda Function URL with Lambda OAC (both `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction`
+  permissions), origin-group failover to S3 on 5xx/403/404, query strings reaching the Function URL
+  (AllViewerExceptHostHeader), the CDC Lambda's writes to `cdc-monitor` at backlog throughput, ACM DNS validation and the
+  HTTPS listener on 8080, and that the apps embed over HTTPS (CSP `frame-ancestors`).
 
 ## Changes from initial design
 Starting points: PLAN.md Phase 7 ("Terraform for all AWS resources, GitHub Actions pipelines"), docs/migration/cdc.md
@@ -160,6 +172,8 @@ standalone Phase 6 Terraform in `aws/warehouse/terraform`.
 | 8 | DynamoDB Local endpoints in `appsettings.json` | Moved to `appsettings.Development.json`; production config has only the region | The container would otherwise point at localhost on AWS |
 | 9 | Loader for DynamoDB Local only | `DDB_ENDPOINT=aws` uses real DynamoDB (tables owned by Terraform) | Bulk load on AWS with the same code |
 | 10 | QuickSight created when a principal is set | Explicit `enable_quicksight` toggle (+ validation) | W-4 |
+| 12 | Showcase Live Replication on AWS = recorded replay (Phase 8) | Monitor API Lambda + `cdc-monitor` table behind CloudFront, origin-group fallback to the replay (Phase 8b, S-2) | Real data when deployed, replay when not |
+| 13 | HTTPS only via a hand-made `certificate_arn`, Before App HTTP on 8080 | `domain_name` → ACM certificate (DNS validation, optional Route 53), HTTPS on 443 and 8080 (S-3) | HTTPS site can frame both apps |
 | 11 | `terraform validate` only in CI | fmt + validate + **offline plan tests** with mock providers; real plan only when the OIDC plan role exists | "plan in CI" without credentials or spend |
 
 ## Troubleshooting

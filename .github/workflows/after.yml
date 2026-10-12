@@ -23,11 +23,11 @@ jobs:
           key: aw-baks-2022-v1
       - run: pip install -r requirements-design.txt playwright && python -m playwright install --with-deps chromium
       - name: Build + unit tests (.NET 10)
-        run: dotnet test src/AdventureWorks.slnx -c Release
+        run: cd src && dotnet test AdventureWorks.slnx -c Release
       - name: SQL Server + DynamoDB Local loaded by the Phase 3 loader; access-pattern tests still pass
         run: PYTHON=python scripts/design-validate.sh
       - name: Integration tests against DynamoDB Local
-        run: AW_DDB_IT=1 dotnet test src/AdventureWorks.slnx -c Release --no-build
+        run: cd src && AW_DDB_IT=1 dotnet test AdventureWorks.slnx -c Release --no-build
       - name: After stack (chiseled non-root image) up
         run: SKIP_LOAD=1 PYTHON=python scripts/after-up.sh && test "$(docker inspect -f '{{.Config.User}}' aw-after-app-1)" = 1654
       - name: Playwright smoke (login, browse, search, cart, checkout, history)

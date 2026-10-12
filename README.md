@@ -12,7 +12,7 @@ The modernized app is in `src/AdventureWorks.Web`: .NET 10 on DynamoDB, with sho
 
 ```bash
 scripts/after-up.sh                       # SQL restore (if needed) -> DynamoDB Local x7 loaded by the Phase 3 loader -> app on :5090
-dotnet test src/AdventureWorks.slnx       # unit tests (AW_DDB_IT=1 adds the DynamoDB Local integration tests)
+(cd src && dotnet test AdventureWorks.slnx)   # unit tests (AW_DDB_IT=1 adds the DynamoDB Local integration tests)
 pip install playwright && python -m playwright install chromium && pytest tests/after   # browser smoke test
 ```
 

@@ -1,0 +1,18 @@
+# Snapshot-copy refresh rules for the CDC transform (Phase 4). Owner = domain responsible for the copy (Phase 3 design).
+# When a row of `on` changes (update/delete), rows of `refresh` matching `where` (columns of the refresh table's source_sql
+# output, values from the changed row) are re-read and their items' non-key attributes updated in place
+# (UpdateItem, src_lsn untouched, so the copy never blocks the row's own later changes). Immutable snapshots (order lines,
+# order header addresses/customer/card) are deliberately absent: they are copied once at order time.
+rules:
+  - {changed: Production.ProductCategory,    refresh: Production.ProductSubcategory, where: {ProductCategoryID: ProductCategoryID}, owner: Catalog}
+  - {changed: Production.ProductCategory,    refresh: Production.Product,            where: {category_id: ProductCategoryID}, owner: Catalog}
+  - {changed: Production.ProductSubcategory, refresh: Production.Product,            where: {ProductSubcategoryID: ProductSubcategoryID}, owner: Catalog}
+  - {changed: Production.ProductModel,       refresh: Production.Product,            where: {ProductModelID: ProductModelID}, owner: Catalog}
+  - {changed: Production.ProductInventory,   refresh: Production.Product,            where: {ProductID: ProductID}, owner: Inventory & Manufacturing, note: stock_qty total}
+  - {changed: Production.ProductDescription, refresh: Production.ProductModelProductDescriptionCulture, where: {ProductDescriptionID: ProductDescriptionID}, owner: Catalog}
+  - {changed: Sales.SpecialOffer,            refresh: Sales.SpecialOfferProduct,     where: {SpecialOfferID: SpecialOfferID}, owner: Catalog}
+  - {changed: Person.Address,                refresh: Person.BusinessEntityAddress,  where: {AddressID: AddressID}, owner: Customer & Party}
+  - {changed: Person.Person,                 refresh: Sales.Customer,                where: {PersonID: BusinessEntityID}, owner: Customer & Party}
+  - {changed: Sales.Store,                   refresh: Sales.Customer,                where: {StoreID: BusinessEntityID}, owner: Customer & Party}
+  - {changed: Sales.SalesTerritory,          refresh: Sales.Customer,                where: {TerritoryID: TerritoryID}, owner: Sales}
+  - {changed: Person.Person,                 refresh: HumanResources.Employee,       where: {BusinessEntityID: BusinessEntityID}, owner: HR}

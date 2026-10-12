@@ -2,7 +2,8 @@
  "TargetMetadata": {
   "SupportLobs": true,
   "LimitedSizeLobMode": true,
-  "LobMaxSize": 64
+  "LobMaxSize": 64,
+  "FullLobMode": false
  },
  "FullLoadSettings": {
   "TargetTablePrepMode": "DO_NOTHING",
@@ -29,5 +30,6 @@
  },
  "ValidationSettings": {
   "EnableValidation": false
- }
+ },
+ "_comment": "CDC task for the Kinesis target. Kinesis messages carry the FULL after image in 'data' (all columns, SQL Server CDC captures whole rows) and the FULL before image in 'before-image' (ColumnFilter=all) for updates/deletes. The Lambda builds items from these images (cdc-enrichment.yaml). Source retention: SQL Server CDC cleanup keeps 7 days (see sqlserver-source-endpoint.json)."
 }

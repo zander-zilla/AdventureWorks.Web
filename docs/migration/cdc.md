@@ -28,10 +28,11 @@ flowchart LR
 |---|---|
 | Event shape | `Change(table, op c/u/d/r, position, before, after, commit_ts_ms)`; `from_debezium()` and `from_dms()` normalise both transports. |
 | Ordering / idempotency | `src_lsn` on every item; `PutItem ... ConditionExpression attribute_not_exists(PK) OR src_lsn < :position`. Replays and older events are skipped. Position = SQL Server LSN `0x` + 20 hex (Debezium `change_lsn`); DMS uses `AR_H_CHANGE_SEQ` (added as a column by the task) as `0x` + 30 hex. Bulk load uses `0x000…0`, below every real position. |
-| Same items as bulk load | inserts/updates re-read the row through the mapping's `source_sql` by primary key (identical query to the loader); `tests/cdc/test_identity.py` checks all 68 tables. |
+| Row building (P4-1) | `design/mapping/cdc-enrichment.yaml`, same on both transports. **image** (38 tables): the event's full row image is the row. **lookup** (15): image + `GetItem` of the parent item for copied attributes (e.g. order line → `PRODUCT#…` name/number) + computed columns re-implemented (`LineTotal`, `StockedQty`, `card_last4`, …; CDC images never carry computed columns). **sql** (15: Product, Document, ProductDocument, BillOfMaterials, SalesOrderHeader, SalesPerson, SalesTerritoryHistory, Customer, Store, PersonCreditCard, Address, BusinessEntityAddress, BusinessEntityContact, PurchaseOrderHeader, Employee): re-read through `source_sql`. A missing parent falls back to SQL if available. `CDC_ENRICHMENT=sql` forces SQL everywhere; `CDC_SQL_ENABLED=false` (Lambda) runs without SQL. |
+| Same items as bulk load | `tests/cdc/test_identity.py`: all 68 tables via SQL, and every image/lookup table **without SQL access** (lookups served from bulk-loaded parents), against the loader's own `mapping.yaml`. |
 | Deletes | D10 tombstones: keys kept, GSI keys dropped, `deleted=true`, `deleted_at`, **`ttl` = capture time + 7 days** (P3-4). Keys of a deleted row are computed by running `source_sql` with the base table replaced by the before-image (computed columns recomputed, hierarchyid/geography from bytes; joins become LEFT JOINs because parents may be gone in the same transaction). |
 | Multi-item rows | one row → N items (e.g. Product → product, name index, number index); all written with the same position. On update, items whose key moved (e.g. new PO number) get a tombstone for the old key. |
-| Snapshot copies | `design/mapping/cdc-refresh.yaml`: when a parent changes, dependent rows are re-read and their items updated in place (`UpdateItem`, `attribute_exists(PK) AND attribute_not_exists(deleted)`, `src_lsn` untouched so the copy never blocks the row's own later change). Owner per rule as in the Phase 3 design. Immutable order-time snapshots (order lines, header addresses/card) are never refreshed. |
+| Snapshot copies (P4-2, P4-3) | Refreshes run inside the CDC transform. `design/mapping/cdc-refresh.yaml`: when a parent changes, dependent rows are re-read and their items updated in place (`UpdateItem`, `attribute_exists(PK) AND attribute_not_exists(deleted)`, `src_lsn` untouched so the copy never blocks the row's own later change). Owner per rule as in the Phase 3 design. Copied attributes whose source became NULL are removed (`REMOVE`). Immutable order-time snapshots (order lines, header addresses/card) are never refreshed. |
 
 ## Local path
 ```bash
@@ -61,7 +62,7 @@ and the inbox persist.
   `BisectBatchOnFunctionError`, `MaximumRetryAttempts=5`, on-failure destination SQS DLQ, `ParallelizationFactor=1`.
 - **Idempotency note:** Lambda/Kinesis are at-least-once. Every write is conditional on position, so duplicates and DLQ
   replays are harmless and an old replay can never overwrite newer state. Refresh updates are idempotent by content.
-- Enrichment needs read access to SQL (RDS read replica, VPC Lambda, credentials from Secrets Manager).
+- Enrichment: DMS messages carry full after images (`data`) and full before images (`before-image`, `ColumnFilter=all`); SQL read access (RDS read replica, VPC Lambda, Secrets Manager) only for the 15 sql-mode tables and snapshot refreshes.
 - Packaging: `cdc/lambda/build.sh` → `dist/aw-cdc-lambda.zip` (handler, awcdc, awmap, sqlsrc, mapping.json,
   cdc-refresh.yaml, pymssql, pyyaml; Python 3.12 x86_64) for the phase 7 Terraform `aws_lambda_function`.
 - Bulk load on AWS: same loader against RDS → DynamoDB (or S3 export + `ImportTable` for a cold start), with the DMS
@@ -80,7 +81,7 @@ and the inbox persist.
 | Debezium restarted | offsets in the `debezium-data` volume; it resumes from its last committed LSN. |
 | DLQ not empty | `GET /api/dlq`; fix the cause and re-POST the bodies to `/events` (positions keep it idempotent). |
 | Check consistency | `scripts/reconcile.py` (counts + checksums per source table, orphans and tombstones per DynamoDB table). |
-| CDC retention | SQL Server CDC cleanup keeps 3 days by default; a consumer down for longer needs a re-load (cdc-up). |
+| CDC retention (P4-4) | 7 days: `EXEC sys.sp_cdc_change_job @job_type = N'cleanup', @retention = 10080` (local: 02-enable-cdc.sql; RDS: same statement after `msdb.dbo.rds_cdc_enable_db`, see `aws/dms/sqlserver-source-endpoint.json`; phase 7 Terraform runs it before creating the DMS task). A consumer down longer than 7 days needs a re-load. |
 
 ## Cutover story (D4)
 1. Today: the old app writes SQL; CDC keeps DynamoDB current (one way). Redshift zero-ETL reads DynamoDB.

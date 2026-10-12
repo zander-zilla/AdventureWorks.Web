@@ -61,8 +61,10 @@ class Applier(threading.Thread):
         self.store, self.max_attempts = store, max_attempts
         self.conn = sqlsrc.connect()
         self.mapping = T.load_json(T.default_mapping_path())
-        self.rows = T.SqlRows(self.conn, self.mapping)
-        self.tr = T.Transformer(self.rows, T.DynamoDBSink(ddb.resource()), mapping=self.mapping)
+        sink = T.DynamoDBSink(ddb.resource())
+        # same enrichment rules as the Lambda (image / DynamoDB lookup / SQL per cdc-enrichment.yaml)
+        self.rows = T.Enricher(self.mapping, sink, T.SqlRows(self.conn, self.mapping))
+        self.tr = T.Transformer(self.rows, sink, mapping=self.mapping)
 
     def run(self):
         while True:
@@ -81,7 +83,7 @@ class Applier(threading.Thread):
                     self.conn.close()
                 except Exception:
                     pass
-                self.conn = sqlsrc.connect(); self.rows.conn = self.conn
+                self.conn = sqlsrc.connect(); self.rows.sql.conn = self.conn
                 state = "dlq" if attempts + 1 >= self.max_attempts else "new"
                 self.store.q("UPDATE inbox SET attempts=attempts+1, state=?, error=? WHERE id=?", (state, repr(e)[:2000], iid))
                 time.sleep(1)

@@ -146,6 +146,91 @@ def _sql_type(c):
     return st
 
 
+# ---------------------------------------------------------------- enrichment (image / lookup / sql)
+
+def load_enrichment(path=None):
+    import yaml
+    for p in (path, os.path.join(ROOT, "design", "mapping", "cdc-enrichment.yaml"), os.path.join(HERE, "cdc-enrichment.yaml")):
+        if p and os.path.exists(p):
+            return yaml.safe_load(open(p))
+    return {"lookup": {}, "sql": []}
+
+
+def _q(v, places):
+    return decimal.Decimal(v).quantize(decimal.Decimal(places)) if v is not None else None
+
+
+# SQL Server computed columns (CDC/DMS images never include them), re-implemented with the same types/scale.
+COMPUTED = {
+    "sod_line_total": lambda r: _q((r["UnitPrice"] * (decimal.Decimal("1.0") - r["UnitPriceDiscount"]) * r["OrderQty"]) if r["UnitPrice"] is not None else 0, "0.000001"),
+    "pod_line_total": lambda r: _q((r["OrderQty"] * r["UnitPrice"]) if r["UnitPrice"] is not None else 0, "0.0001"),
+    "pod_stocked_qty": lambda r: _q((r["ReceivedQty"] - r["RejectedQty"]) if r["ReceivedQty"] is not None else 0, "0.01"),
+    "wo_stocked_qty": lambda r: (r["OrderQty"] - r["ScrappedQty"]) if r["OrderQty"] is not None else 0,
+    "email_lower": lambda r: r["EmailAddress"].strip().lower() if r.get("EmailAddress") is not None else None,
+    "card_last4": lambda r: r["CardNumber"][-4:] if r.get("CardNumber") is not None else None,
+}
+
+
+class Enricher:
+    """Builds the mapping row for a change: from the image, image + DynamoDB lookups, or a SQL re-read
+    (design/mapping/cdc-enrichment.yaml). sql_rows: SqlRows or None. lookup: object with get(table, pk, sk)."""
+
+    def __init__(self, mapping, lookup, sql_rows=None, config=None, force=None):
+        self.m, self.lookup, self.sql = mapping, lookup, sql_rows
+        self.cfg = config if config is not None else load_enrichment()
+        self.force = force if force is not None else os.environ.get("CDC_ENRICHMENT")
+        self.stats = {"image": 0, "lookup": 0, "sql": 0}
+
+    def mode(self, table):
+        if self.force:
+            return self.force
+        if table in (self.cfg.get("lookup") or {}):
+            return "lookup"
+        if table in (self.cfg.get("sql") or []) or self.m["sources"][table].get("source_sql"):
+            return "sql"
+        return "image"
+
+    def column_types(self, table):
+        """Types for event normalisation: from SQL if connected, else from mapping.json (no SQL needed)."""
+        if self.sql:
+            return self.sql.column_types(table)
+        return [{"name": c["column"], "st": c["sql_type"]} for c in self.m["sources"][table].get("columns", [])]
+
+    def by_columns(self, table, values):
+        if not self.sql:
+            raise RuntimeError("snapshot refresh needs SQL read access (%s)" % table)
+        return self.sql.by_columns(table, values)
+
+    def current(self, table, image):
+        mode = self.mode(table); self.stats[mode] += 1
+        if mode == "sql":
+            return self.sql.current(table, image) if self.sql else None
+        return self._build(table, image, mode)
+
+    def from_image(self, table, image):
+        if self.mode(table) == "sql":
+            return self.sql.from_image(table, image) if self.sql else dict(image)
+        return self._build(table, image, self.mode(table))
+
+    def _build(self, table, image, mode):
+        row = dict(image)
+        if mode == "image":
+            return row
+        spec = self.cfg["lookup"][table]
+        for col, fn in (spec.get("computed") or {}).items():
+            row[col] = COMPUTED[fn](row)
+        for lk in spec.get("lookups") or []:
+            item = self.lookup.get(lk["table"], awmap.render(lk["PK"], row), awmap.render(lk["SK"], row))
+            if item is None:
+                if self.sql:  # parent copy not there (yet): fall back to the join
+                    self.stats["sql"] += 1
+                    return self.sql.current(table, image) or self.sql.from_image(table, image)
+                raise LookupError("%s: parent %s %s/%s not found" % (table, lk["table"], lk["PK"], lk["SK"]))
+            for col, attr in lk["attrs"].items():
+                row[col] = item.get(attr)
+        return row
+
+
 # ---------------------------------------------------------------- transform
 
 class Transformer:
@@ -201,6 +286,9 @@ class Transformer:
             rep["refreshed"] = self.refresh(ch, now)
         return rep
 
+    def copy_attrs(self, table):
+        return _copy_attrs(self.m, table)
+
     def refresh(self, ch, now):
         img = ch.after or ch.before
         n = 0
@@ -210,10 +298,19 @@ class Transformer:
             vals = {tcol: img.get(scol) for tcol, scol in r["where"].items()}
             if any(v is None for v in vals.values()):
                 continue
+            copies = self.copy_attrs(r["refresh"])
             for row in self.rows.by_columns(r["refresh"], vals):
                 for t, item in self.items(r["refresh"], row, None, now):
-                    n += self.sink.refresh(t, item)
+                    # copied attributes whose source became NULL are absent from the new item -> REMOVE them
+                    n += self.sink.refresh(t, item, remove=[a for a in copies if a not in item])
         return n
+
+
+def _copy_attrs(mapping, table):
+    out = []
+    for sn in mapping["sources"][table].get("snapshots") or []:
+        out += [a for a in sn.get("attrs", []) if "*" not in a]
+    return out
 
 
 def tombstone(item, table, position, now, now_epoch):
@@ -228,6 +325,11 @@ class DynamoDBSink:
     def __init__(self, resource):
         self.r = resource
 
+    def get(self, table, pk, sk):
+        """Lookup for enrichment (eventually consistent); tombstones count as missing."""
+        it = self.r.Table(table).get_item(Key={"PK": pk, "SK": sk}).get("Item")
+        return None if it is None or it.get("deleted") else it
+
     def put(self, table, item, position):
         t = self.r.Table(table)
         try:
@@ -236,16 +338,20 @@ class DynamoDBSink:
         except t.meta.client.exceptions.ConditionalCheckFailedException:
             return False
 
-    def refresh(self, table, item):
-        """Snapshot copy refresh: update non-key attributes in place; never resurrects tombstones, never moves src_lsn."""
+    def refresh(self, table, item, remove=()):
+        """Snapshot copy refresh: SET non-key attributes in place and REMOVE copied attributes whose source is now NULL;
+        never resurrects tombstones, never moves src_lsn."""
         t = self.r.Table(table)
         attrs = {k: v for k, v in item.items() if k not in META and k != "updated_at"}
-        if not attrs:
+        if not attrs and not remove:
             return 0
         names = {"#a%d" % i: k for i, k in enumerate(attrs)}
+        names.update({"#r%d" % i: k for i, k in enumerate(remove)})
         values = {":v%d" % i: v for i, v in enumerate(attrs.values())}
         values[":u"] = item["updated_at"]
-        expr = "SET " + ", ".join("#a%d = :v%d" % (i, i) for i in range(len(attrs))) + ", updated_at = :u"
+        expr = "SET " + ", ".join(["#a%d = :v%d" % (i, i) for i in range(len(attrs))] + ["updated_at = :u"])
+        if remove:
+            expr += " REMOVE " + ", ".join("#r%d" % i for i in range(len(remove)))
         try:
             t.update_item(Key={"PK": item["PK"], "SK": item["SK"]}, UpdateExpression=expr, ExpressionAttributeNames=names,
                           ExpressionAttributeValues=values, ConditionExpression="attribute_exists(PK) AND attribute_not_exists(deleted)")
@@ -270,11 +376,13 @@ class MemorySink:
         self.tables.setdefault(table, {})[(item["PK"], item["SK"])] = dict(item)
         return True
 
-    def refresh(self, table, item):
-        cur = self.get(table, item["PK"], item["SK"])
+    def refresh(self, table, item, remove=()):
+        cur = self.tables.get(table, {}).get((item["PK"], item["SK"]))
         if cur is None or cur.get("deleted"):
             return 0
         cur.update({k: v for k, v in item.items() if k not in META})
+        for a in remove:
+            cur.pop(a, None)
         return 1
 
 
@@ -293,6 +401,18 @@ def _from_debezium_value(v, typ):
         return base64.b64decode(v) if isinstance(v, str) else v
     if typ == "bit":
         return bool(v)
+    return _common_value(v, typ)
+
+
+def _common_value(v, typ):
+    """Make image values look like the pymssql values the bulk loader sees (image-mode tables have no SQL re-read)."""
+    if typ == "uniqueidentifier":
+        return str(v).lower()          # Debezium/DMS send upper-case GUIDs; pymssql's UUID renders lower-case
+    if typ == "time":
+        if isinstance(v, int):         # Debezium connect mode: ms since midnight
+            return (datetime.datetime(1970, 1, 1) + datetime.timedelta(milliseconds=v)).time()
+        if isinstance(v, str):         # DMS: '07:00:00.0000000'
+            return datetime.time.fromisoformat(v[:15] if "." in v else v)
     return v
 
 
@@ -337,4 +457,6 @@ def _dms_value(v, typ):
         return decimal.Decimal(str(v))
     if typ in ("varbinary", "binary", "hierarchyid", "geography", "geometry") and isinstance(v, str):
         return base64.b64decode(v)
-    return v
+    if typ == "bit" and isinstance(v, (int, str)):
+        return str(v).lower() in ("1", "true")
+    return _common_value(v, typ)

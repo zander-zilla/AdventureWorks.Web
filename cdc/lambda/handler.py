@@ -7,8 +7,10 @@ Event source mapping (Terraform, phase 7):
   - ParallelizationFactor = 1 (per-shard order; DMS partitions by schema.table + primary key so one row = one shard)
 Idempotency: every write is conditional on src_lsn < position (DMS AR_H_CHANGE_SEQ), so Lambda retries, Kinesis
 re-delivery and DLQ replays are safe; older events are ignored instead of overwriting newer state.
-Enrichment reads the row through the mapping's source_sql from an RDS read replica (env SQL_HOST..., secret via
-Secrets Manager in phase 7) so CDC items are identical to the bulk load.
+Enrichment (design/mapping/cdc-enrichment.yaml): most tables are built from the DMS full row image (+ GetItem lookups
+in DynamoDB for copied parent attributes and re-implemented computed columns). Only the tables listed under `sql` (15)
+and snapshot refreshes re-read from an RDS read replica; set CDC_SQL_ENABLED=false to run without SQL access (those
+tables then fail into the DLQ).
 """
 import base64, json, os, sys
 
@@ -23,11 +25,15 @@ _state = {}
 
 def _ctx():
     if not _state:
-        import boto3, sqlsrc
+        import boto3
         m = T.load_json(T.default_mapping_path())
-        conn = sqlsrc.connect()
-        rows = T.SqlRows(conn, m)
-        _state.update(rows=rows, tr=T.Transformer(rows, T.DynamoDBSink(boto3.resource("dynamodb")), mapping=m))
+        sink = T.DynamoDBSink(boto3.resource("dynamodb"))
+        sql = None
+        if os.environ.get("CDC_SQL_ENABLED", "true").lower() == "true":  # only sql-mode tables + snapshot refresh use it
+            import sqlsrc
+            sql = T.SqlRows(sqlsrc.connect(), m)
+        rows = T.Enricher(m, sink, sql)
+        _state.update(rows=rows, tr=T.Transformer(rows, sink, mapping=m))
     return _state
 
 

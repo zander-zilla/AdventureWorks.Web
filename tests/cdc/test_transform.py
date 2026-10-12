@@ -142,3 +142,24 @@ def test_dms_record_normalisation_and_position_order():
     a = T.from_dms(rec("20261011220000000000000000000000001", "update"), types)
     b = T.from_dms(rec("20261011220000000000000000000000002", "delete"), types)
     assert a.position < b.position and a.position > "0x" + "0" * 20 and b.op == "d" and b.before["SalesOrderID"] == 1
+
+
+XML = ('<IndividualSurvey xmlns="http://schemas.microsoft.com/sqlserver/2004/07/adventure-works/IndividualSurvey">'
+       '<TotalPurchaseYTD>-3307.7544</TotalPurchaseYTD></IndividualSurvey>')
+
+
+def test_xml_demographics_identical_via_bulk_load_and_cdc():
+    """Person.Demographics (xml) must become the same map whether loaded in bulk (mapping.yaml) or via CDC (mapping.json)."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "loader"))
+    import awmap
+    y = awmap.load_mapping()["sources"]["Person.Person"]
+    row = dict(BusinessEntityID=293, PersonType="IN", NameStyle=False, Title=None, FirstName="Catherine", MiddleName="R.",
+               LastName="Abel", Suffix=None, EmailPromotion=1, AdditionalContactInfo=None, Demographics=XML,
+               rowguid="x", ModifiedDate=datetime.datetime(2022, 1, 1))
+    bulk = awmap.items_for_row("Person.Person", y, row, ["BusinessEntityID"], lsn(1), "t")
+    rows, sink, tr = setup(); rows.set("Person.Person", row)
+    rep = tr.apply(T.Change("Person.Person", "u", lsn(1), before=row, after=row))
+    cdc = [(t, dict(i, updated_at="t")) for t, i in rep["puts"]]
+    assert cdc == bulk
+    person = [i for _, i in cdc if i["type"] == "Person"][0]
+    assert person["demographics"] == {"total_purchase_ytd": "-3307.7544"}

@@ -14,6 +14,7 @@ except Exception:  # pragma: no cover
     CONN = None
 
 M = T.load_json(T.default_mapping_path())
+YAML = awmap.load_mapping() if CONN is not None else None
 
 
 @pytest.mark.skipif(CONN is None, reason="SQL Server not reachable")
@@ -25,10 +26,21 @@ def test_bulk_load_and_cdc_items_identical(table):
     computed = {c["name"] for c in rows.column_types(table) if c["is_computed"]}
     base_cols = {c["name"] for c in rows.column_types(table)}
     for row in bulk_rows:
-        bulk = awmap.items_for_row(table, src, row, src["primary_key"], "0x" + "1" * 20, "t")
+        # reference = the bulk loader's own mapping (mapping.yaml), not mapping.json, so a lossy expansion is caught
+        bulk = awmap.items_for_row(table, YAML["sources"][table], row, src["primary_key"], "0x" + "1" * 20, "t")
         image = {k: v for k, v in row.items() if k in base_cols and k not in computed}
         via_image = awmap.items_for_row(table, src, rows.from_image(table, image), src["primary_key"], "0x" + "1" * 20, "t")
         assert via_image == bulk
         rep = tr.apply(T.Change(table, "c", "0x" + "1" * 20, after=image))
         got = [(t, dict(i, updated_at="t")) for t, i in rep["puts"]]
         assert got == bulk
+
+
+def test_mapping_json_keeps_every_transform_input():
+    """mapping.json must carry everything awmap.items_for_row reads from a source (omit, transforms, source_sql, items)."""
+    import awmap as A
+    y = A.load_mapping()
+    for t, src in y["sources"].items():
+        for k in ("omit", "transforms", "source_sql", "items"):
+            if src.get(k):
+                assert M["sources"][t].get(k) == src[k], (t, k)

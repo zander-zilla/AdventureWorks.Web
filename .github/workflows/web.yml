@@ -23,6 +23,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Supply chain (pinned lockfile, no high/critical advisories)
         run: npm audit --audit-level=high --omit=dev
+      - name: Generated /api/v2 client is in sync with the committed OpenAPI document (C2-2)
+        run: npm run gen:api && git diff --exit-code src/api/schema.d.ts
       - run: npm run lint
       - run: npm run typecheck
       - name: Unit tests (Vitest)
@@ -45,5 +47,13 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: src/global.json
-      - name: /api/v2 + /app/ hosting tests (in-process, no DynamoDB)
-        run: cd src && dotnet test AdventureWorks.slnx -c Release --filter "FullyQualifiedName~ApiV2Tests|FullyQualifiedName~FramedCookieTests"
+      - name: Unit + /api/v2 + /app/ hosting tests (in-process, no DynamoDB; writes the OpenAPI document)
+        run: cd src && AW_OPENAPI_OUT=$GITHUB_WORKSPACE/src/web/openapi/v2.json dotnet test AdventureWorks.slnx -c Release
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openapi-v2
+          path: src/web/openapi/v2.json
+          if-no-files-found: ignore
+      - name: Committed OpenAPI document is current (src/web/openapi/v2.json drives the generated SPA client)
+        run: git diff --exit-code src/web/openapi/v2.json

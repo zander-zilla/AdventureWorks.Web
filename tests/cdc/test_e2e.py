@@ -108,10 +108,19 @@ def test_synthetic_trickle_replicates_through_cdc():
     lo = max(r["SalesOrderID"] for r in last.rows["Sales.SalesOrderHeader"])
     lc = max(r["CustomerID"] for r in last.rows["Sales.Customer"])
 
+    th = max(last.rows["Production.TransactionHistory"], key=lambda r: r["TransactionID"])  # last table of each day
+    inv = ddb.resource().Table("aw-inventory")
+    seen = {}
+
     def drained():
         st = json.load(urllib.request.urlopen(CDC + "/api/status"))
         h = sales.get_item(Key={"PK": "ORDER#%010d" % lo, "SK": "ORDER"}, ConsistentRead=True).get("Item")
         c = cust.get_item(Key={"PK": "BE#%06d" % lc, "SK": "PERSON"}, ConsistentRead=True).get("Item")
-        return st if h and c and st["queued"] == 0 else None
+        t = inv.get_item(Key={"PK": "PRODUCT#%06d" % th["ProductID"], "SK": "TXN#%s#%08d" % (th["TransactionDate"], th["TransactionID"])},
+                         ConsistentRead=True).get("Item")
+        stable = seen.get("n") == st["applied_events"] and time.time() - seen.get("t", time.time()) >= 10
+        if seen.get("n") != st["applied_events"]:
+            seen.update(n=st["applied_events"], t=time.time())
+        return st if h and c and t and st["queued"] == 0 and stable else None
     wait_for(drained, WAIT_S * 10)
     json.dump({"synthetic_days": r["batches"], "rows": r["rows"], "replicated_s": round(time.time() - t0, 1)}, open("/tmp/cdc-e2e-synthetic.json", "w"))

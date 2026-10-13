@@ -1,8 +1,0 @@
-@model List<ProductSummary>
-@{ ViewData["Title"] = "Search"; }
-<h1>Products starting with “@ViewData["q"]”</h1>
-<p class="muted">Name-prefix search (D2) on the PRODUCTNAMES item collection; full-text search comes later with OpenSearch.</p>
-<table data-testid="search-results">
-@foreach (var p in Model) { <tr><td><a asp-action="Product" asp-route-id="@p.Id" data-testid="search-result">@p.Name</a></td><td>@p.ProductNumber</td><td class="num">@p.ListPrice.ToString("C")</td></tr> }
-</table>
-@if (Model.Count == 0) { <p>No products.</p> }

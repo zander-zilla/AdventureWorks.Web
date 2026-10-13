@@ -167,7 +167,8 @@ public sealed class FulfilmentRepository(DynamoTables t, TimeProvider clock, Pri
 
     private DateTime Now() { var n = clock.GetUtcNow().UtcDateTime; return n.AddTicks(-(n.Ticks % TimeSpan.TicksPerSecond)); }
 
-    private async Task<long> NextTxnIdsAsync(int count)
+    /// <summary>INV-03 ids for app movements (shared by ship and C2-3 receipts).</summary>
+    public async Task<long> NextTxnIdsAsync(int count)
     {
         var r = await t.For(DynamoTables.Inventory).UpdateItemAsync(new UpdateItemRequest
         {

@@ -49,14 +49,10 @@ public sealed class ApiV2Tests : IClassFixture<ApiV2Tests.Factory>
         Assert.Equal("application/problem+json", r.Content.Headers.ContentType?.MediaType);
     }
 
-    [Fact] public async Task Protected_api_returns_401_but_razor_still_redirects()
+    [Fact] public async Task Protected_api_returns_401()
     {
-        var c = Client();
-        var api = await c.GetAsync("/api/v2/cart");
+        var api = await Client().GetAsync("/api/v2/cart");
         Assert.Equal(HttpStatusCode.Unauthorized, api.StatusCode);
-        var razor = await c.GetAsync("/Cart");
-        Assert.Equal(HttpStatusCode.Redirect, razor.StatusCode);
-        Assert.Contains("/Account/Login", razor.Headers.Location!.ToString());
     }
 
     [Fact] public async Task OpenApi_document_lists_v2_endpoints()
@@ -64,7 +60,10 @@ public sealed class ApiV2Tests : IClassFixture<ApiV2Tests.Factory>
         var doc = await Client().GetStringAsync("/api/v2/openapi.json");
         foreach (var p in new[] { "/api/v2/me", "/api/v2/auth/login", "/api/v2/products", "/api/v2/categories", "/api/v2/cart", "/api/v2/cart/items",
                      "/api/v2/checkout/quote", "/api/v2/checkout", "/api/v2/orders", "/api/v2/products/{id}/reviews", "/api/v2/ship-methods",
-                     "/api/v2/back-office/orders", "/api/v2/back-office/orders/{id}/{op}", "/api/v2/back-office/changes", "/api/v2/back-office/products/{id}/price" })
+                     "/api/v2/back-office/orders", "/api/v2/back-office/orders/{id}/{op}", "/api/v2/back-office/changes", "/api/v2/back-office/products/{id}/price",
+                     "/api/v2/back-office/procurement/suggestions", "/api/v2/back-office/procurement/vendors/{id}", "/api/v2/back-office/procurement/purchase-orders",
+                     "/api/v2/back-office/procurement/purchase-orders/{id}/{op}", "/api/v2/back-office/procurement/purchase-orders/{id}/receive",
+                     "/api/v2/back-office/procurement/purchase-orders/mine" })
             Assert.Contains($"\"{p}\"", doc);
         Assert.DoesNotContain("\"/Shop", doc);
         Assert.Contains("\"Quote\"", doc);   // response schemas are declared (the SPA client is generated from them)
@@ -94,6 +93,8 @@ public sealed class ApiV2Tests : IClassFixture<ApiV2Tests.Factory>
     [InlineData("/api/v2/back-office/changes")]
     [InlineData("/api/v2/checkout/quote")]
     [InlineData("/api/v2/orders")]
+    [InlineData("/api/v2/back-office/procurement/suggestions")]
+    [InlineData("/api/v2/back-office/procurement/purchase-orders")]
     public async Task Anonymous_gets_401_on_protected_endpoints(string path) =>
         Assert.Equal(HttpStatusCode.Unauthorized, (await Client().GetAsync(path)).StatusCode);
 
@@ -107,12 +108,32 @@ public sealed class ApiV2Tests : IClassFixture<ApiV2Tests.Factory>
         Assert.Equal(HttpStatusCode.NotFound, bad.StatusCode);                          // only the 5 transitions are routed
     }
 
-    [Fact] public async Task Root_opens_the_spa_and_razor_stays_at_classic()
+    [Fact] public async Task Procurement_roles_are_enforced()
     {
-        var c = Client();
-        Assert.Equal("/app/", (await c.GetAsync("/")).Headers.Location!.ToString());
-        Assert.Equal("/Shop", (await c.GetAsync("/classic")).Headers.Location!.ToString());
+        var buyer = await SignedIn("mikael0@adventure-works.com");
+        var me = await buyer.GetFromJsonAsync<JsonElement>("/api/v2/me");
+        Assert.Equal(new[] { "Buyer" }, me.GetProperty("roles").EnumerateArray().Select(x => x.GetString()).ToArray());
+        var approve = await buyer.PostAsJsonAsync("/api/v2/back-office/procurement/purchase-orders/100001/approve", new { version = 1 });
+        Assert.Equal(HttpStatusCode.Forbidden, approve.StatusCode);                     // buyers cannot approve their own POs
+        Assert.Equal(HttpStatusCode.Forbidden, (await buyer.GetAsync("/api/v2/back-office/orders")).StatusCode);   // not Fulfilment
+        var clerk = await SignedIn("fulfilment@adventure-works.com");
+        Assert.Equal(HttpStatusCode.Forbidden, (await clerk.GetAsync("/api/v2/back-office/procurement/suggestions")).StatusCode);
+        var bad = await (await SignedIn("sheela0@adventure-works.com")).PostAsJsonAsync("/api/v2/back-office/procurement/purchase-orders/1/explode", new { version = 1 });
+        Assert.Equal(HttpStatusCode.NotFound, bad.StatusCode);
     }
+
+    [Theory]
+    [InlineData("/classic")]
+    [InlineData("/Shop")]
+    [InlineData("/Shop/Product/707")]
+    [InlineData("/Cart")]
+    [InlineData("/Account/Login")]
+    [InlineData("/Products")]
+    public async Task Razor_ui_is_gone(string path) =>   // C2-3: Chapter 1's Razor UI lives in tag v1.0-migration and /c1/ only
+        Assert.Equal(HttpStatusCode.NotFound, (await Client().GetAsync(path)).StatusCode);
+
+    [Fact] public async Task Root_opens_the_spa() =>
+        Assert.Equal("/app/", (await Client().GetAsync("/")).Headers.Location!.ToString());
 
     [Theory]
     [InlineData("/app/")]
@@ -128,9 +149,17 @@ public sealed class ApiV2Tests : IClassFixture<ApiV2Tests.Factory>
     [Fact] public async Task App_without_slash_redirects() =>
         Assert.Equal("/app/", (await Client().GetAsync("/app")).Headers.Location!.ToString());
 
+    internal static HttpRequestMessage StaffLogin(bool https = false)
+    {
+        var m = new HttpRequestMessage(HttpMethod.Post, "/api/v2/auth/login") { Content = JsonContent.Create(new { email = "ops@adventure-works.com", password = "Demo!2026" }) };
+        m.Headers.Add("X-AW-Client", "test");
+        if (https) m.Headers.Add("X-Forwarded-Proto", "https");
+        return m;
+    }
+
     [Fact] public async Task Cookies_stay_lax_when_not_framed()
     {
-        var r = await Client().GetAsync("/Account/Login");
+        var r = await Client().SendAsync(StaffLogin());
         Assert.All(r.Headers.GetValues("Set-Cookie"), c => Assert.DoesNotContain("samesite=none", c, StringComparison.OrdinalIgnoreCase));
     }
 }
@@ -142,8 +171,7 @@ public sealed class FramedCookieTests
     {
         using var f = new ApiV2Tests.Factory { FrameAncestors = "https://showcase.example" };
         var c = f.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        var https = new HttpRequestMessage(HttpMethod.Get, "/Account/Login"); https.Headers.Add("X-Forwarded-Proto", "https");
-        var r = await c.SendAsync(https);
+        var r = await c.SendAsync(ApiV2Tests.StaffLogin(https: true));
         Assert.Equal("frame-ancestors 'self' https://showcase.example", r.Headers.GetValues("Content-Security-Policy").Single());
         Assert.All(r.Headers.GetValues("Set-Cookie"), cookie =>
         {
@@ -151,7 +179,7 @@ public sealed class FramedCookieTests
             Assert.Contains("secure", cookie, StringComparison.OrdinalIgnoreCase);
         });
 
-        var http = await c.GetAsync("/Account/Login");   // plain HTTP: Secure cookies would be dropped, so keep Lax
+        var http = await c.SendAsync(ApiV2Tests.StaffLogin());   // plain HTTP: Secure cookies would be dropped, so keep Lax
         Assert.All(http.Headers.GetValues("Set-Cookie"), cookie => Assert.DoesNotContain("samesite=none", cookie, StringComparison.OrdinalIgnoreCase));
     }
 }

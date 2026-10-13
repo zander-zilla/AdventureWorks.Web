@@ -1,6 +1,0 @@
-@model Product
-@{ ViewData["Title"] = "Edit product"; }
-<h1>Edit @Model.Name</h1>
-<p class="muted">Optimistic concurrency on <code>ver</code>; name and number stay unique via their index items (CAT-07).</p>
-<form asp-action="Edit" asp-route-id="@Model.Id" method="post"><partial name="_Form" /><p><button type="submit">Save</button></p></form>
-<p><a asp-action="Index">Back to list</a></p>

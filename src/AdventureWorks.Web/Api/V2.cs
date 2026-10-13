@@ -37,11 +37,17 @@ public static class V2
     public const string FulfilmentPolicy = "fulfilment";
     public const string CatalogAdminPolicy = "catalog-admin";
     public const string FulfilmentRole = "Fulfilment", CatalogAdminRole = "CatalogAdmin", CustomerRole = "Customer";
+    // C2-3 procurement: Buyer (vendors, suggestions, create + receive POs) and PurchasingManager (approve / reject; also buys).
+    public const string ProcurementPolicy = "procurement", PurchasingManagerPolicy = "purchasing-manager", StaffPolicy = "staff";
+    public const string BuyerRole = "Buyer", PurchasingManagerRole = "PurchasingManager";
+    public static readonly string[] StaffRoles = [FulfilmentRole, CatalogAdminRole, BuyerRole, PurchasingManagerRole];
 
     public static bool IsApi(PathString p) => p.StartsWithSegments("/api");
 
     private static int CustomerId(ClaimsPrincipal u) => int.Parse(u.FindFirstValue("customer_id")!);
     private static string Actor(ClaimsPrincipal u) => u.FindFirstValue(ClaimTypes.Email) ?? u.Identity?.Name ?? "unknown";
+    private static StaffUser Staff(ClaimsPrincipal u) => new(Actor(u), u.Identity?.Name ?? Actor(u),
+        int.TryParse(u.FindFirstValue("employee_id"), out var e) ? e : null);
     private static string? Token(HttpContext h) => h.Request.Headers["Idempotency-Key"].FirstOrDefault() is { Length: > 0 and <= 36 } k ? k : null;
 
     /// <summary>Domain exceptions -> problem+json (400 validation, 404, 409 conflict / failed condition).</summary>
@@ -188,12 +194,12 @@ public static class V2
             return Results.Ok(results);
         }).RequireAuthorization(FulfilmentPolicy).WithName("bulkApprove").Produces<List<BulkResult>>();
         bo.MapGet("/changes", async (int? limit, FulfilmentRepository f) => Results.Ok(await f.FeedAsync(Math.Clamp(limit ?? 50, 1, 200))))
-            .RequireAuthorization(FulfilmentPolicy).WithName("listChanges").Produces<List<FeedEntry>>();
+            .RequireAuthorization(StaffPolicy).WithName("listChanges").Produces<List<FeedEntry>>();
         bo.MapGet("/products/{id:int}/stock", async (int id, FulfilmentRepository f) =>
         {
             var st = await f.GetStockAsync(id);
             return Results.Ok(new LineStock(id, st.Total, st.ReorderPoint, st.Locations.Select(l => new StockAt(l.LocationId, l.Name, l.Quantity)).ToList()));
-        }).RequireAuthorization(FulfilmentPolicy).WithName("getStock").Produces<LineStock>();
+        }).RequireAuthorization(StaffPolicy).WithName("getStock").Produces<LineStock>();
 
         // ------------------------------------------------------------ back office: catalog admin (CAT-07 with the price-history fix)
         bo.MapPut("/products/{id:int}/price", (int id, PriceRequest body, ClaimsPrincipal u, CatalogRepository c, FulfilmentRepository f, TimeProvider clock) => Guard(async () =>
@@ -205,6 +211,45 @@ public static class V2
                  $"aw-catalog {Keys.Product(id)} {Keys.Price(now.Date)} (ListPriceHistory -> stg.list_price_history -> dw.dim_product SCD2)"]);
             return Results.Ok(new ProductDetail(p, [], await c.GetPriceHistoryAsync(id)));
         })).RequireAuthorization(CatalogAdminPolicy).WithName("setListPrice").Produces<ProductDetail>().ProducesProblem(409);
+
+        // ------------------------------------------------------------ back office: procurement (C2-3: PUR-01..07, INV-01/02/03)
+        var pr = bo.MapGroup("/procurement");
+        pr.MapGet("/suggestions", async (ProcurementRepository p) => Results.Ok(await p.SuggestionsAsync()))
+            .RequireAuthorization(ProcurementPolicy).WithName("listReorderSuggestions").Produces<List<ReorderSuggestion>>();
+        pr.MapGet("/vendors", async (ProcurementRepository p) => Results.Ok(await p.ListVendorsAsync()))
+            .RequireAuthorization(ProcurementPolicy).WithName("listVendors").Produces<List<VendorSummary>>();
+        pr.MapGet("/vendors/{id:int}", async (int id, ProcurementRepository p) =>
+        {
+            if (await p.GetVendorAsync(id) is not { } v) return Results.NotFound();
+            var orders = await p.ForVendorAsync(id);
+            return Results.Ok(new VendorDetail(v.Vendor, v.Addresses, v.Contacts, v.Products, await p.PerformanceAsync(id, orders), orders.Take(50).ToList()));
+        }).RequireAuthorization(ProcurementPolicy).WithName("getVendor").Produces<VendorDetail>().Produces(404);
+        pr.MapGet("/products/{id:int}/vendors", async (int id, ProcurementRepository p) => Results.Ok(await p.SuppliersAsync(id)))
+            .RequireAuthorization(ProcurementPolicy).WithName("listProductVendors").Produces<List<VendorProductInfo>>();
+        pr.MapGet("/purchase-orders", (int? status, string? next, ProcurementRepository p) => Guard(async () =>
+            Results.Ok(await p.OpenAsync(status ?? PoStatus.Pending, next))))
+            .RequireAuthorization(ProcurementPolicy).WithName("listOpenPurchaseOrders").Produces<PoPage>().ProducesProblem(400);
+        pr.MapGet("/purchase-orders/counts", async (ProcurementRepository p) =>
+            Results.Ok((await p.OpenCountsAsync()).Select(kv => new StatusCount(kv.Key, PoStatus.Text(kv.Key), kv.Value)).ToList()))
+            .RequireAuthorization(ProcurementPolicy).WithName("purchaseOrderCounts").Produces<List<StatusCount>>();
+        pr.MapGet("/purchase-orders/mine", async (string? next, ClaimsPrincipal u, ProcurementRepository p) =>
+            Staff(u).EmployeeId is { } e ? Results.Ok(await p.ForEmployeeAsync(e, next)) : Results.Ok(new PoPage([], null)))
+            .RequireAuthorization(ProcurementPolicy).WithName("listMyPurchaseOrders").Produces<PoPage>();
+        pr.MapGet("/purchase-orders/{id:int}", async (int id, ProcurementRepository p) => await p.GetOrderAsync(id) is { } o ? Results.Ok(o) : Results.NotFound())
+            .RequireAuthorization(ProcurementPolicy).WithName("getPurchaseOrder").Produces<PurchaseOrder>().Produces(404);
+        pr.MapPost("/purchase-orders", (CreatePoRequest body, ClaimsPrincipal u, HttpContext http, ProcurementRepository p, PricingRepository pricing) => Guard(async () =>
+        {
+            var o = await p.CreateAsync(body, Staff(u), await pricing.GetShipMethodsAsync(), Token(http));
+            return Results.Created($"/api/v2/back-office/procurement/purchase-orders/{o.Id}", o);
+        })).RequireAuthorization(ProcurementPolicy).WithName("createPurchaseOrder").Produces<PurchaseOrder>(201).ProducesProblem(400).ProducesProblem(404).ProducesProblem(409);
+        pr.MapPost("/purchase-orders/{id:int}/{op:regex(^(approve|reject)$)}", (int id, string op, PoTransitionRequest body, ClaimsPrincipal u, HttpContext http, ProcurementRepository p) =>
+            Guard(async () => Results.Ok(await p.TransitionAsync(id, op, body.Version, Actor(u), body.Note, Token(http)))))
+            .RequireAuthorization(PurchasingManagerPolicy).WithName("transitionPurchaseOrder").Produces<PoResult>().ProducesProblem(400).ProducesProblem(409);
+        pr.MapPost("/purchase-orders/{id:int}/receive", (int id, ReceiveRequest body, ClaimsPrincipal u, HttpContext http, ProcurementRepository p) =>
+            Guard(async () => Results.Ok(await p.ReceiveAsync(id, body, Actor(u), Token(http)))))
+            .RequireAuthorization(ProcurementPolicy).WithName("receivePurchaseOrder").Produces<PoResult>().ProducesProblem(400).ProducesProblem(409);
+        pr.MapGet("/locations", () => Results.Ok(Locations.All.Select(kv => new StockAt(kv.Key, kv.Value, 0)).ToList()))
+            .RequireAuthorization(ProcurementPolicy).WithName("listLocations").Produces<List<StockAt>>();
 
         return g;
     }
@@ -218,6 +263,7 @@ public static class V2
     /// <summary>C2-2 demo staff (no customer record): back-office roles only.</summary>
     public static ClaimsPrincipal StaffPrincipal(StaffAccount s) => new(new ClaimsIdentity(
         new[] { new Claim(ClaimTypes.Name, s.Name), new Claim(ClaimTypes.Email, s.Email.ToLowerInvariant()) }
+            .Concat(s.EmployeeId is { } e ? [new Claim("employee_id", e.ToString(System.Globalization.CultureInfo.InvariantCulture))] : Array.Empty<Claim>())
             .Concat(s.Roles.Select(r => new Claim(ClaimTypes.Role, r))),
         CookieAuthenticationDefaults.AuthenticationScheme));
 

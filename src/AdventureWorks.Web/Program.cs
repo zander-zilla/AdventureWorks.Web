@@ -19,20 +19,23 @@ builder.Services.AddSingleton<PricingRepository>();
 builder.Services.AddSingleton(sp => new SalesRepository(sp.GetRequiredService<DynamoTables>(), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<PricingRepository>(), sp.GetRequiredService<CatalogRepository>()));
 builder.Services.AddSingleton<FulfilmentRepository>();
+builder.Services.AddSingleton<ProcurementRepository>();
 builder.Services.AddSingleton(builder.Configuration.GetSection("Demo").Get<DemoOptions>() ?? new DemoOptions());
 
-builder.Services.AddControllersWithViews();
+// C2-3 (John's C2-2 decision 3): the Razor UI (shop, account, admin) is gone; Chapter 1 keeps it in tag v1.0-migration
+// and at /c1/. The app serves /api/v2, the SPA at /app/ and /healthz only.
 // Phase 8 (ADR 0009): Showcase:FrameAncestors = space-separated origins allowed to embed the app (the showcase's
 // "App" tab). Unset = default antiforgery X-Frame-Options: SAMEORIGIN.
 var frameAncestors = builder.Configuration["Showcase:FrameAncestors"]?.Trim();
-if (!string.IsNullOrEmpty(frameAncestors))
-    builder.Services.AddAntiforgery(o => o.SuppressXFrameOptionsHeader = true);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-    .AddCookie(o => { o.LoginPath = "/Account/Login"; o.Cookie.Name = "aw.after"; o.SlidingExpiration = true; V2.ApiAwareRedirects(o); });
+    .AddCookie(o => { o.LoginPath = "/app/login"; o.Cookie.Name = "aw.after"; o.SlidingExpiration = true; V2.ApiAwareRedirects(o); });
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(V2.CustomerPolicy, p => p.RequireClaim("customer_id"))
     .AddPolicy(V2.FulfilmentPolicy, p => p.RequireRole(V2.FulfilmentRole))
-    .AddPolicy(V2.CatalogAdminPolicy, p => p.RequireRole(V2.CatalogAdminRole));
+    .AddPolicy(V2.CatalogAdminPolicy, p => p.RequireRole(V2.CatalogAdminRole))
+    .AddPolicy(V2.ProcurementPolicy, p => p.RequireRole(V2.BuyerRole, V2.PurchasingManagerRole))
+    .AddPolicy(V2.PurchasingManagerPolicy, p => p.RequireRole(V2.PurchasingManagerRole))
+    .AddPolicy(V2.StaffPolicy, p => p.RequireRole(V2.StaffRoles));
 builder.Services.AddProblemDetails();
 // C2-2: numbers are plain JSON numbers (no "number | string" in the OpenAPI schema), so the generated SPA client gets number types.
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.Strict);
@@ -69,9 +72,8 @@ builder.Services.AddOpenTelemetry()
 
 var app = builder.Build();
 app.UseForwardedHeaders();
-if (!app.Environment.IsDevelopment())
-    app.UseWhen(c => !V2.IsApi(c.Request.Path), b => b.UseExceptionHandler("/Home/Error"));
-app.UseWhen(c => V2.IsApi(c.Request.Path), b => b.UseExceptionHandler().UseStatusCodePages());
+app.UseExceptionHandler();
+app.UseWhen(c => V2.IsApi(c.Request.Path), b => b.UseStatusCodePages());
 app.UseCookiePolicy();
 app.Use((ctx, next) => { if (ctx.Request.Path.Value == "/app") { ctx.Response.Redirect("/app/"); return Task.CompletedTask; } return next(); });
 if (!string.IsNullOrEmpty(frameAncestors))
@@ -85,13 +87,8 @@ app.MapOpenApi("/api/{documentName}/openapi.json");
 app.MapApiV2();
 // Chapter 2 SPA (src/web, built into wwwroot/app by the Dockerfile / `npm run build`): client-side routes fall back to index.html.
 app.MapFallbackToFile("/app/{*path:nonfile}", "app/index.html");
-// C2-2 (John's decision 7): once C2-2 is done, / opens the new UI. The Razor shop stays reachable at /Shop (and /classic,
-// which the frozen Chapter 1 showcase's App tab uses) for Chapter 1 parity. Ui:Root=razor restores the Chapter 1 root.
-// Without a default controller, Razor links to Shop/Index render as /Shop (not /), so the classic UI stays self-contained.
-var razorRoot = string.Equals(app.Configuration["Ui:Root"], "razor", StringComparison.OrdinalIgnoreCase);
-if (!razorRoot) app.MapGet("/", () => Results.Redirect("/app/")).ExcludeFromDescription();
-app.MapGet("/classic", () => Results.Redirect("/Shop")).ExcludeFromDescription();
-app.MapControllerRoute("default", razorRoot ? "{controller=Shop}/{action=Index}/{id?}" : "{controller}/{action=Index}/{id?}");
+// / opens the SPA (C2-2). C2-3 removed the Razor shop and /classic (John's C2-2 decision 3).
+app.MapGet("/", () => Results.Redirect("/app/")).ExcludeFromDescription();
 app.Run();
 
 public sealed class DemoOptions
@@ -108,6 +105,10 @@ public sealed class DemoOptions
     [
         new() { Email = "fulfilment@adventure-works.com", Name = "Fulfilment clerk (demo)", Roles = [V2.FulfilmentRole] },
         new() { Email = "ops@adventure-works.com", Name = "Ops manager (demo)", Roles = [V2.FulfilmentRole, V2.CatalogAdminRole] },
+        // C2-3: real AdventureWorks purchasing employees (HumanResources.Employee 251 Buyer, 250 Purchasing Manager), so
+        // "my POs" (PUR-06, GSI2 EMPLOYEE#) also shows their SQL-era purchase orders. Same demo password; no new auth system.
+        new() { Email = "mikael0@adventure-works.com", Name = "Mikael Sandberg", EmployeeId = 251, Roles = [V2.BuyerRole] },
+        new() { Email = "sheela0@adventure-works.com", Name = "Sheela Word", EmployeeId = 250, Roles = [V2.BuyerRole, V2.PurchasingManagerRole] },
     ];
 }
 
@@ -116,6 +117,7 @@ public sealed class StaffAccount
     public string Email { get; set; } = "";
     public string Name { get; set; } = "";
     public List<string> Roles { get; set; } = [];
+    public int? EmployeeId { get; set; }
 }
 
 public partial class Program { }

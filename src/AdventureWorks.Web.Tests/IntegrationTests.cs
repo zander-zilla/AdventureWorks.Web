@@ -6,12 +6,12 @@ namespace AdventureWorks.Web.Tests;
 public class IntegrationTests
 {
     private static readonly bool On = Environment.GetEnvironmentVariable("AW_DDB_IT") == "1";
-    private static DynamoTables Tables()
+    internal static DynamoTables Tables()
     {
         var b = int.Parse(Environment.GetEnvironmentVariable("DDB_PORT_BASE") ?? "8001");
         return new DynamoTables(new DynamoOptions { Endpoints = new()
         {
-            ["aw-catalog"] = $"http://localhost:{b}", ["aw-customer"] = $"http://localhost:{b + 1}", ["aw-inventory"] = $"http://localhost:{b + 3}",
+            ["aw-catalog"] = $"http://localhost:{b}", ["aw-customer"] = $"http://localhost:{b + 1}", ["aw-inventory"] = $"http://localhost:{b + 3}", ["aw-purchasing"] = $"http://localhost:{b + 4}",
             ["aw-reference"] = $"http://localhost:{b + 5}", ["aw-sales"] = $"http://localhost:{b + 6}",
         } });
     }
@@ -150,5 +150,71 @@ public class IntegrationTests
         var hist = await c.GetPriceHistoryAsync(680);
         Assert.Equal(newPrice, hist[^1].ListPrice); Assert.Null(hist[^1].EndDate); Assert.Equal(DateTime.UtcNow.Date, hist[^1].StartDate);
         Assert.Single(hist, h => h.EndDate is null);
+    }
+
+    /// <summary>C2-3 end to end on DynamoDB Local: INV-02 suggestion -> PUR-04 create -> approve -> partial receipt (with a
+    /// reject) -> final receipt; stock, TransactionHistory P, REORDER marker, PUR-05/06/07 and the change feed follow.</summary>
+    [Fact] public async Task Procurement_suggest_create_approve_receive()
+    {
+        if (!On) return;
+        var t = Tables();
+        var pricing = new PricingRepository(t, new PricingOptions(), TimeProvider.System);
+        var f = new FulfilmentRepository(t, TimeProvider.System, pricing);
+        var p = new ProcurementRepository(t, TimeProvider.System, f);
+
+        var vendors = await p.ListVendorsAsync();
+        Assert.Equal(104, vendors.Count);
+        Assert.NotEmpty((await p.ForEmployeeAsync(251, null)).Items);          // Mikael Sandberg's SQL-era POs (PUR-06)
+        Assert.NotEmpty((await p.ForEmployeeAsync(250, null)).Items);          // Sheela Word
+        var openBefore = await p.OpenCountsAsync();
+        Assert.True(openBefore[1] > 0 && openBefore[2] > 0);                    // SQL-era open POs (PUR-07 markers)
+
+        var sugg = await p.SuggestionsAsync();
+        var s = sugg.First(x => x.Vendor is not null && x.SuggestedQty > 0);
+        Assert.True(s.StockQty < s.ReorderPoint);
+        var buyer = new StaffUser("mikael0@adventure-works.com", "Mikael Sandberg", 251);
+        var qty = Math.Min(s.SuggestedQty, 50);
+        var po = await p.CreateAsync(new CreatePoRequest(s.Vendor!.VendorId, 3, [new PoLineRequest(s.ProductId, qty)]), buyer, await pricing.GetShipMethodsAsync());
+        Assert.True(po.Id >= Keys.NativePoIdStart); Assert.Equal(PoStatus.Pending, po.Status); Assert.Equal("ddb", po.Source);
+        Assert.Contains((await p.OpenAsync(1, null, 1000)).Items, x => x.Id == po.Id);
+        Assert.Contains((await p.ForEmployeeAsync(251, null)).Items, x => x.Id == po.Id);
+        Assert.Contains(await p.ForVendorAsync(s.Vendor.VendorId), x => x.Id == po.Id);
+        Assert.Contains((await p.SuppliersAsync(s.ProductId)), v => v.VendorId == s.Vendor.VendorId && v.OnOrderQty >= qty);
+
+        await Assert.ThrowsAsync<ConflictException>(() => p.ReceiveAsync(po.Id, new ReceiveRequest(po.Version, [new(po.Lines[0].DetailId, 1, 0, null)]), "x"));   // pending
+        var ap = await p.TransitionAsync(po.Id, "approve", po.Version, "sheela0@adventure-works.com", null);
+        Assert.Equal(PoStatus.Approved, ap.Order.Status);
+        await Assert.ThrowsAsync<ConflictException>(() => p.TransitionAsync(po.Id, "approve", po.Version, "x", null));   // stale version
+
+        var stock0 = await f.GetStockAsync(s.ProductId);
+        var first = qty > 1 ? qty / 2 : qty;
+        var rejected = first > 1 ? 1 : 0;
+        var r1 = await p.ReceiveAsync(po.Id, new ReceiveRequest(ap.Order.Version, [new(po.Lines[0].DetailId, first, rejected, null)]), "mikael0@adventure-works.com");
+        var stock1 = await f.GetStockAsync(s.ProductId);
+        Assert.Equal(stock0.Total + first - rejected, stock1.Total);
+        Assert.Equal(first, r1.Order.Lines[0].ReceivedQty); Assert.Equal(rejected, r1.Order.Lines[0].RejectedQty);
+        Assert.NotNull(r1.Order.ShipDate);
+        if (first < qty)
+        {
+            Assert.Equal("partially-received", r1.Outcome);
+            var r2 = await p.ReceiveAsync(po.Id, new ReceiveRequest(r1.Order.Version, [new(po.Lines[0].DetailId, qty - first, 0, 6)]), "mikael0@adventure-works.com");
+            Assert.Equal("complete", r2.Outcome);
+            Assert.Equal(stock1.Total + qty - first, (await f.GetStockAsync(s.ProductId)).Total);
+        }
+        var done = (await p.GetOrderAsync(po.Id))!;
+        Assert.Equal(PoStatus.Complete, done.Status);
+        Assert.Equal(new[] { "create", "approve", "receive" }, done.Events.Select(e => e.Action).Distinct().ToArray());
+        Assert.DoesNotContain((await p.OpenAsync(2, null, 1000)).Items, x => x.Id == po.Id);
+
+        var inv = t.For(DynamoTables.Inventory);
+        var txns = await inv.QueryAll(new Amazon.DynamoDBv2.Model.QueryRequest { TableName = "aw-inventory", KeyConditionExpression = "PK = :pk AND begins_with(SK, :t)",
+            FilterExpression = "reference_order_id = :po", ExpressionAttributeValues = new() { [":pk"] = Av.S(Keys.InvProduct(s.ProductId)), [":t"] = Av.S("TXN#"), [":po"] = Av.N(po.Id) } });
+        Assert.Equal(qty - rejected, txns.Sum(x => x.Dec("quantity")));
+        Assert.All(txns, x => Assert.Equal("P", x.Str("transaction_type")));
+        var feed = await f.FeedAsync(100);
+        Assert.Contains(feed, e => e.Event == "po.receive" && e.Subject == po.Number && e.Writes.Any(w => w.Contains("type P")));
+        Assert.Contains(feed, e => e.Event == "po.create" && e.Subject == po.Number);
+        var perf = await p.PerformanceAsync(s.Vendor.VendorId, await p.ForVendorAsync(s.Vendor.VendorId));
+        Assert.True(perf.Orders >= 1 && perf.Received >= qty);
     }
 }

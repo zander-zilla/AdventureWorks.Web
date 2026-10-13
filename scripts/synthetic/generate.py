@@ -151,7 +151,10 @@ class Generator:
             model = live[int(r.integers(len(live)))]
             used = {p["Color"] for p in self.P["products"] if p["ProductModelID"] == model}
             colour = [c for c in COLOURS if c not in used][int(r.integers(len([c for c in COLOURS if c not in used])))]
-            src = sorted([p for p in self.P["products"] if p["ProductModelID"] == model and p["FinishedGoodsFlag"]], key=lambda p: p["ProductID"])[:5]
+            src, sizes = [], set()   # one product per size (a model can carry the same size in several colours)
+            for p in sorted([p for p in self.P["products"] if p["ProductModelID"] == model and p["FinishedGoodsFlag"]], key=lambda p: p["ProductID"]):
+                if p["Size"] not in sizes and len(src) < 5:
+                    sizes.add(p["Size"]); src.append(p)
             prods = []
             for i, s in enumerate(src):
                 pid = 5000 + (year - 2014) * 20 + k * 10 + i

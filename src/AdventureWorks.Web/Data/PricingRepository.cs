@@ -7,7 +7,9 @@ namespace AdventureWorks.Web.Data;
 
 /// <summary>Pricing options. OfferDate: the date special offers are evaluated on. AdventureWorks' offer calendar ends in
 /// 2014, so the demo default is 2014-05-01 (volume discounts and the spring 2014 promotions are live); "today" uses the
-/// real date (then only offers without an end in the past apply, i.e. none of the sample offers).</summary>
+/// real date (then only offers without an end in the past apply, i.e. none of the sample offers).
+/// C2-7: with the generated data loaded (Terraform synthetic_data = true) the app gets Pricing__OfferDate=today, so the
+/// 2014-05-01 workaround only remains for the original-only database (docs/chapter-2/PLAN.md, C2-7).</summary>
 public sealed class PricingOptions
 {
     public string OfferDate { get; set; } = "2014-05-01";

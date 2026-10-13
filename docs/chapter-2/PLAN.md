@@ -574,7 +574,7 @@ behind `enable_ai`. Effort S-M (2 d).
 | Explain by "the model chooses from known causes" | Rules choose the cause; the model only explains it | The cause must not depend on the model. |
 | — | Shop guardrail (John, 2026-10-13) | See the section below. |
 
-#### New C2-6 decisions for John (working choices in PR #25, with recommendations)
+#### New C2-6 decisions R1–R5 (working choices in PR #25, *confirmed by John (Oct 13, 2026)*)
 | # | Decision | Recommendation (working choice) |
 |---|---|---|
 | R1 | Where reorder history and also-bought come from | **`derive_ai.py` after the Phase 3 load, into dedicated `DEMAND#` / `ALSO#` partitions** (product partitions untouched). On AWS run `scripts/aws/run-tool.sh demo derive-ai` after `bulk-load`. |

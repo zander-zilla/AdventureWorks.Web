@@ -20,8 +20,9 @@ $PY scripts/synthetic/fit.py --out /tmp/profile.json && cmp /tmp/profile.json sc
 $PY scripts/synthetic/original_checksum.py --out /tmp/original-before.json
 $PY scripts/synthetic/load_sql.py --end "$END" | tee /tmp/synthetic-load.json
 AW_SYN_IT=1 SYNTHETIC_END="$END" $PY -m pytest -q -p no:cacheprovider tests/synthetic/test_load_sql.py
+# 1.5 GB heaps (default 2 GB): the JVMs ballooned past 3 GB RSS each during the reconcile scans (16 GB runner OOM)
 for p in 8001 8002 8003 8004 8005 8006 8007; do docker rm -f aw-ddb-$p >/dev/null 2>&1 || true; done
-scripts/ddb-local-up.sh
+DDB_XMX="${DDB_XMX:-1536m}" scripts/ddb-local-up.sh
 $PY scripts/design/expand_mapping.py
 $PY scripts/loader/load.py --recreate --workers 8 --stats /tmp/load-stats-synthetic.json
 $PY scripts/reconcile.py --out /tmp/reconcile-all.json

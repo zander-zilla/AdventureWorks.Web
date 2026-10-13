@@ -33,7 +33,8 @@ def canon(item):
 
 def scan(table):
     """Memory-light: keep only a digest of each item's canonical content (+ tombstone flag)."""
-    t = ddb.resource().Table(table); out = {}; kw = {}
+    # small pages: DynamoDB Local builds each scan page in heap, 1 MB pages over ~0.5 M items ran 1-2 GB heaps out of memory
+    t = ddb.resource().Table(table); out = {}; kw = {"Limit": int(os.environ.get("RECONCILE_SCAN_LIMIT", "1000"))}
     while True:
         r = t.scan(**kw)
         for i in r["Items"]:

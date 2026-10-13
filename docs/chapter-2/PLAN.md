@@ -313,6 +313,12 @@ design anticipated it"; reorder → PO → receipt chain business people recogni
 | — | `PurchaseOrderEvent` items and a `COUNTER/PO` item in `aw-purchasing` | History timeline and id allocation without a SQL sequence. |
 | — | Razor UI removed | John's decision after C2-2. |
 
+### C2-3 recommendations accepted (2026-10-12, *accepted overnight by Grok Bot under John's delegation, pending John's review*)
+All 8 C2-3 recommendations were accepted: 1. Razor admin CRUD stays removed; 2. the creator may approve their own PO;
+3. tax 8 % / freight 2.5 % on new POs; 4. vendor list is a cached Scan; 5. max 15 lines per PO, suggestions capped at the
+vendor's maximum order quantity; 6. `on_order` baseline taken from SQL; 7. CDC skips app-written rows (`src_lsn` `~app`);
+8. demo employee ids 250/251 (verified by CI).
+
 ## C2-4 Production floor
 
 Steps
@@ -328,6 +334,39 @@ DynamoDB: existing INV-01, INV-03, INV-04, INV-05, INV-06 suffice. Effort M. Ris
 cache per assembly, parallel queries – measured in the Chapter 1 load test); work-order completion consuming components is
 *inferred* (PR #15 marks it I), so we label it a simplification. Demo talking points: recursive BOM and where-used – the
 "hard" relational patterns – answered from DynamoDB; visual Gantt.
+
+### C2-4 as built (PR #21)
+- **Route** `/app/back-office/production` (lazy-loaded chunk with Recharts), three tabs: *Scrap & on-time*, *Work orders*,
+  *BOM explorer*. Role `ProductionSupervisor`, demo login `production@adventure-works.com` (synthetic); every staff role
+  can view, only the supervisor creates, records operations and completes.
+- **API** `/api/v2/back-office/production/*`: work orders by due month (INV-06, GSI2 `WODUE#yyyy-MM`), open work orders,
+  detail with routing and events, create (plan: level-1 components allocated with the C2-2 stock logic, feasibility, standard
+  routing), record operation (actual hours × work-centre cost rate, optimistic `ver`), complete (one DynamoDB transaction:
+  header, remaining steps, product in at location 7 + `TransactionHistory` W +, components out with `quantity >= need`
+  conditions + W −, catalog stock copies, event, feed), BOM explosion as of a date (INV-04, parallel per level, depth 4),
+  where-used (INV-05, GSI1), assemblies, scrap reasons and monthly scrap / on-time KPIs.
+- **Redshift**: `dim_scrap_reason`, `dim_location`, `fact_work_order`, `fact_work_order_routing` and
+  `dw.v_production_scrap_on_time`; reconcile tests against AdventureWorks2022 (72,591 WOs, 67,131 routing steps) plus an
+  app-written WO reaching the star.
+- **Tests**: unit (`C24Tests.cs`), integration on DynamoDB Local (BOM → create → operate → complete), Playwright
+  `e2e/c2-4.spec.ts` (mocked and real image), warehouse `test_c2_4_*`, showcase spec. Screenshots `c2-4-*` in
+  `docs/showcase-screenshots/chapter-2/`.
+
+#### Changes from initial design (C2-4)
+| Plan | As built | Why |
+|---|---|---|
+| Route `/app/production` | `/app/back-office/production` | Same back-office shell as fulfilment and procurement. |
+| Work-order status | Derived: Open / Closed on time / Closed late (end vs due, by day) | AdventureWorks has no status column. |
+| Routing from data | Standard routing templates inferred (frames 10-20-30-40, assemblies 50-60, else 50; 4 h, one day per step) | No routing master in AdventureWorks. |
+| Component consumption (inferred) | Level-1 components for the full order quantity incl. scrap; shortage refuses completion (409); TXN W with negative quantity | Labelled a simplification, as planned. |
+| — | Remaining steps auto-closed at planned hours on completion; finished goods to location 7 | Keeps routing complete for the Redshift fact. |
+| — | New WO ids from 100,000 (`WO-DDB-n`); SQL-era WOs read-only; new WOs only for top-level assemblies | No clash with SQL ids; history stays as migrated. |
+| — | KPI range max 24 months, SQL-era months cached 10 min; BOM depth max 4 | Latency risk from the plan. |
+| Tile from a view | New facts + view, not only a view | Facts make the reconcile tests possible (same as C2-3). |
+| Chart library "in C2-4" | Recharts, lazy-loaded; the dependency-free SVG `Chart` stays for small charts | Smallest change to C2-0 pages. |
+
+#### C2-4 decisions (*accepted overnight by Grok Bot under John's delegation, pending John's review*)
+All the defaults in the table above were taken with the recommendation shown in *Why*.
 
 ## C2-5 Optional: Bedrock AI layer
 

@@ -102,17 +102,32 @@
   {
    "id": "C2-4",
    "name": "Production floor",
-   "status": "planned",
+   "status": "done",
    "pages": [
     {
-     "path": "/app/production",
-     "name": "Work orders, routing timeline, BOM explorer (INV-04..06)",
+     "path": "/app/back-office/production",
+     "name": "Production floor: scrap rate and on-time production by month (INV-06, Recharts)",
+     "processes": [
+      "plan-to-produce"
+     ]
+    },
+    {
+     "path": "/app/back-office/production/work-orders",
+     "name": "Work orders: routing Gantt, create → record operations → complete with scrap (INV-01, INV-03, INV-06)",
      "processes": [
       "plan-to-produce",
       "inventory"
      ]
+    },
+    {
+     "path": "/app/back-office/production/bom",
+     "name": "BOM explorer: multi-level explosion as of a date and where-used (INV-04, INV-05)",
+     "processes": [
+      "plan-to-produce"
+     ]
     }
-   ]
+   ],
+   "pr": 21
   },
   {
    "id": "C2-5",
@@ -346,6 +361,75 @@
    "method": "GET",
    "path": "/api/v2/back-office/procurement/locations",
    "phase": "C2-3"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/production/work-orders",
+   "phase": "C2-4",
+   "pattern": "INV-06"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/production/work-orders/open",
+   "phase": "C2-4",
+   "pattern": "INV-06"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/production/work-orders/{id}",
+   "phase": "C2-4",
+   "pattern": "INV-06"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/production/work-orders",
+   "phase": "C2-4"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/production/work-orders/{id}/operations",
+   "phase": "C2-4"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/production/work-orders/{id}/complete",
+   "phase": "C2-4",
+   "pattern": "INV-03"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/production/plan/{productId}",
+   "phase": "C2-4",
+   "pattern": "INV-04"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/production/assemblies",
+   "phase": "C2-4",
+   "pattern": "INV-04"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/production/bom/{productId}",
+   "phase": "C2-4",
+   "pattern": "INV-04"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/production/where-used/{productId}",
+   "phase": "C2-4",
+   "pattern": "INV-05"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/production/kpis",
+   "phase": "C2-4",
+   "pattern": "INV-06"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/production/scrap-reasons",
+   "phase": "C2-4"
   }
  ],
  "access_patterns": [
@@ -400,9 +484,10 @@
   },
   {
    "id": "INV-04..06",
-   "use": "BOM explorer, where-used, open work orders",
+   "use": "BOM explosion as of a date (INV-04), where-used (INV-05), work orders by due month + routing (INV-06)",
    "phase": "C2-4",
-   "new": false
+   "new": false,
+   "status": "live"
   },
   {
    "id": "CAT-07",
@@ -441,9 +526,10 @@
    "status": "live"
   },
   {
-   "name": "dw.production_scrap_on_time",
-   "use": "Scrap rate and on-time production tile",
-   "phase": "C2-4"
+   "name": "dw.v_production_scrap_on_time",
+   "use": "Scrap rate and on-time production by due month (fact_work_order, fact_work_order_routing)",
+   "phase": "C2-4",
+   "status": "live"
   }
  ],
  "architecture_delta": [

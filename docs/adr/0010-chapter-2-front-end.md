@@ -71,3 +71,7 @@ so the `SameSite=Lax` auth cookie is not sent and sign-in only works in a new ta
 - New role policies `Procurement` (Buyer or PurchasingManager), `PurchasingManager` and `Staff` (any staff role; used by
   the replication monitor and stock lookups). Staff principals carry an `employee_id` claim (HR employee) so PUR-06
   "my POs" and the PO's `employee_id` come from the login.
+
+### C2-4 update
+Chart library: **Recharts** (^3), used on the lazy-loaded production page only; the dependency-free SVG `Chart` component
+stays for the small C2-0 charts. Decision taken overnight by Grok Bot under John's delegation, pending John's review.

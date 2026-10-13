@@ -436,6 +436,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/back-office/procurement/smart-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listSmartSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/products/{id}/forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDemandForecast"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/smart-suggestions/{id}/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["explainReorder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/orders/{id}/email-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["draftPoEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/back-office/procurement/vendors": {
         parameters: {
             query?: never;
@@ -1019,6 +1083,34 @@ export interface components {
             /** Format: date-time */
             dueDate: null | string;
         };
+        DemandForecast: {
+            /** Format: int32 */
+            productId: number;
+            history: components["schemas"]["DemandMonth"][];
+            next: components["schemas"]["ForecastPoint"][];
+            /** Format: double */
+            monthly: number;
+            /** Format: double */
+            baseline: number;
+            /** Format: double */
+            growth: number;
+            /** Format: int32 */
+            last3: number;
+            /** Format: int32 */
+            same3LastYear: number;
+            /** Format: int32 */
+            leadTimeDays: number;
+            /** Format: double */
+            leadTimeDemand: number;
+            method: string;
+        };
+        DemandMonth: {
+            month: string;
+            /** Format: int32 */
+            qty: number;
+            /** Format: int32 */
+            orders: number;
+        };
         FeedEntry: {
             id: string;
             /** Format: date-time */
@@ -1027,6 +1119,11 @@ export interface components {
             subject: string;
             actor: string;
             writes: string[];
+        };
+        ForecastPoint: {
+            month: string;
+            /** Format: double */
+            qty: number;
         };
         LineStock: {
             /** Format: int32 */
@@ -1557,6 +1654,13 @@ export interface components {
             shipBase: number;
             /** Format: double */
             shipRate: number;
+        };
+        SmartSuggestion: {
+            rule: components["schemas"]["ReorderSuggestion"];
+            forecast: components["schemas"]["DemandForecast"];
+            /** Format: int32 */
+            smartQty: number;
+            reason: string;
         };
         StatusCount: {
             /** Format: int32 */
@@ -2501,6 +2605,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReorderSuggestion"][];
+                };
+            };
+        };
+    };
+    listSmartSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartSuggestion"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getDemandForecast: {
+        parameters: {
+            query?: {
+                leadTimeDays?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemandForecast"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    explainReorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    draftPoEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };

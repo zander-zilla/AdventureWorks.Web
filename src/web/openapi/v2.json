@@ -1044,6 +1044,170 @@
         }
       }
     },
+    "/api/v2/back-office/procurement/smart-suggestions": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "listSmartSuggestions",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SmartSuggestion"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/procurement/products/{id}/forecast": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "getDemandForecast",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "leadTimeDays",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemandForecast"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/procurement/smart-suggestions/{id}/explain": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "explainReorder",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/procurement/orders/{id}/email-draft": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "draftPoEmail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/back-office/procurement/vendors": {
       "get": {
         "tags": [
@@ -2770,6 +2934,92 @@
           }
         }
       },
+      "DemandForecast": {
+        "required": [
+          "productId",
+          "history",
+          "next",
+          "monthly",
+          "baseline",
+          "growth",
+          "last3",
+          "same3LastYear",
+          "leadTimeDays",
+          "leadTimeDemand",
+          "method"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DemandMonth"
+            }
+          },
+          "next": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ForecastPoint"
+            }
+          },
+          "monthly": {
+            "type": "number",
+            "format": "double"
+          },
+          "baseline": {
+            "type": "number",
+            "format": "double"
+          },
+          "growth": {
+            "type": "number",
+            "format": "double"
+          },
+          "last3": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "same3LastYear": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "leadTimeDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "leadTimeDemand": {
+            "type": "number",
+            "format": "double"
+          },
+          "method": {
+            "type": "string"
+          }
+        }
+      },
+      "DemandMonth": {
+        "required": [
+          "month",
+          "qty",
+          "orders"
+        ],
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "qty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orders": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "FeedEntry": {
         "required": [
           "id",
@@ -2802,6 +3052,22 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "ForecastPoint": {
+        "required": [
+          "month",
+          "qty"
+        ],
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "qty": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -4586,6 +4852,30 @@
           "shipRate": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "SmartSuggestion": {
+        "required": [
+          "rule",
+          "forecast",
+          "smartQty",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "rule": {
+            "$ref": "#/components/schemas/ReorderSuggestion"
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/DemandForecast"
+          },
+          "smartQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reason": {
+            "type": "string"
           }
         }
       },

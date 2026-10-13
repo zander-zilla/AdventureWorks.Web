@@ -205,31 +205,54 @@
   },
   {
    "id": "C2-7",
-   "name": "Synthetic data to the present (seeded generator, mid-2014 → Oct 2026, normal CDC load path behind a switch)",
-   "status": "planned",
+   "name": "Synthetic data to the present (seeded day-keyed generator 2014-07 → today, normal SQL → CDC load path behind synthetic_data, daily trickle behind synthetic_trickle)",
+   "status": "done",
    "optional": true,
-   "pages": [],
-   "planned_screens": [
+   "pages": [
+    {
+     "path": "/app/back-office/orders",
+     "name": "Generated web and reseller orders in the fulfilment queue up to the data's 'now' (synthetic_data)",
+     "processes": [
+      "o2c-internet",
+      "o2c-reseller"
+     ]
+    },
     {
      "path": "/app/back-office/procurement",
-     "name": "Forecasts and reorder history up to the current month (synthetic data on)",
+     "name": "Smart reorder forecasts over the generated years (complete months only, synthetic_data)",
      "processes": [
       "procure-to-pay",
       "inventory"
      ]
     },
     {
-     "path": "/app/shop",
-     "name": "Today's offers at checkout without the 2014 offer date (synthetic data on)",
+     "path": "/app/back-office/production",
+     "name": "Scrap rate and on-time production continue month by month after 2014 (synthetic_data)",
+     "processes": [
+      "plan-to-produce"
+     ]
+    },
+    {
+     "path": "/app/shop/products/:id",
+     "name": "New bike lines 2014-2026 (cloned models in new colours, sell window, launch offer) with generated reviews (synthetic_data)",
+     "processes": [
+      "catalog"
+     ]
+    },
+    {
+     "path": "/app/shop/cart",
+     "name": "This year's offers at checkout without the 2014-05-01 offer date (Pricing:OfferDate from the switch)",
      "processes": [
       "o2c-internet",
-      "catalog"
+      "sales-management"
      ]
     }
    ],
    "backlog": [
-    "Daily trickle job (one more generated day each night)"
-   ]
+    "Retire original products by setting SellEndDate (changes original rows; see decision S-1)",
+    "App list prices from the generated price history (decision S-2)"
+   ],
+   "pr": 28
   }
  ],
  "api_v2": [

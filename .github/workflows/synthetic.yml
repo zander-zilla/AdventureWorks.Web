@@ -28,9 +28,23 @@ jobs:
         with:
           path: docker/before/baks
           key: aw-baks-2022-v1
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: src/global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: pip install -r requirements-design.txt
       - name: 2-year slice into SQL Server, DB tests, DynamoDB Local, reconcile (all rows + original-only vs the Chapter 1 baseline)
         run: PYTHON=python scripts/synthetic-up.sh
+      - name: Real app image over the generated slice (offers as of the slice end), C2-7 screens + screenshots
+        run: |
+          AW_OFFER_DATE=2016-06-30 SKIP_LOAD=1 PYTHON=python scripts/after-up.sh
+          cd src/web && npm ci --no-audit --no-fund && npx playwright install --with-deps chromium
+          AW_E2E_BASE=http://localhost:5090/app/ AW_SYNTHETIC_END=2016-06-30 AW_SCREENSHOTS=$GITHUB_WORKSPACE/synthetic-shots npx playwright test e2e/c2-7.spec.ts --reporter=line
+      - name: App logs
+        if: failure()
+        run: docker logs aw-after-app-1 2>&1 | tail -80 || true
       - name: Warehouse - star over original + generated rows, original-only reconcile vs AdventureWorksDW2022
         run: STOP_DDB_AFTER_EXPORT=1 WH_RECONCILE_ARGS=--original-only PYTHON=python scripts/warehouse-up.sh
       - name: Warehouse - generated history reaches the star (facts, customers, new products, promotions)
@@ -52,4 +66,5 @@ jobs:
             /tmp/reconcile-original.json
             /tmp/warehouse-reconcile.json
             /tmp/load-stats-synthetic.json
+            synthetic-shots/
           if-no-files-found: ignore

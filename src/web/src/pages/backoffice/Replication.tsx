@@ -3,7 +3,7 @@ import { api } from '../../api/client'
 import { useLoad } from '../../api/useLoad'
 import { EmptyState, PageHeader, StatusPill } from '../../components'
 
-const tone = (e: string) => (e.endsWith('ship') ? 'ok' : e.endsWith('placed') ? 'info' : e.startsWith('order.cancel') || e.endsWith('reject') ? 'danger' : 'accent') as 'ok' | 'info' | 'danger' | 'accent'
+const tone = (e: string) => (e.endsWith('ship') || e === 'po.receive' ? 'ok' : e.endsWith('placed') || e === 'po.create' ? 'info' : e.startsWith('order.cancel') || e.endsWith('reject') ? 'danger' : 'accent') as 'ok' | 'info' | 'danger' | 'accent'
 
 /** Replication monitor for app writes (C2-2): every business write lands in DynamoDB with an origin marker
  *  (src = ddb, src_lsn = ~app, so the one-way SQL CDC never overwrites it) and a change-feed entry naming each item and
@@ -18,7 +18,7 @@ export function Replication() {
       <PageHeader title="Replication monitor" sub="App writes → DynamoDB (origin ~app) → zero-ETL → Redshift staging views. Newest first, live." />
       {feed.error ? <EmptyState title="Could not load the change feed">{feed.error.message}</EmptyState> : (
         <ol className="flex flex-col gap-3" data-testid="feed">
-          {(feed.data ?? []).length === 0 && <li className="text-mute">No app writes yet. Place an order in the shop.</li>}
+          {(feed.data ?? []).length === 0 && <li className="text-mute">No app writes yet. Place an order in the shop or raise a purchase order.</li>}
           {(feed.data ?? []).map(e => (
             <li key={e.id} className="rounded-aw border border-line bg-panel p-4" data-testid="feed-entry">
               <div className="flex items-center gap-3 text-sm">

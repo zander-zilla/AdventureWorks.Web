@@ -23,6 +23,13 @@ export type FeedEntry = S['FeedEntry']
 export type Review = S['Review']
 export type StatusCount = S['StatusCount']
 export type BulkResult = S['BulkResult']
+export type ReorderSuggestion = S['ReorderSuggestion']
+export type VendorSummary = S['VendorSummary']
+export type VendorDetail = S['VendorDetail']
+export type VendorProduct = S['VendorProductInfo']
+export type PurchaseOrder = S['PurchaseOrder']
+export type PurchaseOrderSummary = S['PurchaseOrderSummary']
+export type PoResult = S['PoResult']
 export type Problem = { title: string; status: number; detail?: string }
 
 export class ApiError extends Error {
@@ -71,9 +78,25 @@ export const api = {
     })),
   bulkApprove: (orders: { id: number; version: number }[]) => ok(http.POST('/api/v2/back-office/orders/bulk-approve', { body: { orders } })),
   changes: (limit = 50) => ok(http.GET('/api/v2/back-office/changes', { params: { query: { limit } } })),
+  // C2-3 procurement
+  suggestions: () => ok(http.GET('/api/v2/back-office/procurement/suggestions')),
+  vendors: () => ok(http.GET('/api/v2/back-office/procurement/vendors')),
+  vendor: (id: number) => ok(http.GET('/api/v2/back-office/procurement/vendors/{id}', { params: { path: { id } } })),
+  pos: (status: number) => ok(http.GET('/api/v2/back-office/procurement/purchase-orders', { params: { query: { status } } })),
+  poCounts: () => ok(http.GET('/api/v2/back-office/procurement/purchase-orders/counts')),
+  myPos: () => ok(http.GET('/api/v2/back-office/procurement/purchase-orders/mine', { params: { query: {} } })),
+  po: (id: number) => ok(http.GET('/api/v2/back-office/procurement/purchase-orders/{id}', { params: { path: { id } } })),
+  locations: () => ok(http.GET('/api/v2/back-office/procurement/locations')),
+  createPo: (vendorId: number, shipMethodId: number | null, lines: { productId: number; quantity: number }[]) =>
+    ok(http.POST('/api/v2/back-office/procurement/purchase-orders', { body: { vendorId, shipMethodId, lines }, headers: idem() })),
+  poTransition: (id: number, op: 'approve' | 'reject', version: number, note?: string) =>
+    ok(http.POST('/api/v2/back-office/procurement/purchase-orders/{id}/{op}', { params: { path: { id, op } }, headers: idem(), body: { version, note: note ?? null } })),
+  receive: (id: number, version: number, lines: { detailId: number; receivedQty: number; rejectedQty: number; locationId: number | null }[]) =>
+    ok(http.POST('/api/v2/back-office/procurement/purchase-orders/{id}/receive', { params: { path: { id } }, headers: idem(), body: { version, lines } })),
   setPrice: (id: number, listPrice: number, version: number) => ok(http.PUT('/api/v2/back-office/products/{id}/price', { params: { path: { id } }, body: { listPrice, version } })),
 }
 
 export const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
-export const isStaff = (me: Me | null) => !!me?.roles?.some(r => r === 'Fulfilment' || r === 'CatalogAdmin')
+export const staffRoles = ['Fulfilment', 'CatalogAdmin', 'Buyer', 'PurchasingManager']
+export const isStaff = (me: Me | null) => !!me?.roles?.some(r => staffRoles.includes(r))
 export const hasRole = (me: Me | null, role: string) => !!me?.roles?.includes(role)

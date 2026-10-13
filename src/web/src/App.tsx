@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
 import { useAuth } from './api/auth'
-import { hasRole } from './api/client'
+import { hasRole, staffRoles } from './api/client'
 import { AppShell, EmptyState } from './components'
 import { nav } from './nav'
 import { DesignGallery } from './pages/DesignGallery'
@@ -9,6 +9,7 @@ import { Overview } from './pages/Home'
 import { Login } from './pages/Login'
 import { Products } from './pages/Products'
 import { BackOfficeOrders } from './pages/backoffice/Orders'
+import { Procurement } from './pages/backoffice/Procurement'
 import { Replication } from './pages/backoffice/Replication'
 import { Cart } from './pages/shop/Cart'
 import { MyOrder, MyOrders } from './pages/shop/MyOrders'
@@ -21,10 +22,15 @@ import { chapter1Url } from './showcaseUrl'
 const goChapter1 = () => { window.location.href = chapter1Url() }
 
 /** Back-office screens need a staff role (the API enforces it too: 401/403). */
-function Staff({ role, children }: { role: string; children: ReactNode }) {
+function Staff({ roles, children }: { roles: string[]; children: ReactNode }) {
   const { me, loading } = useAuth()
   if (loading) return null
-  return hasRole(me, role) ? children : <EmptyState title="Back-office sign-in required">Sign in as fulfilment@adventure-works.com or ops@adventure-works.com.</EmptyState>
+  return roles.some(r => hasRole(me, r)) ? children : (
+    <EmptyState title="Back-office sign-in required">
+      {roles.includes('Buyer')
+        ? 'Sign in as mikael0@adventure-works.com (Buyer) or sheela0@adventure-works.com (Purchasing manager).'
+        : 'Sign in as fulfilment@adventure-works.com or ops@adventure-works.com.'}
+    </EmptyState>)
 }
 
 export function App() {
@@ -40,8 +46,9 @@ export function App() {
         <Route path="shop/cart" element={<Cart />} />
         <Route path="shop/orders" element={<MyOrders />} />
         <Route path="shop/orders/:id" element={<MyOrder />} />
-        <Route path="back-office/orders" element={<Staff role="Fulfilment"><BackOfficeOrders /></Staff>} />
-        <Route path="back-office/replication" element={<Staff role="Fulfilment"><Replication /></Staff>} />
+        <Route path="back-office/orders" element={<Staff roles={['Fulfilment']}><BackOfficeOrders /></Staff>} />
+        <Route path="back-office/replication" element={<Staff roles={staffRoles}><Replication /></Staff>} />
+        <Route path="back-office/procurement/*" element={<Staff roles={['Buyer', 'PurchasingManager']}><Procurement /></Staff>} />
         <Route path="design" element={<DesignGallery />} />
         <Route path="login" element={<Login />} />
         <Route path="*" element={<EmptyState title="Not here yet">This screen arrives in a later Chapter 2 phase.</EmptyState>} />

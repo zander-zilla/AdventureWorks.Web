@@ -11,7 +11,7 @@ export const nav: NavGroup[] = [
   { title: 'Back office', items: [
     { to: '/back-office/orders', label: 'Orders', icon: '⇄' },
     { to: '/back-office/replication', label: 'Replication monitor', icon: '⟳' },
-    { to: '/procurement', label: 'Procurement', icon: '⛟', badge: 'C2-3', disabled: true },
+    { to: '/back-office/procurement', label: 'Procurement', icon: '⛟' },
     { to: '/production', label: 'Production', icon: '⚙', badge: 'C2-4', disabled: true },
   ] },
   { title: 'Chapter 2', items: [

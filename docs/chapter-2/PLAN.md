@@ -583,6 +583,17 @@ behind `enable_ai`. Effort S-M (2 d).
 | R4 | Watchdog | **Rules pick the cause, the model explains; monitor API or recorded scenarios; DLQ depth only on AWS (no SQS read from the app).** Follow-up W: give the app the monitor API URL on AWS (it sits behind CloudFront with an IAM-signed Lambda URL, so this needs a small signed client or a CloudFront path) – recommended as a follow-up PR. |
 | R5 | Shopper chat tools | **Server routes tools in code; 10 turns; cards from tool results; also-bought on the product page even with AI off.** |
 
+#### C2-6 polish (PR after #25)
+- R1–R5 confirmed by John (Oct 13, 2026).
+- **Incomplete trailing month left out**: `derive_ai.py` keeps months up to the last complete one (data ending mid-month, as on
+  2014-06, drops that month) and writes `DEMAND#META / ASOF complete_through`; the app's `Forecast.Complete` also drops months
+  after that marker and the running calendar month; the warehouse backtest uses the same cut-off.
+- **Watchdog on the live monitor API**: `MonitorWatchSource` signs GET `/api/status` and `/api/changes` with SigV4 (service
+  `lambda`, task-role credentials) when `Ai:MonitorSigV4` is on; Terraform wires the Function URL and a Lambda invoke permission
+  scoped to the monitor API function (AWS_IAM only) when `enable_ai` and the monitor API are on (plan tests
+  `ai_watchdog_monitor_api`, `ai_watchdog_without_monitor_api`). A failed call shows the *unavailable* cause; locally and without
+  the monitor API the recorded scenarios stay. Signer checked against the AWS SigV4 test suite (`get-vanilla`).
+
 #### Shop guardrail (confirmed by John (Oct 13, 2026))
 The public shopper chat gets its own `aws_bedrock_guardrail.shop` (created only with `enable_ai`); ask-the-data and the back-office
 features keep the existing guardrail. Settings: 1. content filters HATE, INSULTS, SEXUAL, VIOLENCE, MISCONDUCT at HIGH on input and

@@ -79,3 +79,17 @@ consistent, so My orders also merges in the order that was just placed.
   - `pytest tests/after` runs the Playwright smoke test.
   - CI runs all of these in `.github/workflows/after.yml`.
 - In AWS: set only `DynamoDb__Region`. Credentials come from the task role. No endpoints are configured.
+
+## Chapter 2 (C2-2) items written by the app
+These are app-only items (no SQL Server source); all carry `src = ddb`, `src_lsn = "~app"` (ADR 0003).
+
+| Table | PK / SK | Type | Written by |
+|---|---|---|---|
+| aw-sales | `ORDER#<id>` / `EVENT#<iso>#<seq>` | `OrderEvent` | checkout and every back-office action (My orders timeline) |
+| aw-sales | `FEED#<yyyy-MM-dd>` / `<iso>#<id>` | `ChangeFeed` (TTL 7 d) | every app write; replication monitor |
+| aw-sales | order header | adds `ver`, `territory_id`, `ship_method_id`, `carrier_tracking_number`; GSI2 `ORDERSTATUS#<s>` / `<iso>#<id>` while open | checkout, SAL-06 |
+| aw-inventory | `PRODUCT#<id>` / `TXN#<iso>#<id>` | `InventoryTransaction` type S (ids ≥ 10,000,000) | ship (INV-03) |
+| aw-catalog | `PRODUCT#<id>` / `REVIEW#…`, `REVIEWER#<customer>` | `ProductReview` + one-per-customer marker | CAT-11 |
+| aw-catalog | `PRODUCT#<id>` / `PRICE#<start>` | `ListPriceHistory` | price edit (CAT-07 fix) |
+
+Back-office territory filtering uses a `FilterExpression` on SAL-05; SAL-14 was not added.

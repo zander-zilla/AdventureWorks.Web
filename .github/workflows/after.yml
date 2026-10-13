@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: 22
       - name: Chapter 2 SPA in the real image at /app/ (real /api/v2 + DynamoDB Local, same-origin cookie login)
-        run: cd src/web && npm ci --no-audit --no-fund && npx playwright install chromium && AW_E2E_BASE=http://localhost:5090/app/ npx playwright test --reporter=line
+        run: cd src/web && npm ci --no-audit --no-fund && npx playwright install chromium && AW_E2E_BASE=http://localhost:5090/app/ AW_SCREENSHOTS=$GITHUB_WORKSPACE/showcase-shots npx playwright test --reporter=line
       - name: Playwright smoke (login, browse, search, cart, checkout, history)
         run: python -m pytest -q -p no:cacheprovider tests/after
       - name: Showcase embeds the real .NET 10 app (App tab)

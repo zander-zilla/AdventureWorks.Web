@@ -56,3 +56,9 @@ so the `SameSite=Lax` auth cookie is not sent and sign-in only works in a new ta
 - The SPA's chapter switch goes to `<showcase>/c1/` via build arg `VITE_SHOWCASE_URL` (Terraform `showcase_url`).
 - The showcase is a second Vite entry of `src/web` (same components/tokens). Dark `accent-ink` is now `#0f1420`
   (white on the accent failed WCAG AA contrast).
+
+## C2-2 update
+- The API client is now generated: `openapi/v2.json` (from the API tests) → `openapi-typescript` → `schema.d.ts`, called via
+  `openapi-fetch` (`src/api/client.ts` is a thin wrapper). CI regenerates and fails on drift.
+- `/` redirects to the SPA (`/app/`); Razor remains at `/Shop` and `/classic` (`Ui:Root=razor` switches back).
+- Back office screens use role policies (`Fulfilment`, `CatalogAdmin`) on the same cookie auth.

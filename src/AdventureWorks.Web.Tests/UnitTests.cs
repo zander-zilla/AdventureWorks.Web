@@ -44,24 +44,37 @@ public class CheckoutTests
         return c;
     }
 
-    [Fact] public void Prices_with_tax_and_freight()
+    private static readonly ShipMethodInfo Truck = new(1, "XRQ - TRUCK GROUND", 3.95m, 0.99m);
+    private static readonly TaxInfo Wa = new(79, "WA", "Washington", 1, 0.088m, "Washington State Sales Tax");
+
+    private static Order PriceOrder(long id, int customerId, List<CartLine> cart, DateTime now) =>
+        SalesRepository.BuildOrder(id, customerId, Pricing.Price(cart.Select(c => new PricingItem(c.ProductId, c.Name, c.ProductNumber, c.Quantity, c.UnitPrice, null, null, [])).ToList(),
+            Wa, Truck, new DateTime(2014, 5, 1)), now);
+
+    [Fact] public void Prices_with_real_tax_and_freight()
     {
-        var o = SalesRepository.PriceOrder(1_000_000_001, 29485, Cart(3), Now);
-        Assert.Equal(60m, o.SubTotal); Assert.Equal(4.8m, o.TaxAmt); Assert.Equal(1.5m, o.Freight); Assert.Equal(66.3m, o.TotalDue);
+        var o = PriceOrder(1_000_000_001, 29485, Cart(3), Now);
+        Assert.Equal(60m, o.SubTotal); Assert.Equal(5.28m, o.TaxAmt);          // 8.8 % Washington
+        Assert.Equal(3.95m + 0.99m * 6, o.Freight);                              // base + rate x 6 units x 1 lb default
+        Assert.Equal(o.SubTotal + o.TaxAmt + o.Freight, o.TotalDue);
         Assert.Equal("SO-DDB-1000000001", o.Number);
+        Assert.Equal(1, o.ShipMethodId); Assert.Equal(1, o.TerritoryId);
     }
 
     [Fact] public void Small_order_is_one_transaction_with_cart_cleanup()
     {
-        var o = SalesRepository.PriceOrder(1_000_000_001, 29485, Cart(3), Now);
+        var o = PriceOrder(1_000_000_001, 29485, Cart(3), Now);
         var plan = SalesRepository.Plan("aw-sales", o, Customer(), "c@x", 29485, Now);
-        Assert.Equal(1 + 3 + 3, plan.Transaction.Count);
+        Assert.Equal(1 + 3 + 2 + 3, plan.Transaction.Count);   // header + lines + event + change feed + cart deletes
         Assert.Empty(plan.CartKeysAfter);
         var h = plan.Transaction[0].Put;
         Assert.Equal("attribute_not_exists(PK)", h.ConditionExpression);
         Assert.Equal("ORDER#1000000001", h.Item["PK"].S);
         Assert.Equal("CUSTOMER#029485", h.Item["GSI1PK"].S);
         Assert.Equal("ORDERSTATUS#1", h.Item["GSI2PK"].S);
+        Assert.Equal("2026-10-11T20:00:00#1000000001", h.Item["GSI2SK"].S);
+        Assert.Equal(Keys.AppLsn, h.Item["src_lsn"].S);
+        Assert.Equal("ChangeFeed", plan.Transaction[5].Put.Item["type"].S);
         Assert.Equal("ddb", h.Item["src"].S);
         Assert.Equal("Van Nuys", h.Item["ship_to_city"].S);
         Assert.Equal("CART#29485", plan.Transaction[^1].Delete.Key["PK"].S);
@@ -69,15 +82,15 @@ public class CheckoutTests
 
     [Fact] public void Large_order_moves_cart_cleanup_out_of_the_transaction()
     {
-        var o = SalesRepository.PriceOrder(1_000_000_002, 29485, Cart(95), Now);
+        var o = PriceOrder(1_000_000_002, 29485, Cart(95), Now);
         var plan = SalesRepository.Plan("aw-sales", o, Customer(), "c@x", 29485, Now);
         Assert.Equal(SalesRepository.MaxTransactActions, plan.Transaction.Count);
-        Assert.Equal(95 - 4, plan.CartKeysAfter.Count);
+        Assert.Equal(95 - 2, plan.CartKeysAfter.Count);
     }
 
     [Fact] public void More_than_95_lines_is_rejected()
     {
-        var o = SalesRepository.PriceOrder(1_000_000_003, 29485, Cart(96), Now);
+        var o = PriceOrder(1_000_000_003, 29485, Cart(96), Now);
         Assert.Throws<InvalidOperationException>(() => SalesRepository.Plan("aw-sales", o, Customer(), "c@x", 29485, Now));
     }
 }

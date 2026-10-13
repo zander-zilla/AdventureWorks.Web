@@ -54,11 +54,12 @@ test('Business processes: landscape, coverage tile, deep link opens a process', 
   expect(errors).toEqual([])
 })
 
-test('Back office placeholder, What changed, Ask the data are clearly marked', async ({ page }) => {
+test('Back office live (C2-2), What changed, Ask the data are clearly marked', async ({ page }) => {
   await page.goto('./#/c2/back-office')
-  await expect(page.getByText('Back office screens are coming soon')).toBeVisible()
-  await expect(page.getByTestId('planned-screen').first()).toContainText('Coming soon · C2-2')
-  await shot(page, 'c2-1-back-office')
+  await expect(page.getByTestId('live-screen').filter({ hasText: 'Back office orders' })).toContainText('Live · C2-2')
+  await expect(page.getByTestId('planned-screen').first()).toContainText('Coming soon · C2-3')
+  await expect(page.getByText('Back office screens are coming soon')).toHaveCount(0)
+  await shot(page, 'c2-2-showcase-back-office')
   await page.getByRole('link', { name: /What changed/ }).click()
   await expect(page.getByRole('table', { name: 'API v2 endpoints' })).toContainText('/api/v2/products')
   await expect(page.getByTestId('adrs')).toContainText('0010')

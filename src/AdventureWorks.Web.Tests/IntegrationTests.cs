@@ -11,7 +11,8 @@ public class IntegrationTests
         var b = int.Parse(Environment.GetEnvironmentVariable("DDB_PORT_BASE") ?? "8001");
         return new DynamoTables(new DynamoOptions { Endpoints = new()
         {
-            ["aw-catalog"] = $"http://localhost:{b}", ["aw-customer"] = $"http://localhost:{b + 1}", ["aw-sales"] = $"http://localhost:{b + 6}",
+            ["aw-catalog"] = $"http://localhost:{b}", ["aw-customer"] = $"http://localhost:{b + 1}", ["aw-inventory"] = $"http://localhost:{b + 3}",
+            ["aw-reference"] = $"http://localhost:{b + 5}", ["aw-sales"] = $"http://localhost:{b + 6}",
         } });
     }
 
@@ -85,5 +86,69 @@ public class IntegrationTests
         await c.DeleteProductAsync(id);
         Assert.Null(await c.GetProductAsync(id));
         await Assert.ThrowsAsync<InvalidOperationException>(() => c.DeleteProductAsync(680));
+    }
+
+    /// <summary>C2-2 end to end on DynamoDB Local: real pricing at checkout, approve, ship (stock, TXN, status), feed,
+    /// conflicts (stale version, wrong status), review once per customer, price edit writes history.</summary>
+    [Fact] public async Task Order_placed_approved_shipped_moves_stock()
+    {
+        if (!On) return;
+        var t = Tables();
+        var customers = new CustomerRepository(t);
+        var login = (await customers.FindLoginAsync("walter0@adventure-works.com"))!;
+        var view = (await customers.GetCustomerAsync(login.CustomerId))!;
+        var catalog = new CatalogRepository(t);
+        var pricing = new PricingRepository(t, new PricingOptions(), TimeProvider.System);
+        var sales = new SalesRepository(t, TimeProvider.System, pricing, catalog);
+        var f = new FulfilmentRepository(t, TimeProvider.System, pricing);
+        Assert.Equal(5, (await pricing.GetShipMethodsAsync()).Count);
+
+        foreach (var l in await sales.GetCartAsync(login.CustomerId)) await sales.RemoveAsync(login.CustomerId, l.ProductId);
+        var helmet = (await catalog.GetProductAsync(707))!;     // Sport-100 Helmet, Red: has volume-discount offers
+        await sales.AddToCartAsync(login.CustomerId, helmet, 12);
+        var quote = await sales.QuoteAsync(login.CustomerId, view, 1);
+        Assert.Equal(2, quote.Lines[0].SpecialOfferId);           // Volume Discount 11 to 14 (2 %), offer date 2014-05-01
+        Assert.Equal(Math.Round(helmet.ListPrice * 0.98m * 12, 6), quote.Lines[0].LineTotal);
+        var order = await sales.CheckoutAsync(login.CustomerId, view, login.Email, 1);
+        Assert.Equal(quote.TotalDue, order.TotalDue);
+
+        var before = await f.GetStockAsync(707);
+        var queue = await f.QueueAsync(OrderStatus.InProcess, null, null, null, null, 500);
+        Assert.Contains(queue.Items, o => o.Id == order.Id);
+        await Assert.ThrowsAsync<ConflictException>(() => f.ApplyAsync(order.Id, "ship", 1, "test", new ShipRequest(1, "T1")));   // not approved yet
+        var approved = await f.ApplyAsync(order.Id, "approve", 1, "test");
+        Assert.Equal(OrderStatus.Approved, approved.Order.Status);
+        await Assert.ThrowsAsync<ConflictException>(() => f.ApplyAsync(order.Id, "cancel", 1, "test"));                           // stale version
+        var shipped = await f.ApplyAsync(order.Id, "ship", 2, "test", new ShipRequest(5, "1Z-IT-0001"));
+        Assert.Equal("shipped", shipped.Outcome);
+
+        var read = (await sales.GetOrderAsync(order.Id, true))!;
+        Assert.Equal(OrderStatus.Shipped, read.Status); Assert.Equal("1Z-IT-0001", read.CarrierTrackingNumber); Assert.NotNull(read.ShipDate);
+        Assert.All(read.Lines, l => Assert.Equal("1Z-IT-0001", l.CarrierTrackingNumber));
+        Assert.Equal(new[] { "place", "approve", "ship" }, read.Events.Select(e => e.Action).ToArray());
+        var after = await f.GetStockAsync(707);
+        Assert.Equal(before.Total - 12, after.Total);
+        Assert.DoesNotContain((await f.QueueAsync(OrderStatus.Approved, null, null, null, null, 500)).Items, o => o.Id == order.Id);   // left the sparse index
+        var feed = await f.FeedAsync(20);
+        Assert.Contains(feed, e => e.Event == "order.ship" && e.Subject == order.Number && e.Writes.Any(w => w.Contains("type S")));
+    }
+
+    [Fact] public async Task Review_once_per_customer_and_price_history()
+    {
+        if (!On) return;
+        var t = Tables();
+        var c = new CatalogRepository(t);
+        var cid = 900_000 + Random.Shared.Next(1, 99_999);
+        var r = await c.AddReviewAsync(709, cid, "IT Reviewer", "it@x", 4, "Comfortable socks, would buy again.", DateTime.UtcNow);
+        Assert.Contains(await c.GetReviewsAsync(709), x => x.Id == r.Id);
+        await Assert.ThrowsAsync<Amazon.DynamoDBv2.Model.TransactionCanceledException>(() => c.AddReviewAsync(709, cid, "IT", "it@x", 5, "Second review is refused.", DateTime.UtcNow));
+
+        var p = (await c.GetProductAsync(680))!;
+        var newPrice = p.ListPrice + 1;
+        var updated = await c.SetListPriceAsync(680, newPrice, p.Version);
+        Assert.Equal(newPrice, updated.ListPrice);
+        var hist = await c.GetPriceHistoryAsync(680);
+        Assert.Equal(newPrice, hist[^1].ListPrice); Assert.Null(hist[^1].EndDate); Assert.Equal(DateTime.UtcNow.Date, hist[^1].StartDate);
+        Assert.Single(hist, h => h.EndDate is null);
     }
 }

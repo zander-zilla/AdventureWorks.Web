@@ -19,6 +19,7 @@ public sealed class Product
     public int? ModelId { get; set; }
     public string? ModelName { get; set; }
     public decimal? Weight { get; set; }
+    public string? WeightUnit { get; set; }
     public DateTime? SellStartDate { get; set; }
     public DateTime? SellEndDate { get; set; }
     public decimal StockQty { get; set; }
@@ -64,7 +65,9 @@ public sealed record CartLine(int ProductId, string Name, string ProductNumber, 
     public decimal LineTotal => UnitPrice * Quantity;
 }
 
-public sealed record OrderLine(int LineNo, int ProductId, string Name, string? ProductNumber, int Quantity, decimal UnitPrice, decimal LineTotal);
+public sealed record OrderLine(int LineNo, int ProductId, string Name, string? ProductNumber, int Quantity, decimal UnitPrice, decimal LineTotal,
+    decimal UnitPriceDiscount = 0, int SpecialOfferId = 1, string? CarrierTrackingNumber = null);
+public sealed record OrderEvent(DateTime At, string Action, int? FromStatus, int ToStatus, string Actor, string? Note);
 
 public sealed class Order
 {
@@ -79,7 +82,16 @@ public sealed class Order
     public decimal TotalDue { get; set; }
     public string? ShipTo { get; set; }
     public string Source { get; set; } = "sql";
+    public string? CustomerName { get; set; }
+    public int? TerritoryId { get; set; }
+    public int? ShipMethodId { get; set; }
+    public string? ShipMethodName { get; set; }
+    public string? CarrierTrackingNumber { get; set; }
+    public DateTime? ShipDate { get; set; }
+    public int RevisionNumber { get; set; }
+    public long Version { get; set; }
     public List<OrderLine> Lines { get; } = new();
+    public List<OrderEvent> Events { get; } = new();
     public static string StatusName(int s) => s switch { 1 => "In process", 2 => "Approved", 3 => "Backordered", 4 => "Rejected", 5 => "Shipped", 6 => "Cancelled", _ => s.ToString() };
 }
 

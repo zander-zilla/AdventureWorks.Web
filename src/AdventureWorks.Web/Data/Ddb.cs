@@ -18,7 +18,7 @@ public sealed class DynamoOptions
 /// <summary>Routes each domain table to its client (one per endpoint).</summary>
 public sealed class DynamoTables
 {
-    public const string Catalog = "aw-catalog", Customer = "aw-customer", Sales = "aw-sales";
+    public const string Catalog = "aw-catalog", Customer = "aw-customer", Sales = "aw-sales", Inventory = "aw-inventory", Reference = "aw-reference";
     private readonly DynamoOptions _o;
     private readonly Dictionary<string, IAmazonDynamoDB> _clients = new();
     private readonly Func<string?, IAmazonDynamoDB> _factory;
@@ -36,6 +36,27 @@ public sealed class DynamoTables
     }
 
     public string Name(string table) => _o.TablePrefix + table;
+
+    private string EndpointKey(string table) => (_o.Endpoints.TryGetValue(table, out var e) ? e : _o.ServiceUrl) ?? "aws";
+
+    /// <summary>C2-2: one logical write across domain tables. In AWS (and with one local endpoint) this is ONE
+    /// TransactWriteItems (tables in the same account and region). DynamoDB Local in the Chapter 1 layout runs one
+    /// instance per table, and a transaction cannot span instances: the actions are then grouped per endpoint and
+    /// applied in first-seen order (callers put the group whose conditions are most likely to fail first). Local only;
+    /// see docs/chapter-2/PLAN.md, C2-2 as built.</summary>
+    public async Task TransactAsync(IReadOnlyList<(string Table, TransactWriteItem Action)> actions, string? idempotencyToken = null)
+    {
+        var groups = actions.GroupBy(a => EndpointKey(a.Table)).ToList();
+        foreach (var g in groups)
+            await For(g.First().Table).TransactWriteItemsAsync(new TransactWriteItemsRequest
+            {
+                TransactItems = g.Select(a => a.Action).ToList(),
+                ClientRequestToken = groups.Count == 1 ? idempotencyToken : null,
+            });
+    }
+
+    /// <summary>True when all the given tables share one endpoint (a single atomic transaction).</summary>
+    public bool SingleEndpoint(params string[] tables) => tables.Select(EndpointKey).Distinct().Count() == 1;
 
     public IAmazonDynamoDB For(string table)
     {
@@ -66,6 +87,15 @@ public static class Keys
     public static string Order(long id) => $"ORDER#{id:0000000000}";
     public static string OrderLine(int n) => $"LINE#{n:0000000}";
     public static string CustomerOrder(DateTime orderDate, long id) => $"ORDER#{Iso(orderDate)}#{id:0000000000}";
+    public static string InvProduct(int id) => Product(id);
+    public static string Txn(DateTime d, long id) => $"TXN#{Iso(d)}#{id:000000}";
+    public static string Review(DateTime d, int id) => $"REVIEW#{Iso(d)}#{id:00000}";
+    public static string Price(DateTime start) => $"PRICE#{Iso(start)}";
+    public static string OrderEvent(DateTime d, int seq) => $"EVENT#{Iso(d)}#{seq:000}";
+    public static string Feed(DateTime d) => "FEED#" + d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    /// <summary>C2-2 origin marker: app-owned items get src_lsn = AppLsn, which sorts after every SQL LSN ("0x..."), so the
+    /// one-way SQL -> DynamoDB CDC (conditional on src_lsn &lt; position, ADR 0003) never overwrites an app write.</summary>
+    public const string AppLsn = "~app";
     public static string Iso(DateTime d) => d.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
 
     /// <summary>D5: DynamoDB-native orders are numbered from 1,000,000,000 and carry the SO-DDB- prefix.</summary>

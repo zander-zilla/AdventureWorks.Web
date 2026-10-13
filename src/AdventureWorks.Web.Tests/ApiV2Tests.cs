@@ -62,8 +62,56 @@ public sealed class ApiV2Tests : IClassFixture<ApiV2Tests.Factory>
     [Fact] public async Task OpenApi_document_lists_v2_endpoints()
     {
         var doc = await Client().GetStringAsync("/api/v2/openapi.json");
-        foreach (var p in new[] { "/api/v2/me", "/api/v2/auth/login", "/api/v2/products", "/api/v2/categories", "/api/v2/cart" }) Assert.Contains($"\"{p}\"", doc);
+        foreach (var p in new[] { "/api/v2/me", "/api/v2/auth/login", "/api/v2/products", "/api/v2/categories", "/api/v2/cart", "/api/v2/cart/items",
+                     "/api/v2/checkout/quote", "/api/v2/checkout", "/api/v2/orders", "/api/v2/products/{id}/reviews", "/api/v2/ship-methods",
+                     "/api/v2/back-office/orders", "/api/v2/back-office/orders/{id}/{op}", "/api/v2/back-office/changes", "/api/v2/back-office/products/{id}/price" })
+            Assert.Contains($"\"{p}\"", doc);
         Assert.DoesNotContain("\"/Shop", doc);
+        Assert.Contains("\"Quote\"", doc);   // response schemas are declared (the SPA client is generated from them)
+        // C2-2: the generated SPA client (src/web) is built from this document; CI writes it and fails if the committed copy differs.
+        if (Environment.GetEnvironmentVariable("AW_OPENAPI_OUT") is { Length: > 0 } outPath)
+            File.WriteAllText(outPath, System.Text.Json.Nodes.JsonNode.Parse(doc)!.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+    }
+
+    private async Task<HttpClient> SignedIn(string email)
+    {
+        var c = Client(); c.DefaultRequestHeaders.Add("X-AW-Client", "test");
+        var r = await c.PostAsJsonAsync("/api/v2/auth/login", new { email, password = "Demo!2026" });
+        r.EnsureSuccessStatusCode();   // the test client keeps the auth cookie (HandleCookies)
+        return c;
+    }
+
+    [Fact] public async Task Staff_login_carries_back_office_roles_without_dynamodb()
+    {
+        var c = await SignedIn("ops@adventure-works.com");
+        var me = await c.GetFromJsonAsync<JsonElement>("/api/v2/me");
+        Assert.Equal(new[] { "Fulfilment", "CatalogAdmin" }, me.GetProperty("roles").EnumerateArray().Select(x => x.GetString()).ToArray());
+        Assert.Equal(JsonValueKind.Null, me.GetProperty("customerId").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("/api/v2/back-office/orders")]
+    [InlineData("/api/v2/back-office/changes")]
+    [InlineData("/api/v2/checkout/quote")]
+    [InlineData("/api/v2/orders")]
+    public async Task Anonymous_gets_401_on_protected_endpoints(string path) =>
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Client().GetAsync(path)).StatusCode);
+
+    [Fact] public async Task Roles_are_enforced()
+    {
+        var clerk = await SignedIn("fulfilment@adventure-works.com");
+        var price = await clerk.PutAsJsonAsync("/api/v2/back-office/products/680/price", new { listPrice = 1, version = 1 });
+        Assert.Equal(HttpStatusCode.Forbidden, price.StatusCode);                       // Fulfilment is not CatalogAdmin
+        Assert.Equal(HttpStatusCode.Forbidden, (await clerk.GetAsync("/api/v2/cart")).StatusCode);   // staff are not customers
+        var bad = await clerk.PostAsJsonAsync("/api/v2/back-office/orders/1/explode", new { version = 1 });
+        Assert.Equal(HttpStatusCode.NotFound, bad.StatusCode);                          // only the 5 transitions are routed
+    }
+
+    [Fact] public async Task Root_opens_the_spa_and_razor_stays_at_classic()
+    {
+        var c = Client();
+        Assert.Equal("/app/", (await c.GetAsync("/")).Headers.Location!.ToString());
+        Assert.Equal("/Shop", (await c.GetAsync("/classic")).Headers.Location!.ToString());
     }
 
     [Theory]

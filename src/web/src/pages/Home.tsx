@@ -1,12 +1,12 @@
 import { Chart, KpiCard, PageHeader, Timeline } from '../components'
 
-export function Home() {
+export function Overview() {
   return (
     <>
       <PageHeader title="Chapter 2 · Extend & modernize" sub="Same data, same platform, new face. Back office screens arrive phase by phase." />
       <div className="mb-6 grid grid-cols-4 gap-3.5">
         <KpiCard label="Domain tables (DynamoDB)" value="7" />
-        <KpiCard label="Processes with a UI" value="2 → 6" delta="target after C2-4" />
+        <KpiCard label="Processes with a UI" value="5 → 9" delta="of 10 · target after C2-4" />
         <KpiCard label="Designed access patterns" value="70" />
         <KpiCard label="API" value="/api/v2" />
       </div>
@@ -15,9 +15,9 @@ export function Home() {
         <div className="rounded-aw border border-line bg-panel p-4">
           <div className="mb-3 text-xs text-mute">Roadmap</div>
           <Timeline items={[
-            { title: 'C2-0 Design system', when: 'now', detail: 'React + Tailwind, /api/v2, /app/', tone: 'info' },
-            { title: 'C2-1 Showcase + chapter switch', when: 'next', tone: 'accent' },
-            { title: 'C2-2 Order fulfilment, pricing, reviews', when: 'then', tone: 'accent' },
+            { title: 'C2-0 Design system', when: 'done', detail: 'React + Tailwind, /api/v2, /app/', tone: 'ok' },
+            { title: 'C2-1 Showcase + chapter switch', when: 'done', tone: 'ok' },
+            { title: 'C2-2 Order fulfilment, pricing, reviews, new UI at /', when: 'now', tone: 'info' },
             { title: 'C2-3 Procurement · C2-4 Production · C2-5 AI (off by default)', when: 'later', tone: 'neutral' },
           ]} />
         </div>

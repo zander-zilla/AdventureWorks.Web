@@ -192,6 +192,52 @@ marker); pricing parity with SQL rounding (money as decimal, golden tests).
 Demo talking points: place an order in the new shop, ship it in the back office, watch stock drop and the order show up in
 Redshift; change a price, show the history in `dim_product`; "the bug the process analysis found is fixed".
 
+### C2-2 as built (PR #19)
+- **Back office** `/app/back-office/orders` (roles `Fulfilment`): status tabs with counts (SAL-05 on the sparse
+  `ORDERSTATUS#` GSI2, sort key `<iso date>#<order id>`), territory filter, search, bulk approve, order drawer with
+  stock per line (INV-01), ship form (ship method + tracking number), *approve / reject / backorder / ship / cancel*
+  (SAL-06). Transitions (`OrderStatus.Actions`): approve 1→2, reject 1→4, backorder 1|2→3, ship 2|3→5, cancel 1|2|3→6;
+  every write is conditioned on `ver` (optimistic concurrency, 409 on conflict) and accepts an `Idempotency-Key`.
+- **Ship** = one `TransactWriteItems` (`FulfilmentRepository.ShipPlan`): order header (status 5, ship date, method,
+  tracking, revision+1, GSI2 moved), tracking on each line, per line `INV#` location decrement (condition
+  `quantity >= q`) + product stock summary + `TXN#` TransactionHistory type `S` (INV-03, ids from 10,000,000), the
+  catalog's stock copy, an `OrderEvent` and a change-feed item. Shortage → the ship is refused and the order goes to
+  *Backordered* (from Approved). Max 19 lines per ship (DynamoDB 100-item transaction limit).
+- **Replication monitor** `/app/back-office/replication`: every app write also puts a `ChangeFeed` item
+  (`FEED#<day>` in aw-sales, TTL 7 days) listing the tables/keys it touched, refreshed every 3 s.
+- **Checkout pricing** (`Pricing`, `PricingRepository`): best special offer per line (CAT-10, highest discount,
+  inclusive dates and min/max quantity, offer 1 "No discount" excluded), tax = state/province retail rate (REF-02,
+  type 1, else type 3), freight = ship-method base + rate × weight in lb (REF-04; grams converted, 1 lb default).
+  Money is decimal, 4 dp, away-from-zero. Shopper picks the ship method; quote and order are computed server-side
+  (`POST /checkout/quote`, `POST /checkout`). Header tax/freight are stored once; Redshift allocates them to lines by
+  line share exactly as before, so app orders and SQL-era orders land in `fact_internet_sales` the same way.
+- **Reviews** (CAT-11) on the product page: list + add (rating 1-5, 10-3,850 chars, small blocklist), one per customer
+  per product via a conditional `REVIEWER#` marker item in the same transaction.
+- **CAT-07 fixed**: a price change writes the product and closes the open `PRICE#` item (end date = day before) and adds
+  `PRICE#<today>` in one transaction; `PUT /back-office/products/{id}/price` (role `CatalogAdmin`) and the Razor admin
+  edit both use it. Warehouse test: `dim_product` gets a new SCD2 version.
+- **Generated API client**: `src/web/openapi/v2.json` (written by the API tests, `AW_OPENAPI_OUT`) →
+  `openapi-typescript` → `src/api/schema.d.ts`, used through `openapi-fetch`. CI fails if either is stale.
+- **Shop home** redesigned in React; **`/` now redirects to `/app/`**. Razor stays reachable at `/Shop` and `/classic`
+  (`Ui:Root=razor` restores the old root). The frozen Chapter 1 *App* tab points at `/classic`.
+- **CDC / Redshift**: all app writes carry `src_lsn = "~app"` so CDC never overwrites them (ADR 0003). The star build
+  extends `dim_date` to the latest order's year and adds inventory rows only for days with app stock movements
+  (no daily grid across the 2014→2026 gap). Warehouse test `test_c2_2_app_writes_reach_the_star` checks tax
+  allocation, promotion, tracking, inventory, SCD2 and reviews.
+- Demo staff logins (password `Demo!2026`): `fulfilment@adventure-works.com` (Fulfilment),
+  `ops@adventure-works.com` (Fulfilment + CatalogAdmin).
+
+#### Changes from initial design (C2-2)
+| Plan | As built | Why |
+|---|---|---|
+| Optional new access pattern SAL-14 (by status per territory) | **Not added**; territory is a `FilterExpression` on SAL-05 (`territory_id` set at checkout) | A few hundred open orders per status; an extra GSI isn't worth the write cost. Revisit if the queue grows. |
+| Ship = one transaction | One transaction **per DynamoDB endpoint locally** (local runs one DynamoDB Local per table); one transaction on AWS | DynamoDB Local instances can't share a transaction. Order: inventory first (conditions), then sales. |
+| Offers by order date | Offers evaluated on a **demo pricing date** (`Pricing:OfferDate`, default 2014-05-01; `today` = real date) | The sample offers end in 2014; with today's date no discount would ever apply. |
+| — | **Reseller volume discounts apply to web shoppers** too | They are the offers with quantity bands; makes CAT-10 visible. Decision for John. |
+| Golden tests against SQL Server | Unit tests on the pricing rules + warehouse allocation test | No SQL Server in the C2 CI path; parity is tax/freight allocation in Redshift. |
+| Razor kept in the tag only (decision 7) | Razor **still served** at `/Shop` and `/classic` | Requested for C2-2; remove at v2.0 if John agrees. |
+| — | Change-feed outbox + order event timeline items | Gives the replication monitor and My orders timeline without reading DynamoDB Streams. |
+
 ## C2-3 Procurement workspace
 
 Steps

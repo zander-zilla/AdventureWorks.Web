@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { api, type ProductSummary } from '../api/client'
+import { Link } from 'react-router'
+import { api, money, type ProductSummary } from '../api/client'
 import { Button, DataTable, EmptyState, PageHeader, StatusPill, type Column } from '../components'
 
-const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 const cols: Column<ProductSummary>[] = [
   { key: 'number', header: 'Number', value: p => p.productNumber, render: p => <span className="font-mono text-xs">{p.productNumber}</span> },
-  { key: 'name', header: 'Name', value: p => p.name },
+  { key: 'name', header: 'Name', value: p => p.name, render: p => <Link className="hover:text-accent" to={`/shop/products/${p.id}`}>{p.name}</Link> },
   { key: 'price', header: 'List price', value: p => p.listPrice, render: p => money.format(p.listPrice), align: 'right' },
   { key: 'state', header: 'State', value: p => (p.active ? 'Active' : 'Discontinued'), render: p => <StatusPill label={p.active ? 'Active' : 'Discontinued'} tone={p.active ? 'ok' : 'neutral'} /> },
 ]

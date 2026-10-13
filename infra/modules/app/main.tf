@@ -120,7 +120,8 @@ resource "aws_iam_role" "after" {
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
 }
 
-# The .NET 10 app touches aw-catalog, aw-customer, aw-sales (ADR 0006).
+# The .NET 10 app touches aw-catalog, aw-customer, aw-sales (ADR 0006); C2-2 adds aw-inventory (ship: stock +
+# TransactionHistory, one transaction with aw-sales) and aw-reference (read-only: tax rates, ship methods).
 resource "aws_iam_role_policy" "after" {
   name = "dynamodb"
   role = aws_iam_role.after.id
@@ -128,8 +129,8 @@ resource "aws_iam_role_policy" "after" {
     Version = "2012-10-17"
     Statement = concat([{ Effect = "Allow",
       Action = ["dynamodb:GetItem", "dynamodb:BatchGetItem", "dynamodb:Query", "dynamodb:PutItem", "dynamodb:UpdateItem",
-      "dynamodb:DeleteItem", "dynamodb:TransactWriteItems", "dynamodb:ConditionCheckItem", "dynamodb:DescribeTable"],
-      Resource = flatten([for t in ["aw-catalog", "aw-customer", "aw-sales"] : [var.table_arns[t], "${var.table_arns[t]}/index/*"]])
+      "dynamodb:DeleteItem", "dynamodb:BatchWriteItem", "dynamodb:TransactWriteItems", "dynamodb:ConditionCheckItem", "dynamodb:DescribeTable"],
+      Resource = flatten([for t in ["aw-catalog", "aw-customer", "aw-sales", "aw-inventory", "aw-reference"] : [var.table_arns[t], "${var.table_arns[t]}/index/*"]])
     }], local.kms)
   })
 }

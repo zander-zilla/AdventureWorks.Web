@@ -1,32 +1,79 @@
-// Typed client for /api/v2 (same origin; the auth cookie travels automatically).
-// Types mirror the C# records in Api/V2.cs; the OpenAPI document is served at /api/v2/openapi.json and a
-// contract test (Api_v2_contract) pins its shape. Generated client: deferred to C2-2 (ADR 0010, changes).
-export type Me = { authenticated: boolean; name?: string; email?: string; customerId?: number; roles: string[] }
-export type ProductSummary = { id: number; name: string; productNumber: string; listPrice: number; active: boolean }
-export type ProductPage = { items: ProductSummary[]; next: string | null }
-export type Subcategory = { id: number; name: string }
-export type Category = { id: number; name: string; subcategories: Subcategory[] }
+// /api/v2 client GENERATED from the OpenAPI document (C2-2, as John decided in C2-0): `npm run gen:api` turns
+// openapi/v2.json (written by the .NET API tests in CI, which fail if the committed copy is stale) into
+// src/api/schema.d.ts; openapi-fetch gives typed paths, params and bodies. Nothing here is hand-typed.
+import createClient, { type Middleware } from 'openapi-fetch'
+import type { components, paths } from './schema'
+
+type S = components['schemas']
+export type Me = S['MeDto']
+export type ProductSummary = S['ProductSummary']
+export type ProductPage = S['ProductPage']
+export type Product = S['Product']
+export type ProductDetail = S['ProductDetail']
+export type Category = S['Category']
+export type CartLine = S['CartLine']
+export type Quote = S['Quote']
+export type ShipMethod = S['ShipMethodInfo']
+export type Order = S['Order']
+export type OrderPage = S['OrderPage']
+export type OrderEvent = S['OrderEvent']
+export type BackOfficeOrder = S['BackOfficeOrder']
+export type TransitionResult = S['TransitionResult']
+export type FeedEntry = S['FeedEntry']
+export type Review = S['Review']
+export type StatusCount = S['StatusCount']
+export type BulkResult = S['BulkResult']
 export type Problem = { title: string; status: number; detail?: string }
 
 export class ApiError extends Error {
   constructor(public status: number, public problem?: Problem) { super(problem?.title ?? `HTTP ${status}`) }
 }
 
-const base = '/api/v2'
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(base + path, {
-    credentials: 'same-origin', ...init,
-    // X-AW-Client on every call: the server requires it on unsafe methods (CSRF guard, forces a CORS preflight).
-    headers: { Accept: 'application/json', 'X-AW-Client': 'spa', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers },
-  })
-  if (!r.ok) throw new ApiError(r.status, await r.json().catch(() => undefined))
-  return r.status === 204 ? (undefined as T) : r.json()
+// X-AW-Client on every call: the server requires it on unsafe methods (CSRF guard, forces a CORS preflight).
+const csrf: Middleware = { onRequest({ request }) { request.headers.set('X-AW-Client', 'spa'); return request } }
+export const http = createClient<paths>({ baseUrl: '', credentials: 'same-origin' })
+http.use(csrf)
+
+type Res<T> = { data?: T; error?: unknown; response: Response }
+async function ok<T>(p: Promise<Res<T>>): Promise<T> {
+  const { data, error, response } = await p
+  if (!response.ok) throw new ApiError(response.status, (error as Problem | undefined) ?? undefined)
+  return data as T
 }
+const idem = () => ({ 'Idempotency-Key': crypto.randomUUID() })
 
 export const api = {
-  me: () => call<Me>('/me'),
-  login: (email: string, password: string) => call<Me>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
-  logout: () => call<void>('/auth/logout', { method: 'POST' }),
-  products: (next?: string | null, pageSize = 25) => call<ProductPage>(`/products?pageSize=${pageSize}${next ? `&next=${encodeURIComponent(next)}` : ''}`),
-  categories: () => call<Category[]>('/categories'),
+  me: () => ok(http.GET('/api/v2/me')),
+  login: (email: string, password: string) => ok(http.POST('/api/v2/auth/login', { body: { email, password } })),
+  logout: () => ok(http.POST('/api/v2/auth/logout')),
+  products: (next?: string | null, pageSize = 25) => ok(http.GET('/api/v2/products', { params: { query: { pageSize, next: next ?? undefined } } })),
+  product: (id: number) => ok(http.GET('/api/v2/products/{id}/detail', { params: { path: { id } } })),
+  categories: () => ok(http.GET('/api/v2/categories')),
+  subcategoryProducts: (id: number) => ok(http.GET('/api/v2/subcategories/{id}/products', { params: { path: { id } } })),
+  reviews: (id: number) => ok(http.GET('/api/v2/products/{id}/reviews', { params: { path: { id } } })),
+  addReview: (id: number, rating: number, comments: string) => ok(http.POST('/api/v2/products/{id}/reviews', { params: { path: { id } }, body: { rating, comments } })),
+  cart: () => ok(http.GET('/api/v2/cart')),
+  addToCart: (productId: number, quantity: number) => ok(http.POST('/api/v2/cart/items', { body: { productId, quantity } })),
+  setQuantity: (productId: number, quantity: number) => ok(http.PUT('/api/v2/cart/items/{productId}', { params: { path: { productId } }, body: { quantity } })),
+  removeFromCart: (productId: number) => ok(http.DELETE('/api/v2/cart/items/{productId}', { params: { path: { productId } } })),
+  shipMethods: () => ok(http.GET('/api/v2/ship-methods')),
+  quote: (shipMethodId?: number) => ok(http.GET('/api/v2/checkout/quote', { params: { query: { shipMethodId } } })),
+  checkout: (shipMethodId?: number) => ok(http.POST('/api/v2/checkout', { body: { shipMethodId: shipMethodId ?? null }, headers: idem() })),
+  myOrders: () => ok(http.GET('/api/v2/orders', { params: { query: {} } })),
+  myOrder: (id: number) => ok(http.GET('/api/v2/orders/{id}', { params: { path: { id } } })),
+  queue: (status: number, territoryId?: number) => ok(http.GET('/api/v2/back-office/orders', { params: { query: { status, territoryId } } })),
+  queueCounts: () => ok(http.GET('/api/v2/back-office/orders/counts')),
+  boOrder: (id: number) => ok(http.GET('/api/v2/back-office/orders/{id}', { params: { path: { id } } })),
+  transition: (id: number, op: 'approve' | 'reject' | 'backorder' | 'ship' | 'cancel', version: number, ship?: { shipMethodId: number; trackingNumber: string }) =>
+    ok(http.POST('/api/v2/back-office/orders/{id}/{op}', {
+      params: { path: { id, op } }, headers: idem(),
+      body: { version, shipMethodId: ship?.shipMethodId ?? null, trackingNumber: ship?.trackingNumber ?? null },
+    })),
+  bulkApprove: (orders: { id: number; version: number }[]) => ok(http.POST('/api/v2/back-office/orders/bulk-approve', { body: { orders } })),
+  changes: (limit = 50) => ok(http.GET('/api/v2/back-office/changes', { params: { query: { limit } } })),
+  setPrice: (id: number, listPrice: number, version: number) => ok(http.PUT('/api/v2/back-office/products/{id}/price', { params: { path: { id } }, body: { listPrice, version } })),
 }
+
+export const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+export const isStaff = (me: Me | null) => !!me?.roles?.some(r => r === 'Fulfilment' || r === 'CatalogAdmin')
+export const hasRole = (me: Me | null, role: string) => !!me?.roles?.includes(role)

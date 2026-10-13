@@ -24,7 +24,7 @@ public sealed class AccountController(CustomerRepository customers, DemoOptions 
             new Claim("customer_id", login.CustomerId.ToString()), new Claim("person_id", login.PersonId.ToString()),
         ], CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(new ClaimsPrincipal(id));
-        return LocalRedirect(Url.IsLocalUrl(returnUrl) ? returnUrl! : "/");
+        return LocalRedirect(Url.IsLocalUrl(returnUrl) ? returnUrl! : Url.Action("Index", "Shop") ?? "/Shop");
     }
 
     [HttpPost, ValidateAntiForgeryToken]

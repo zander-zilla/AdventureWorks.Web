@@ -34,6 +34,8 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(V2.FulfilmentPolicy, p => p.RequireRole(V2.FulfilmentRole))
     .AddPolicy(V2.CatalogAdminPolicy, p => p.RequireRole(V2.CatalogAdminRole));
 builder.Services.AddProblemDetails();
+// C2-2: numbers are plain JSON numbers (no "number | string" in the OpenAPI schema), so the generated SPA client gets number types.
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.Strict);
 builder.Services.AddOpenApi("v2", o => o.ShouldInclude = d => d.RelativePath?.StartsWith("api/v2") == true);
 // ALB terminates TLS: trust X-Forwarded-Proto so Request.IsHttps reflects the browser's scheme (cookie policy below).
 builder.Services.Configure<ForwardedHeadersOptions>(o =>

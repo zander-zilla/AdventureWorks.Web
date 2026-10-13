@@ -93,3 +93,15 @@ These are app-only items (no SQL Server source); all carry `src = ddb`, `src_lsn
 | aw-catalog | `PRODUCT#<id>` / `PRICE#<start>` | `ListPriceHistory` | price edit (CAT-07 fix) |
 
 Back-office territory filtering uses a `FilterExpression` on SAL-05; SAL-14 was not added.
+
+## Chapter 2 (C2-3) items written by the app
+| Table | PK / SK | Type | Written by |
+|---|---|---|---|
+| aw-purchasing | `PO#<id>` / `PO`, `LINE#<id>`, `POSTATUS#<s>` marker | `PurchaseOrder`, `PurchaseOrderLine` (ids ≥ 100,000, `PO-DDB-n`) | create / approve / reject / receive |
+| aw-purchasing | `PO#<id>` / `EVENT#<iso>#<seq>` | `PurchaseOrderEvent` | every PO action |
+| aw-purchasing | `COUNTER` / `PO` | `Counter` | create |
+| aw-purchasing | `VENDOR#<id>` / `PRODUCT#<id>` | `VendorProduct` (`on_order_qty`, last receipt) | create, receive |
+| aw-inventory | `PRODUCT#<id>` / `INV#<loc>`, `PRODUCT`, `TXN#<iso>#<id>` | stock by location, stock summary (REORDER GSI1), `InventoryTransaction` type P | receive (INV-01/02/03) |
+| aw-sales | `FEED#<day>` | `ChangeFeed` | every PO action |
+
+The Razor UI (Controllers/Views) was removed in C2-3; the app serves only `/api/*` and the SPA at `/app/`.

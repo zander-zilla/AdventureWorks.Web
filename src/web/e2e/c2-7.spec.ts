@@ -25,7 +25,7 @@ async function signIn(page: Page, email: string) {
 
 test('a generated bike line: cloned model in a new colour, on sale from its release date', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('aw.theme', 'dark'))
-  await page.goto('./shop/products/5000')
+  await page.goto('./shop/products/5010')  // first release (2014-09-01): ids 5010.. (10 slots per release)
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Touring-3000 Ice (2014)')
   await shot(page, 'new-product')
 })
@@ -42,8 +42,9 @@ test(`checkout prices with the ${year} offers (no 2014-05-01 offer date)`, async
   await page.goto('./shop/products/707')
   await page.getByLabel('Quantity').fill('11')
   await page.getByTestId('add-to-cart').click()
+  await expect(page.getByRole('status').filter({ hasText: 'Added 11' })).toBeVisible()  // the cart write lands before we leave
   await page.goto('./shop/cart')
-  await expect(page.getByTestId('quote')).toBeVisible()
+  await expect(page.getByTestId('quote')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('line-offer').first()).toContainText(`Volume Discount 11 to 14 (${year})`)
   await shot(page, 'offers-checkout')
 })

@@ -37,6 +37,17 @@ variable "competitor_words" {
   type        = list(string)
   default     = []
 }
+variable "monitor_api_url" {
+  description = "C2-6 watchdog: replication monitor API Function URL (AWS_IAM). Empty = the app shows the recorded scenarios."
+  type        = string
+  default     = ""
+}
+variable "monitor_api_function_arn" {
+  description = "ARN of the monitor API Lambda; the app role may invoke its Function URL (SigV4) when set."
+  type        = string
+  default     = ""
+}
+
 variable "session_questions" {
   description = "Ask-the-data budget: questions per session per day."
   type        = number
@@ -212,7 +223,10 @@ resource "aws_secretsmanager_secret" "ai_reader" {
 }
 
 output "environment" {
-  value = [
+  value = concat(var.monitor_api_url == "" ? [] : [
+    { name = "Ai__MonitorApiUrl", value = var.monitor_api_url },
+    { name = "Ai__MonitorSigV4", value = "true" },
+    ], [
     { name = "Ai__Enabled", value = "true" },
     { name = "Ai__Mode", value = "bedrock" },
     { name = "Ai__ChatModel", value = var.chat_model_id },
@@ -230,15 +244,26 @@ output "environment" {
     { name = "Ai__Features__shop__GuardrailId", value = aws_bedrock_guardrail.shop.guardrail_id },
     { name = "Ai__Features__shop__GuardrailVersion", value = aws_bedrock_guardrail_version.shop.version },
     { name = "Ai__SessionTokens", value = tostring(var.session_tokens) },
+  ])
+}
+
+locals {
+  # C2-6 watchdog: read-only GET /api/status + /api/changes on the monitor API Function URL (SigV4, AWS_IAM auth only)
+  monitor_statements = var.monitor_api_function_arn == "" ? [] : [
+    { Effect = "Allow", Action = ["lambda:InvokeFunctionUrl"], Resource = [var.monitor_api_function_arn],
+    Condition = { StringEquals = { "lambda:FunctionUrlAuthType" = "AWS_IAM" } } },
+    { Effect = "Allow", Action = ["lambda:InvokeFunction"], Resource = [var.monitor_api_function_arn],
+    Condition = { Bool = { "lambda:InvokedViaFunctionUrl" = "true" } } },
   ]
 }
+
+output "monitor_policy_json" { value = jsonencode(local.monitor_statements) }
 
 output "policy_json" {
   value = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      { Effect = "Allow", Action = ["bedrock:InvokeModel"],
-        Resource = ["${local.arn}:bedrock:${local.region}::foundation-model/${var.embedding_model_id}", "${local.arn}:bedrock:${local.region}::foundation-model/${var.chat_model_id}",
+    Statement = concat(local.monitor_statements, [{ Effect = "Allow", Action = ["bedrock:InvokeModel"],
+      Resource = ["${local.arn}:bedrock:${local.region}::foundation-model/${var.embedding_model_id}", "${local.arn}:bedrock:${local.region}::foundation-model/${var.chat_model_id}",
       "${local.arn}:bedrock:${local.region}::foundation-model/${var.shop_model_id}"] },
       { Effect = "Allow", Action = ["bedrock:ApplyGuardrail"], Resource = [aws_bedrock_guardrail.ask.guardrail_arn, aws_bedrock_guardrail.shop.guardrail_arn] },
       { Effect = "Allow", Action = ["s3vectors:PutVectors", "s3vectors:QueryVectors", "s3vectors:GetVectors"], Resource = [aws_s3vectors_index.products.index_arn] },
@@ -246,7 +271,7 @@ output "policy_json" {
       Resource = ["${local.arn}:redshift-serverless:${local.region}:${data.aws_caller_identity.me.account_id}:workgroup/*"] },
       { Effect = "Allow", Action = ["redshift-data:DescribeStatement", "redshift-data:GetStatementResult", "redshift-data:CancelStatement"], Resource = ["*"] },
       { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [aws_secretsmanager_secret.ai_reader.arn] },
-    ]
+    ])
   })
 }
 

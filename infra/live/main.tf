@@ -80,6 +80,9 @@ module "ai" {
   name               = local.name
   redshift_workgroup = module.warehouse.workgroup
   competitor_words   = var.ai_competitor_words
+  # C2-6 polish: the watchdog reads the live monitor API (SigV4) when it exists; otherwise the recorded scenarios
+  monitor_api_url          = local.monitor_api ? module.cdc[0].monitor_api_url : ""
+  monitor_api_function_arn = local.monitor_api ? module.cdc[0].monitor_api_function_arn : ""
 }
 
 # Phase 8 showcase (ADR 0009): static site on S3 + CloudFront; content via scripts/aws/push-showcase.sh.

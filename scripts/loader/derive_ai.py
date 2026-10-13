@@ -27,6 +27,18 @@ ranked AS (SELECT p.*, ROW_NUMBER() OVER (PARTITION BY p.pid ORDER BY p.orders D
 SELECT r.pid, r.other, r.orders, r.rnk, pr.Name AS other_name, pr.ProductNumber AS other_number, pr.ListPrice AS other_price
 FROM ranked r JOIN Production.Product pr ON pr.ProductID = r.other WHERE r.rnk <= %d"""
 
+COMPLETE_SQL = """SELECT CONVERT(char(7), MAX(d), 126) AS last_month, CASE WHEN DAY(DATEADD(day, 1, MAX(d))) = 1 THEN 1 ELSE 0 END AS last_full
+FROM (SELECT MAX(OrderDate) AS d FROM Sales.SalesOrderHeader UNION ALL SELECT MAX(StartDate) FROM Production.WorkOrder) x"""
+
+def prev_month(ym):
+    y, m = int(ym[:4]), int(ym[5:7])
+    return "%04d-%02d" % ((y, m - 1) if m > 1 else (y - 1, 12))
+
+def complete_through(last_month, last_full):
+    """Last month with full data: an incomplete trailing month (data ending mid-month, e.g. 2014-06-30 is fine but
+    2014-06-15 is not) is left out of the demand history so it doesn't drag the forecast down."""
+    return last_month if last_full else prev_month(last_month)
+
 def merge(*sets):
     """Sales demand + work-order consumption per (product, month)."""
     acc = {}
@@ -58,8 +70,11 @@ def main():
     conn = sqlsrc.connect(); cur = conn.cursor()
     cur.execute(DEMAND_SQL); sales = cur.fetchall()
     cur.execute(WO_SQL); demand = merge(sales, cur.fetchall())
+    cur.execute(COMPLETE_SQL); c = cur.fetchone(); through = complete_through(c["last_month"], c["last_full"])
+    demand = [r for r in demand if r["month"] <= through]
     cur.execute(ALSO_SQL % a.top); also = cur.fetchall(); conn.close()
-    out = {"aw-inventory ProductDemandMonth": write("aw-inventory", demand_items(demand)), "aw-catalog AlsoBought": write("aw-catalog", also_items(also))}
+    meta = [{"PK": "DEMAND#META", "SK": "ASOF", "type": "DemandAsOf", "src": "derived", "derived": True, "complete_through": through}]
+    out = {"complete_through": through, "aw-inventory DemandAsOf": write("aw-inventory", meta), "aw-inventory ProductDemandMonth": write("aw-inventory", demand_items(demand)), "aw-catalog AlsoBought": write("aw-catalog", also_items(also))}
     print(json.dumps(out))
 
 if __name__ == "__main__":

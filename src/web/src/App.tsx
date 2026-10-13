@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
 import { useAuth } from './api/auth'
 import { hasRole, staffRoles } from './api/client'
@@ -18,6 +18,9 @@ import { ShopHome } from './pages/shop/ShopHome'
 import { Subcategory } from './pages/shop/Subcategory'
 import { chapter1Url } from './showcaseUrl'
 
+// C2-4: the production floor brings Recharts; loaded on demand so the shop bundle stays small.
+const Production = lazy(() => import('./pages/backoffice/Production'))
+
 // Chapter switch: Chapter 1 is the frozen showcase under /c1/ on the showcase site (C2-1); in the app it links out.
 const goChapter1 = () => { window.location.href = chapter1Url() }
 
@@ -27,7 +30,9 @@ function Staff({ roles, children }: { roles: string[]; children: ReactNode }) {
   if (loading) return null
   return roles.some(r => hasRole(me, r)) ? children : (
     <EmptyState title="Back-office sign-in required">
-      {roles.includes('Buyer')
+      {roles.includes('ProductionSupervisor')
+        ? 'Sign in as production@adventure-works.com (or any back-office login to look around).'
+        : roles.includes('Buyer')
         ? 'Sign in as mikael0@adventure-works.com (Buyer) or sheela0@adventure-works.com (Purchasing manager).'
         : 'Sign in as fulfilment@adventure-works.com or ops@adventure-works.com.'}
     </EmptyState>)
@@ -49,6 +54,7 @@ export function App() {
         <Route path="back-office/orders" element={<Staff roles={['Fulfilment']}><BackOfficeOrders /></Staff>} />
         <Route path="back-office/replication" element={<Staff roles={staffRoles}><Replication /></Staff>} />
         <Route path="back-office/procurement/*" element={<Staff roles={['Buyer', 'PurchasingManager']}><Procurement /></Staff>} />
+        <Route path="back-office/production/*" element={<Staff roles={staffRoles}><Suspense fallback={<p className="text-mute">Loading…</p>}><Production /></Suspense></Staff>} />
         <Route path="design" element={<DesignGallery />} />
         <Route path="login" element={<Login />} />
         <Route path="*" element={<EmptyState title="Not here yet">This screen arrives in a later Chapter 2 phase.</EmptyState>} />

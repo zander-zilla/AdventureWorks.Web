@@ -3,7 +3,7 @@ import { api } from '../../api/client'
 import { useLoad } from '../../api/useLoad'
 import { EmptyState, PageHeader, StatusPill } from '../../components'
 
-const tone = (e: string) => (e.endsWith('ship') || e === 'po.receive' ? 'ok' : e.endsWith('placed') || e === 'po.create' ? 'info' : e.startsWith('order.cancel') || e.endsWith('reject') ? 'danger' : 'accent') as 'ok' | 'info' | 'danger' | 'accent'
+const tone = (e: string) => (e.endsWith('ship') || e === 'po.receive' || e === 'wo.complete' ? 'ok' : e.endsWith('placed') || e === 'po.create' || e === 'wo.create' ? 'info' : e.startsWith('order.cancel') || e.endsWith('reject') ? 'danger' : 'accent') as 'ok' | 'info' | 'danger' | 'accent'
 
 /** Replication monitor for app writes (C2-2): every business write lands in DynamoDB with an origin marker
  *  (src = ddb, src_lsn = ~app, so the one-way SQL CDC never overwrites it) and a change-feed entry naming each item and

@@ -30,6 +30,15 @@ export type VendorProduct = S['VendorProductInfo']
 export type PurchaseOrder = S['PurchaseOrder']
 export type PurchaseOrderSummary = S['PurchaseOrderSummary']
 export type PoResult = S['PoResult']
+export type WorkOrderSummary = S['WorkOrderSummary']
+export type WorkOrderDetail = S['WorkOrderDetail']
+export type WorkOrderList = S['WorkOrderList']
+export type RoutingStep = S['RoutingStep']
+export type BomNode = S['BomNode']
+export type BomTree = S['BomTree']
+export type ProductionPlan = S['ProductionPlan']
+export type ProductionKpis = S['ProductionKpis']
+export type WorkOrderResult = S['WorkOrderResult']
 export type Problem = { title: string; status: number; detail?: string }
 
 export class ApiError extends Error {
@@ -93,10 +102,27 @@ export const api = {
     ok(http.POST('/api/v2/back-office/procurement/purchase-orders/{id}/{op}', { params: { path: { id, op } }, headers: idem(), body: { version, note: note ?? null } })),
   receive: (id: number, version: number, lines: { detailId: number; receivedQty: number; rejectedQty: number; locationId: number | null }[]) =>
     ok(http.POST('/api/v2/back-office/procurement/purchase-orders/{id}/receive', { params: { path: { id } }, headers: idem(), body: { version, lines } })),
+  // C2-4 production floor
+  workOrders: (month: string, openOnly = false, productId?: number) =>
+    ok(http.GET('/api/v2/back-office/production/work-orders', { params: { query: { month, openOnly, productId } } })),
+  openWorkOrders: () => ok(http.GET('/api/v2/back-office/production/work-orders/open')),
+  workOrder: (id: number) => ok(http.GET('/api/v2/back-office/production/work-orders/{id}', { params: { path: { id } } })),
+  createWorkOrder: (productId: number, orderQty: number, dueDate: string | null) =>
+    ok(http.POST('/api/v2/back-office/production/work-orders', { body: { productId, orderQty, dueDate }, headers: idem() })),
+  recordOperation: (id: number, version: number, resourceHrs: number) =>
+    ok(http.POST('/api/v2/back-office/production/work-orders/{id}/operations', { params: { path: { id } }, headers: idem(), body: { version, resourceHrs } })),
+  completeWorkOrder: (id: number, version: number, scrappedQty: number, scrapReasonId: number | null, locationId: number | null) =>
+    ok(http.POST('/api/v2/back-office/production/work-orders/{id}/complete', { params: { path: { id } }, headers: idem(), body: { version, scrappedQty, scrapReasonId, locationId } })),
+  plan: (productId: number, qty: number) => ok(http.GET('/api/v2/back-office/production/plan/{productId}', { params: { path: { productId }, query: { qty } } })),
+  assemblies: () => ok(http.GET('/api/v2/back-office/production/assemblies')),
+  bom: (productId: number, asOf?: string) => ok(http.GET('/api/v2/back-office/production/bom/{productId}', { params: { path: { productId }, query: { asOf } } })),
+  whereUsed: (productId: number, asOf?: string) => ok(http.GET('/api/v2/back-office/production/where-used/{productId}', { params: { path: { productId }, query: { asOf } } })),
+  kpis: (from: string, to: string) => ok(http.GET('/api/v2/back-office/production/kpis', { params: { query: { from, to } } })),
+  scrapReasons: () => ok(http.GET('/api/v2/back-office/production/scrap-reasons')),
   setPrice: (id: number, listPrice: number, version: number) => ok(http.PUT('/api/v2/back-office/products/{id}/price', { params: { path: { id } }, body: { listPrice, version } })),
 }
 
 export const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
-export const staffRoles = ['Fulfilment', 'CatalogAdmin', 'Buyer', 'PurchasingManager']
+export const staffRoles = ['Fulfilment', 'CatalogAdmin', 'Buyer', 'PurchasingManager', 'ProductionSupervisor']
 export const isStaff = (me: Me | null) => !!me?.roles?.some(r => staffRoles.includes(r))
 export const hasRole = (me: Me | null, role: string) => !!me?.roles?.includes(role)

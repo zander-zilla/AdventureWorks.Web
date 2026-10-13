@@ -580,15 +580,220 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/back-office/production/work-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWorkOrders"];
+        put?: never;
+        post: operations["createWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/production/work-orders/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listOpenWorkOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/production/work-orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWorkOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/production/work-orders/{id}/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["recordOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/production/work-orders/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["completeWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/production/plan/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["planWorkOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/production/assemblies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAssemblies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/production/bom/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["explodeBom"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/production/where-used/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["whereUsed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/production/kpis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["productionKpis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/production/scrap-reasons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listScrapReasons"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AssemblyInfo: {
+            /** Format: int32 */
+            productId: number;
+            name: string;
+        };
         BackOfficeOrder: {
             order: components["schemas"]["Order"];
             statusText: string;
             actions: string[];
             stock: components["schemas"]["LineStock"][];
+        };
+        BomNode: {
+            /** Format: int32 */
+            productId: number;
+            name: string;
+            /** Format: double */
+            perAssemblyQty: number;
+            unitMeasureCode: null | string;
+            /** Format: int32 */
+            level: number;
+            /** Format: date-time */
+            startDate: null | string;
+            /** Format: date-time */
+            endDate: null | string;
+            children: components["schemas"]["BomNode"][];
+        };
+        BomTree: {
+            root: components["schemas"]["BomNode"];
+            asOf: string;
+            /** Format: int32 */
+            queries: number;
+            /** Format: int32 */
+            nodes: number;
+            depthCapped: boolean;
         };
         BulkItem: {
             /** Format: int64 */
@@ -635,12 +840,30 @@ export interface components {
             /** Format: int32 */
             shipMethodId: null | number;
         };
+        CompleteWorkOrderRequest: {
+            /** Format: int64 */
+            version: number;
+            /** Format: int32 */
+            scrappedQty: number;
+            /** Format: int32 */
+            scrapReasonId: null | number;
+            /** Format: int32 */
+            locationId: null | number;
+        };
         CreatePoRequest: {
             /** Format: int32 */
             vendorId: number;
             /** Format: int32 */
             shipMethodId: null | number;
             lines: components["schemas"]["PoLineRequest"][];
+        };
+        CreateWorkOrderRequest: {
+            /** Format: int32 */
+            productId: number;
+            /** Format: int32 */
+            orderQty: number;
+            /** Format: date-time */
+            dueDate: null | string;
         };
         FeedEntry: {
             id: string;
@@ -672,6 +895,23 @@ export interface components {
             customerId: null | number;
             roles: string[];
         };
+        MonthKpi: {
+            month: string;
+            /** Format: int32 */
+            workOrders: number;
+            /** Format: int32 */
+            closed: number;
+            /** Format: int32 */
+            onTime: number;
+            /** Format: int64 */
+            orderQty: number;
+            /** Format: int64 */
+            scrappedQty: number;
+            /** Format: double */
+            scrapRate: number;
+            /** Format: double */
+            onTimeRate: number;
+        };
         OfferInfo: {
             /** Format: int32 */
             id: number;
@@ -688,6 +928,12 @@ export interface components {
             minQty: number;
             /** Format: int32 */
             maxQty: null | number;
+        };
+        OperationRequest: {
+            /** Format: int64 */
+            version: number;
+            /** Format: double */
+            resourceHrs: number;
         };
         Order: {
             /** Format: int64 */
@@ -764,6 +1010,20 @@ export interface components {
         OrderPage: {
             items: components["schemas"]["Order"][];
             next: null | string;
+        };
+        PlanComponent: {
+            /** Format: int32 */
+            productId: number;
+            name: string;
+            /** Format: double */
+            perAssemblyQty: number;
+            /** Format: int32 */
+            required: number;
+            /** Format: double */
+            onHand: number;
+            /** Format: int32 */
+            locationId: null | number;
+            available: boolean;
         };
         PoEvent: {
             /** Format: date-time */
@@ -902,6 +1162,39 @@ export interface components {
             offers: components["schemas"]["OfferInfo"][];
             priceHistory: components["schemas"]["PricePoint"][];
         };
+        ProductionKpis: {
+            from: string;
+            to: string;
+            months: components["schemas"]["MonthKpi"][];
+            scrapReasons: components["schemas"]["ReasonCount"][];
+            /** Format: int32 */
+            workOrders: number;
+            /** Format: int64 */
+            orderQty: number;
+            /** Format: int64 */
+            scrappedQty: number;
+            /** Format: double */
+            scrapRate: number;
+            /** Format: double */
+            onTimeRate: number;
+            /** Format: int32 */
+            open: number;
+        };
+        ProductionPlan: {
+            /** Format: int32 */
+            productId: number;
+            name: string;
+            /** Format: int32 */
+            orderQty: number;
+            /** Format: date-time */
+            startDate: string;
+            /** Format: date-time */
+            dueDate: string;
+            routing: components["schemas"]["RoutingStep"][];
+            components: components["schemas"]["PlanComponent"][];
+            feasible: boolean;
+            problems: string[];
+        };
         ProductPage: {
             items: components["schemas"]["ProductSummary"][];
             next: null | string;
@@ -994,6 +1287,13 @@ export interface components {
             totalDue: number;
             offerDate: string;
         };
+        ReasonCount: {
+            reason: string;
+            /** Format: int32 */
+            workOrders: number;
+            /** Format: int64 */
+            scrappedQty: number;
+        };
         ReceiveLineRequest: {
             /** Format: int32 */
             detailId: number;
@@ -1045,6 +1345,34 @@ export interface components {
             /** Format: int32 */
             rating: number;
             comments: string;
+        };
+        RoutingStep: {
+            /** Format: int32 */
+            operationSequence: number;
+            /** Format: int32 */
+            locationId: number;
+            locationName: string;
+            /** Format: date-time */
+            scheduledStartDate: null | string;
+            /** Format: date-time */
+            scheduledEndDate: null | string;
+            /** Format: date-time */
+            actualStartDate: null | string;
+            /** Format: date-time */
+            actualEndDate: null | string;
+            /** Format: double */
+            actualResourceHrs: null | number;
+            /** Format: double */
+            plannedCost: null | number;
+            /** Format: double */
+            actualCost: null | number;
+            late: boolean;
+            done: boolean;
+        };
+        ScrapReasonInfo: {
+            /** Format: int32 */
+            id: number;
+            name: string;
         };
         ShipMethodInfo: {
             /** Format: int32 */
@@ -1179,6 +1507,56 @@ export interface components {
             creditRating: number;
             preferred: boolean;
             active: boolean;
+        };
+        WorkOrderDetail: {
+            order: components["schemas"]["WorkOrderSummary"];
+            /** Format: int64 */
+            version: number;
+            readOnly: boolean;
+            actions: string[];
+            routing: components["schemas"]["RoutingStep"][];
+            events: components["schemas"]["WorkOrderEvent"][];
+        };
+        WorkOrderEvent: {
+            /** Format: date-time */
+            at: string;
+            action: string;
+            actor: string;
+            note: null | string;
+        };
+        WorkOrderList: {
+            month: string;
+            items: components["schemas"]["WorkOrderSummary"][];
+            /** Format: int32 */
+            total: number;
+            truncated: boolean;
+        };
+        WorkOrderResult: {
+            order: components["schemas"]["WorkOrderDetail"];
+            outcome: string;
+        };
+        WorkOrderSummary: {
+            /** Format: int32 */
+            id: number;
+            number: string;
+            /** Format: int32 */
+            productId: number;
+            productName: null | string;
+            /** Format: int32 */
+            orderQty: number;
+            /** Format: int32 */
+            stockedQty: number;
+            /** Format: int32 */
+            scrappedQty: number;
+            /** Format: date-time */
+            startDate: string;
+            /** Format: date-time */
+            endDate: null | string;
+            /** Format: date-time */
+            dueDate: string;
+            state: string;
+            scrapReason: null | string;
+            source: string;
         };
     };
     responses: never;
@@ -2240,6 +2618,383 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StockAt"][];
+                };
+            };
+        };
+    };
+    listWorkOrders: {
+        parameters: {
+            query?: {
+                month?: string;
+                openOnly?: boolean;
+                productId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    createWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listOpenWorkOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderSummary"][];
+                };
+            };
+        };
+    };
+    getWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    recordOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    completeWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteWorkOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    planWorkOrder: {
+        parameters: {
+            query?: {
+                qty?: number;
+                due?: string;
+            };
+            header?: never;
+            path: {
+                productId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionPlan"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listAssemblies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssemblyInfo"][];
+                };
+            };
+        };
+    };
+    explodeBom: {
+        parameters: {
+            query?: {
+                asOf?: string;
+                depth?: number;
+            };
+            header?: never;
+            path: {
+                productId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BomTree"];
+                };
+            };
+        };
+    };
+    whereUsed: {
+        parameters: {
+            query?: {
+                asOf?: string;
+                depth?: number;
+            };
+            header?: never;
+            path: {
+                productId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BomTree"];
+                };
+            };
+        };
+    };
+    productionKpis: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionKpis"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listScrapReasons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScrapReasonInfo"][];
                 };
             };
         };

@@ -5518,7 +5518,7 @@
         "required": [
           "table",
           "op",
-          "lag_ms"
+          "lagMs"
         ],
         "type": "object",
         "properties": {
@@ -5528,7 +5528,7 @@
           "op": {
             "type": "string"
           },
-          "lag_ms": {
+          "lagMs": {
             "type": [
               "null",
               "number"
@@ -5568,7 +5568,7 @@
           "scenario",
           "status",
           "changes",
-          "dlq_samples"
+          "dlqSamples"
         ],
         "type": "object",
         "properties": {
@@ -5584,7 +5584,7 @@
               "$ref": "#/components/schemas/WatchChange"
             }
           },
-          "dlq_samples": {
+          "dlqSamples": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DlqSample"
@@ -5596,9 +5596,9 @@
         "required": [
           "paused",
           "queued",
-          "applied_events",
+          "appliedEvents",
           "dlq",
-          "lag_ms",
+          "lagMs",
           "source"
         ],
         "type": "object",
@@ -5610,7 +5610,7 @@
             "type": "integer",
             "format": "int32"
           },
-          "applied_events": {
+          "appliedEvents": {
             "type": "integer",
             "format": "int64"
           },
@@ -5621,7 +5621,7 @@
             ],
             "format": "int32"
           },
-          "lag_ms": {
+          "lagMs": {
             "$ref": "#/components/schemas/LagMs"
           },
           "source": {

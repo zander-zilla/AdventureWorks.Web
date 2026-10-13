@@ -45,6 +45,7 @@ export type SearchResult = S['SearchResult']
 export type SearchHit = S['SearchHit']
 export type AssistResult = S['AssistResult']
 export type SmartSuggestion = S['SmartSuggestion']
+export type WatchdogReport = S['WatchdogReport']
 export type DemandForecast = S['DemandForecast']
 export type Problem = { title: string; status: number; detail?: string }
 
@@ -131,6 +132,8 @@ export const api = {
   kpis: (from: string, to: string) => ok(http.GET('/api/v2/back-office/production/kpis', { params: { query: { from, to } } })),
   scrapReasons: () => ok(http.GET('/api/v2/back-office/production/scrap-reasons')),
   aiStatus: () => ok(http.GET('/api/v2/ai/status')),
+  watchdog: (scenario?: string) => ok(http.GET('/api/v2/back-office/replication/watchdog', { params: { query: { scenario } } })),
+  explainWatchdog: (scenario?: string) => ok(http.POST('/api/v2/back-office/replication/watchdog/explain', { params: { query: { scenario } } })),
   semanticSearch: (q: string, top = 12) => ok(http.GET('/api/v2/ai/search', { params: { query: { q, top } } })),
   askExamples: () => ok(http.GET('/api/v2/ai/examples')),
   ask: (question: string) => ok(http.POST('/api/v2/ai/ask', { body: { question } })),

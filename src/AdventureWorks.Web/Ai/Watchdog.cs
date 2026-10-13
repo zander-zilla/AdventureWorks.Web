@@ -1,17 +1,16 @@
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace AdventureWorks.Web.Ai;
 
 public sealed record LagMs(double Last, double P50, double Max);
-public sealed record WatchStatus(bool Paused, int Queued, [property: JsonPropertyName("applied_events")] long AppliedEvents, int? Dlq,
-    [property: JsonPropertyName("lag_ms")] LagMs LagMs, string? Source);
-public sealed record WatchChange(string Table, string Op, [property: JsonPropertyName("lag_ms")] double? LagMs);
+public sealed record WatchStatus(bool Paused, int Queued, long AppliedEvents, int? Dlq,
+    LagMs LagMs, string? Source);
+public sealed record WatchChange(string Table, string Op, double? LagMs);
 public sealed record DlqSample(string Table, string Op, string Error, int Attempts, string? Position);
-public sealed record WatchSnapshot(string Scenario, WatchStatus Status, List<WatchChange> Changes, [property: JsonPropertyName("dlq_samples")] List<DlqSample> DlqSamples);
+public sealed record WatchSnapshot(string Scenario, WatchStatus Status, List<WatchChange> Changes, List<DlqSample> DlqSamples);
 public sealed record WatchCause(string Key, string Title, string Severity, string NextStep, string Runbook);
 public sealed record WatchdogReport(WatchSnapshot Snapshot, WatchCause Cause, List<string> Scenarios, bool Replay);
 
@@ -65,7 +64,7 @@ public interface IWatchSource { bool Replay { get; } Task<WatchSnapshot> GetAsyn
 public sealed class ReplayWatchSource : IWatchSource
 {
     public static readonly string[] Scenarios = ["healthy", "lag-spike", "dlq", "paused"];
-    static readonly JsonSerializerOptions J = new(JsonSerializerDefaults.Web);
+    static readonly JsonSerializerOptions J = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
     public bool Replay => true;
     public Task<WatchSnapshot> GetAsync(string? scenario, CancellationToken ct)
     {
@@ -79,7 +78,7 @@ public sealed class ReplayWatchSource : IWatchSource
 /// <summary>AWS: the replication monitor API (cdc/monitor_api, GET /api/status + /api/changes). DLQ depth only, no message bodies.</summary>
 public sealed class MonitorWatchSource(HttpClient http, AiOptions o) : IWatchSource
 {
-    static readonly JsonSerializerOptions J = new(JsonSerializerDefaults.Web);
+    static readonly JsonSerializerOptions J = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
     public bool Replay => false;
     public async Task<WatchSnapshot> GetAsync(string? scenario, CancellationToken ct)
     {

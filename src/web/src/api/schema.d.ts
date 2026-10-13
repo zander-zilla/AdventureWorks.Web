@@ -1847,7 +1847,7 @@ export interface components {
             table: string;
             op: string;
             /** Format: double */
-            lag_ms: null | number;
+            lagMs: null | number;
         };
         WatchdogReport: {
             snapshot: components["schemas"]["WatchSnapshot"];
@@ -1859,17 +1859,17 @@ export interface components {
             scenario: string;
             status: components["schemas"]["WatchStatus"];
             changes: components["schemas"]["WatchChange"][];
-            dlq_samples: components["schemas"]["DlqSample"][];
+            dlqSamples: components["schemas"]["DlqSample"][];
         };
         WatchStatus: {
             paused: boolean;
             /** Format: int32 */
             queued: number;
             /** Format: int64 */
-            applied_events: number;
+            appliedEvents: number;
             /** Format: int32 */
             dlq: null | number;
-            lag_ms: components["schemas"]["LagMs"];
+            lagMs: components["schemas"]["LagMs"];
             source: null | string;
         };
         WorkOrderDetail: {

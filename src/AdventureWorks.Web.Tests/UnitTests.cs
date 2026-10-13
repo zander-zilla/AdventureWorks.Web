@@ -63,7 +63,7 @@ public class CheckoutTests
 
     [Fact] public void Small_order_is_one_transaction_with_cart_cleanup()
     {
-        var o = SalesRepository.PriceOrder(1_000_000_001, 29485, Cart(3), Now);
+        var o = PriceOrder(1_000_000_001, 29485, Cart(3), Now);
         var plan = SalesRepository.Plan("aw-sales", o, Customer(), "c@x", 29485, Now);
         Assert.Equal(1 + 3 + 2 + 3, plan.Transaction.Count);   // header + lines + event + change feed + cart deletes
         Assert.Empty(plan.CartKeysAfter);
@@ -82,7 +82,7 @@ public class CheckoutTests
 
     [Fact] public void Large_order_moves_cart_cleanup_out_of_the_transaction()
     {
-        var o = SalesRepository.PriceOrder(1_000_000_002, 29485, Cart(95), Now);
+        var o = PriceOrder(1_000_000_002, 29485, Cart(95), Now);
         var plan = SalesRepository.Plan("aw-sales", o, Customer(), "c@x", 29485, Now);
         Assert.Equal(SalesRepository.MaxTransactActions, plan.Transaction.Count);
         Assert.Equal(95 - 2, plan.CartKeysAfter.Count);
@@ -90,7 +90,7 @@ public class CheckoutTests
 
     [Fact] public void More_than_95_lines_is_rejected()
     {
-        var o = SalesRepository.PriceOrder(1_000_000_003, 29485, Cart(96), Now);
+        var o = PriceOrder(1_000_000_003, 29485, Cart(96), Now);
         Assert.Throws<InvalidOperationException>(() => SalesRepository.Plan("aw-sales", o, Customer(), "c@x", 29485, Now));
     }
 }

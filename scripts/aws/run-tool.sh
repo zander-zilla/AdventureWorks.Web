@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run a one-off tools task (db-init | bulk-load | reset-demo) on ECS Fargate inside the VPC and follow its log.
+# Run a one-off tools task (db-init | bulk-load | derive-ai | reset-demo | synthetic-load | synthetic-trickle) on ECS Fargate inside the VPC and follow its log.
 # Usage: scripts/aws/run-tool.sh <env> db-init|bulk-load|reset-demo [args...]
 set -euo pipefail
 ENV="${1:?env}"; shift

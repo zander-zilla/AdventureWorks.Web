@@ -408,3 +408,96 @@ run "ai_watchdog_without_monitor_api" {
     error_message = "no monitor API: recorded scenarios, no Lambda permission"
   }
 }
+
+# C2-7 synthetic data (decision 5: off by default) and the daily trickle (John's change to decision 7: off by default)
+run "synthetic_off_by_default" {
+  command = plan
+  variables {
+    enable_source = true
+  }
+  assert {
+    condition     = length(module.app.synthetic_trickle_schedule == null ? [] : [1]) == 0
+    error_message = "no trickle schedule unless synthetic_trickle = true"
+  }
+}
+
+run "synthetic_trickle_on" {
+  command = plan
+  variables {
+    enable_source     = true
+    synthetic_data    = true
+    synthetic_trickle = true
+  }
+  assert {
+    condition     = module.app.synthetic_trickle_schedule == "aw-ci-synthetic-trickle"
+    error_message = "the trickle schedule exists when switched on"
+  }
+}
+
+run "synthetic_trickle_schedule_runs_tools_task" {
+  command = plan
+  module {
+    source = "../modules/app"
+  }
+  variables {
+    name                  = "aw-ci"
+    vpc_id                = "vpc-123"
+    public_subnet_ids     = ["subnet-a", "subnet-b"]
+    allowed_cidrs         = ["203.0.113.10/32"]
+    image_tag             = "test"
+    desired_count         = 1
+    enable_before_app     = false
+    table_arns            = { for t in ["aw-catalog", "aw-customer", "aw-sales", "aw-inventory", "aw-reference", "aw-purchasing", "aw-hr"] : t => "arn:aws:dynamodb:us-east-1:123456789012:table/${t}" }
+    kms_key_arns          = {}
+    sql_secret_arn        = ""
+    sql_security_group_id = ""
+    backups_bucket        = ""
+    has_source            = true
+    synthetic_data        = true
+    synthetic_trickle     = true
+  }
+  assert {
+    condition     = jsondecode(aws_scheduler_schedule.trickle[0].target[0].input).containerOverrides[0].command[0] == "synthetic-trickle" && aws_scheduler_schedule.trickle[0].schedule_expression == "cron(30 2 * * ? *)"
+    error_message = "the schedule starts the tools task with the synthetic-trickle command once a day"
+  }
+  assert {
+    condition     = one([for e in output.app_environment : e.value if e.name == "Pricing__OfferDate"]) == "today"
+    error_message = "with synthetic data loaded, offers are priced as of today (no 2014-05-01 workaround)"
+  }
+}
+
+run "synthetic_data_off_keeps_offer_date" {
+  command = plan
+  module {
+    source = "../modules/app"
+  }
+  variables {
+    name                  = "aw-ci"
+    vpc_id                = "vpc-123"
+    public_subnet_ids     = ["subnet-a"]
+    allowed_cidrs         = ["203.0.113.10/32"]
+    image_tag             = "test"
+    desired_count         = 1
+    enable_before_app     = false
+    table_arns            = { for t in ["aw-catalog", "aw-customer", "aw-sales", "aw-inventory", "aw-reference", "aw-purchasing", "aw-hr"] : t => "arn:aws:dynamodb:us-east-1:123456789012:table/${t}" }
+    kms_key_arns          = {}
+    sql_secret_arn        = ""
+    sql_security_group_id = ""
+    backups_bucket        = ""
+    has_source            = true
+  }
+  assert {
+    condition     = length([for e in output.app_environment : e if e.name == "Pricing__OfferDate"]) == 0 && length(aws_scheduler_schedule.trickle) == 0
+    error_message = "original data only: no offer-date override, no trickle"
+  }
+}
+
+run "synthetic_trickle_requires_synthetic_data" {
+  command = plan
+  variables {
+    enable_source     = true
+    synthetic_trickle = true
+  }
+  expect_failures = [var.synthetic_trickle]
+}
+

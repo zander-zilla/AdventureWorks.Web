@@ -28,3 +28,4 @@ output "cdc_monitor_table" { value = var.enable_source ? module.cdc[0].monitor_t
 output "ai_reader_secret_arn" { value = var.enable_ai ? module.ai[0].ai_reader_secret_arn : null }
 output "ai_guardrail_id" { value = var.enable_ai ? module.ai[0].guardrail_id : null }
 output "ai_shop_guardrail_id" { value = var.enable_ai ? module.ai[0].shop_guardrail_id : null }
+output "synthetic_trickle_schedule" { value = module.app.synthetic_trickle_schedule }

@@ -71,6 +71,8 @@ module "app" {
   frame_ancestors       = var.enable_showcase ? module.showcase[0].origin : ""
   ai_environment        = var.enable_ai ? module.ai[0].environment : []
   ai_policy_json        = var.enable_ai ? module.ai[0].policy_json : ""
+  synthetic_data        = var.synthetic_data
+  synthetic_trickle     = var.synthetic_trickle
 }
 
 # C2-5 Bedrock AI layer (off by default; costs per request + S3 Vectors storage).

@@ -174,3 +174,20 @@ variable "ai_competitor_words" {
   type        = list(string)
   default     = []
 }
+
+variable "synthetic_data" {
+  description = "C2-7 (decision 5): generated data 2014-07 .. today loaded through SQL Server -> CDC (tools task 'synthetic-load'). Off until John has seen a measured dry run."
+  type        = bool
+  default     = false
+}
+
+variable "synthetic_trickle" {
+  description = "C2-7 (John's change to decision 7): daily trickle job, EventBridge Scheduler -> tools task 'synthetic-trickle' (previous day(s), catch-up). Needs synthetic_data and the SQL Server source."
+  type        = bool
+  default     = false
+  validation {
+    condition     = !var.synthetic_trickle || (var.synthetic_data && var.enable_source)
+    error_message = "synthetic_trickle needs synthetic_data = true and enable_source = true."
+  }
+}
+

@@ -46,3 +46,18 @@ SELECT v.vendor_key, v.vendor_name, v.preferred_vendor_flag, v.credit_rating,
 FROM dw.fact_purchase_order_line f
 JOIN dw.dim_vendor v ON v.vendor_key = f.vendor_key
 GROUP BY v.vendor_key, v.vendor_name, v.preferred_vendor_flag, v.credit_rating;
+
+-- C2-4 scrap and on-time production (John's decision 5), by due month: the same definitions as the app's production floor
+-- (ProductionRepository.Kpis): scrap rate = scrapped / ordered; on time = closed with end date <= due date / closed.
+DROP VIEW IF EXISTS dw.v_production_scrap_on_time;
+CREATE VIEW dw.v_production_scrap_on_time AS
+SELECT d.calendar_year, d.month_number_of_year, CAST(f.due_date_key / 100 AS integer) AS due_year_month,
+       COUNT(*) AS work_orders, SUM(f.closed_flag) AS closed, SUM(COALESCE(f.on_time_flag, 0)) AS on_time,
+       SUM(f.order_quantity) AS order_quantity, SUM(f.scrapped_quantity) AS scrapped_quantity,
+       CASE WHEN SUM(f.order_quantity) = 0 THEN NULL ELSE CAST(SUM(f.scrapped_quantity) AS double precision) / CAST(SUM(f.order_quantity) AS double precision) END AS scrap_rate,
+       CASE WHEN SUM(f.closed_flag) = 0 THEN NULL ELSE CAST(SUM(COALESCE(f.on_time_flag, 0)) AS double precision) / CAST(SUM(f.closed_flag) AS double precision) END AS on_time_rate,
+       SUM(CASE WHEN f.source = 'ddb' THEN 1 ELSE 0 END) AS app_work_orders
+FROM dw.fact_work_order f
+JOIN dw.dim_date d ON d.date_key = f.due_date_key
+GROUP BY d.calendar_year, d.month_number_of_year, CAST(f.due_date_key / 100 AS integer);
+

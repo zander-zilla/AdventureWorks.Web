@@ -14,10 +14,11 @@ BEGIN
                  UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9),
     nums AS (SELECT a.n + 10 * b.n + 100 * c.n + 1000 * e.n AS n FROM d10 a CROSS JOIN d10 b CROSS JOIN d10 c CROSS JOIN d10 e),
     -- C2-2: extends past 2014 to the end of the latest order year once the app writes orders (2026); unchanged otherwise.
-    -- C2-3: app purchase orders (order / due dates) extend it the same way.
+    -- C2-3: app purchase orders (order / due dates) extend it the same way; C2-4: app work orders (due dates) too.
     lim AS (SELECT CAST(GREATEST(DATE '2014-12-31',
                                  COALESCE((SELECT CAST(TO_CHAR(MAX(o.due_date), 'YYYY') || '-12-31' AS date) FROM stg.order o), DATE '2014-12-31'),
-                                 COALESCE((SELECT CAST(TO_CHAR(MAX(l.due_date), 'YYYY') || '-12-31' AS date) FROM stg.purchase_order_line l), DATE '2014-12-31'))
+                                 COALESCE((SELECT CAST(TO_CHAR(MAX(l.due_date), 'YYYY') || '-12-31' AS date) FROM stg.purchase_order_line l), DATE '2014-12-31'),
+                                 COALESCE((SELECT CAST(TO_CHAR(MAX(w.due_date), 'YYYY') || '-12-31' AS date) FROM stg.work_order w), DATE '2014-12-31'))
                    - DATE '2005-01-01' AS integer) AS n_last),
     days AS (SELECT CAST(DATE '2005-01-01' + n AS date) AS d FROM nums CROSS JOIN lim WHERE n <= lim.n_last),
     p AS (SELECT d, CAST(EXTRACT(DOW FROM d) AS integer) AS dow, CAST(EXTRACT(DOY FROM d) AS integer) AS doy,
@@ -174,6 +175,10 @@ BEGIN
     DELETE FROM dw.dim_vendor;
     INSERT INTO dw.dim_vendor
     SELECT business_entity_id, account_number, name, credit_rating, preferred_vendor_status, active_flag FROM stg.vendor;
+    DELETE FROM dw.dim_scrap_reason;
+    INSERT INTO dw.dim_scrap_reason SELECT scrap_reason_id, name FROM stg.scrap_reason;
+    DELETE FROM dw.dim_location;
+    INSERT INTO dw.dim_location SELECT location_id, name, cost_rate, availability FROM stg.location;
     -- 03_facts.sql
     -- Shared order-line working set (same for internet and reseller facts).
     DROP TABLE IF EXISTS dw.wrk_sales_line;
@@ -316,5 +321,36 @@ BEGIN
     JOIN stg.purchase_order h ON h.purchase_order_id = l.purchase_order_id
     LEFT JOIN pv ON pv.purchase_order_id = l.purchase_order_id AND pv.purchase_order_detail_id = l.purchase_order_detail_id AND pv.rn = 1
     LEFT JOIN dw.dim_employee emp ON emp.business_entity_id = h.employee_id AND emp.status = 'Current';
+    -- C2-4 FactWorkOrder: one row per work order. AdventureWorks has no status column: closed = EndDate set; on time = closed and
+    -- EndDate <= DueDate (by day); days late = EndDate - DueDate when late. product_key = the dim_product version at the start date.
+    DELETE FROM dw.fact_work_order;
+    INSERT INTO dw.fact_work_order
+    WITH pv AS (
+      SELECT w.work_order_id, dp.product_key,
+             ROW_NUMBER() OVER (PARTITION BY w.work_order_id
+                                ORDER BY CASE WHEN dp.start_date <= w.start_date THEN 0 ELSE 1 END, dp.start_date DESC) AS rn
+      FROM stg.work_order w JOIN dw.dim_product dp ON dp.product_id = w.product_id)
+    SELECT pv.product_key, w.scrap_reason_id, CAST(TO_CHAR(w.start_date, 'YYYYMMDD') AS integer), CAST(TO_CHAR(w.end_date, 'YYYYMMDD') AS integer),
+           CAST(TO_CHAR(w.due_date, 'YYYYMMDD') AS integer), w.work_order_id,
+           CASE WHEN w.work_order_id >= 100000 THEN 'WO-DDB-' || CAST(w.work_order_id AS varchar(12))
+                ELSE 'WO' || LPAD(CAST(w.work_order_id AS varchar(12)), 6, '0') END,
+           w.order_qty, w.stocked_qty, w.scrapped_qty,
+           CASE WHEN w.end_date IS NULL THEN 0 ELSE 1 END,
+           CASE WHEN w.end_date IS NULL THEN NULL WHEN CAST(w.end_date AS date) <= CAST(w.due_date AS date) THEN 1 ELSE 0 END,
+           CASE WHEN w.end_date IS NULL OR CAST(w.end_date AS date) <= CAST(w.due_date AS date) THEN 0
+                ELSE CAST(CAST(w.end_date AS date) - CAST(w.due_date AS date) AS integer) END,
+           COALESCE(w.src, 'sql'), w.start_date, w.end_date, w.due_date
+    FROM stg.work_order w
+    LEFT JOIN pv ON pv.work_order_id = w.work_order_id AND pv.rn = 1;
+    -- C2-4 FactWorkOrderRouting: one row per routing step; late = actual end after scheduled end.
+    DELETE FROM dw.fact_work_order_routing;
+    INSERT INTO dw.fact_work_order_routing
+    SELECT f.product_key, r.location_id, CAST(TO_CHAR(r.scheduled_start_date, 'YYYYMMDD') AS integer), CAST(TO_CHAR(r.scheduled_end_date, 'YYYYMMDD') AS integer),
+           CAST(TO_CHAR(r.actual_start_date, 'YYYYMMDD') AS integer), CAST(TO_CHAR(r.actual_end_date, 'YYYYMMDD') AS integer),
+           r.work_order_id, r.operation_sequence, r.actual_resource_hrs, r.planned_cost, r.actual_cost,
+           CASE WHEN r.actual_end_date IS NULL THEN NULL WHEN r.actual_end_date > r.scheduled_end_date THEN 1 ELSE 0 END,
+           COALESCE(r.src, 'sql')
+    FROM stg.work_order_routing r
+    LEFT JOIN dw.fact_work_order f ON f.work_order_id = r.work_order_id;
 END;
 $$ LANGUAGE plpgsql;

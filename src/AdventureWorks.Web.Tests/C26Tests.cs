@@ -202,6 +202,17 @@ public sealed class ReorderTests
         Assert.Equal(0.5, f.Growth);
     }
 
+    [Fact]
+    public void Incomplete_trailing_months_are_left_out()
+    {
+        var raw = Series("2013-01", Enumerable.Repeat(100, 18).Append(4).ToArray());   // 2013-01..2014-06, 2014-07 partial
+        var f = Forecast.Compute(1, raw, 30, completeThrough: "2014-06", today: new DateTime(2026, 10, 13));
+        Assert.Equal("2014-06", f.History[^1].Month); Assert.Equal(100, f.Monthly); Assert.Equal("2014-07", f.Next[0].Month);
+        // no loader marker: the running calendar month is still dropped
+        var now = Series("2026-07", 50, 50, 50, 3);                                      // 2026-10 is running
+        Assert.Equal("2026-09", Forecast.Compute(1, now, 30, today: new DateTime(2026, 10, 13)).History[^1].Month);
+    }
+
     static ReorderSuggestion Rule(decimal stock, int safety, int onOrder, int ruleQty, int min = 1, int max = 1000) =>
         new(1, "HL Road Frame - Red, 62", "FR-R92R-62", stock, 375, safety, onOrder, ruleQty, ruleQty, null,
             new VendorProductInfo(1, "Vendor", 1, "HL Road Frame - Red, 62", null, 15, 100, null, null, min, max, onOrder, "EA"), []);

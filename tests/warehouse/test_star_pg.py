@@ -342,13 +342,20 @@ def test_c2_6_demand_view_and_forecast_backtest(conn):
     total = cur.fetchone()[0]
     cur.execute("SELECT (SELECT SUM(order_quantity) FROM dw.fact_internet_sales) + (SELECT SUM(order_quantity) FROM dw.fact_reseller_sales)")
     assert total == cur.fetchone()[0]
+    # leave out an incomplete trailing month (the data ends mid-month), like derive_ai.py and Forecast.Complete
+    cur.execute("SELECT MAX(order_date) FROM (SELECT order_date FROM dw.fact_internet_sales UNION ALL SELECT order_date FROM dw.fact_reseller_sales) x")
+    last = cur.fetchone()[0]
+    import datetime as _dt
+    full = (last + _dt.timedelta(days=1)).day == 1
+    cutoff = last.year * 12 + last.month - 1 - (0 if full else 1)
     cur.execute("SELECT product_id, calendar_year * 12 + month_number_of_year - 1, units FROM dw.v_product_demand_monthly ORDER BY 1, 2")
     series = {}
     for pid, m, u in cur.fetchall():
-        series.setdefault(pid, {})[m] = float(u)
+        if m <= cutoff:
+            series.setdefault(pid, {})[m] = float(u)
     err_f = err_b = actual = 0.0; products = 0
     for pid, by in series.items():
-        lo, hi = min(by), max(by)
+        lo, hi = min(by), cutoff
         h = [by.get(m, 0.0) for m in range(lo, hi + 1)]
         if len(h) < 24:
             continue

@@ -10,7 +10,7 @@ import generate as G  # noqa: E402
 import awmap  # noqa: E402
 
 D = dt.date
-SAMPLE_SHA = "c843347738eeb1ee9f741485f96ab9bc34df95508b23dcc58b1a0b73cc5bc18f"   # 2014-07-01..2014-09-30, seed 2026
+SAMPLE_SHA = "1d3ce85722c0c2eef9990f8448d6e1faec08c2a020ee1be86b716501042bdabd"   # 2014-07-01..2014-09-30, seed 2026
 
 
 @pytest.fixture(scope="session")

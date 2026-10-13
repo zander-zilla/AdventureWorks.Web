@@ -783,6 +783,7 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
 | TransactionHistory via triggers | Inserted explicitly with real dates, triggers disabled | Triggers would stamp load time |
 | Not mentioned | Not generated: CreditCard, CurrencyRate, new stores | Out of scope for the demo |
 | CI / local slice 2 years | 6 months (`SYNTHETIC_END`, default 2014-12-31); generator unit tests keep 2 years | 2 years did not fit a 16 GB runner; *confirmed by John (Oct 13, 2026)* |
+| Generated e-mails "first + 1-99" like the original | "first + customer key" | The original-only reconcile found generated addresses taking over original `EMAIL#` lookup items |
 | Trickle in backlog | Built (step 8), off by default | John's decision 7 |
 | CDC consumer HTTP/1.0 | HTTP/1.1 keep-alive + chunked bodies | Debezium bursts of a whole day stopped the engine |
 

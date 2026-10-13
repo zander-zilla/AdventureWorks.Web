@@ -280,7 +280,7 @@ class Generator:
             first = P["first_names"][int(r.integers(len(P["first_names"])))]; last = P["last_names"][int(r.integers(len(P["last_names"])))]
             key = 500000 + self.idx(d) * SLOT["cust"] + i
             out.append({"id": key, "territory": int(t), "first": first, "last": last, "middle": "ABCDEJLMRST"[int(r.integers(11))] if r.random() < .5 else None,
-                        "email": "%s%d@adventure-works.com" % (first.lower().replace(" ", ""), int(r.integers(1, 100))),
+                        "email": "%s%d@adventure-works.com" % (first.lower().replace(" ", ""), key + 0 * int(r.integers(1, 100))),  # unique: the key (the draw is kept so the other columns stay put); original addresses use 0-99
                         "phone": "%03d-555-01%02d" % (int(r.integers(200, 999)), int(r.integers(0, 100))),
                         "line1": "%d %s" % (int(r.integers(1, 9999)), P["streets"][int(r.integers(len(P["streets"])))]),
                         "city": city, "spid": spid, "pc": pc, "promo": int(r.integers(0, 3)),

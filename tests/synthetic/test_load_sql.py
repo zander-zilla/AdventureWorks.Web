@@ -64,6 +64,8 @@ def test_constraints_in_sql(conn):
         "receipts over ordered": "SELECT COUNT(*) n FROM Purchasing.PurchaseOrderDetail WHERE PurchaseOrderID >= 500000 AND (ReceivedQty > OrderQty OR RejectedQty > ReceivedQty)",
         "scrap over produced": "SELECT COUNT(*) n FROM Production.WorkOrder WHERE WorkOrderID >= 500000 AND ScrappedQty > OrderQty",
         "history dated today": "SELECT COUNT(*) n FROM Production.TransactionHistory WHERE TransactionID >= 10000000 AND TransactionDate > '%s'" % END.isoformat(),
+        # e-mail is a unique lookup item in DynamoDB (EMAIL#...): a generated address must never reuse an original one
+        "e-mail reused": "SELECT COUNT(*) n FROM (SELECT EmailAddress FROM Person.EmailAddress GROUP BY EmailAddress HAVING COUNT(*) > 1 AND MAX(BusinessEntityID) >= 500000) x",
         "unshipped old orders": "SELECT COUNT(*) n FROM Sales.SalesOrderHeader WHERE SalesOrderID >= 1000000 AND Status < 5 AND OrderDate <= '%s'" % (END - dt.timedelta(days=7)).isoformat(),
     }
     bad = {k: one(conn, sql)["n"] for k, sql in checks.items()}

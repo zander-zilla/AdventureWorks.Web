@@ -20,6 +20,9 @@ import { chapter1Url } from './showcaseUrl'
 
 // C2-4: the production floor brings Recharts; loaded on demand so the shop bundle stays small.
 const Production = lazy(() => import('./pages/backoffice/Production'))
+// C2-5: AI layer pages (off unless enable_ai); same lazy chunk pattern.
+const AskPage = lazy(() => import('./pages/Ai').then(m => ({ default: m.AskPage })))
+const SearchPage = lazy(() => import('./pages/Ai').then(m => ({ default: m.SearchPage })))
 
 // Chapter switch: Chapter 1 is the frozen showcase under /c1/ on the showcase site (C2-1); in the app it links out.
 const goChapter1 = () => { window.location.href = chapter1Url() }
@@ -55,6 +58,8 @@ export function App() {
         <Route path="back-office/replication" element={<Staff roles={staffRoles}><Replication /></Staff>} />
         <Route path="back-office/procurement/*" element={<Staff roles={['Buyer', 'PurchasingManager']}><Procurement /></Staff>} />
         <Route path="back-office/production/*" element={<Staff roles={staffRoles}><Suspense fallback={<p className="text-mute">Loading…</p>}><Production /></Suspense></Staff>} />
+        <Route path="back-office/ask" element={<Staff roles={staffRoles}><Suspense fallback={<p className="text-mute">Loading…</p>}><AskPage /></Suspense></Staff>} />
+        <Route path="shop/search" element={<Suspense fallback={<p className="text-mute">Loading…</p>}><SearchPage /></Suspense>} />
         <Route path="design" element={<DesignGallery />} />
         <Route path="login" element={<Login />} />
         <Route path="*" element={<EmptyState title="Not here yet">This screen arrives in a later Chapter 2 phase.</EmptyState>} />

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AdventureWorks.Web.Ai;
 using AdventureWorks.Web.Data;
 using AdventureWorks.Web.Models;
 using Amazon.DynamoDBv2.Model;
@@ -50,6 +51,16 @@ public static class V2
     private static string Actor(ClaimsPrincipal u) => u.FindFirstValue(ClaimTypes.Email) ?? u.Identity?.Name ?? "unknown";
     private static StaffUser Staff(ClaimsPrincipal u) => new(Actor(u), u.Identity?.Name ?? Actor(u),
         int.TryParse(u.FindFirstValue("employee_id"), out var e) ? e : null);
+    private static IResult AiOff() => Results.Problem(title: "The AI layer is off (enable_ai = false).", statusCode: 404);
+    /// <summary>Budget key: the signed-in user, else a per-browser cookie.</summary>
+    private static string AiSession(HttpContext h)
+    {
+        if (h.User.Identity?.IsAuthenticated == true) return "u:" + Actor(h.User);
+        if (h.Request.Cookies["aw_ai"] is { Length: 32 } c) return "c:" + c;
+        var id = Guid.NewGuid().ToString("N");
+        h.Response.Cookies.Append("aw_ai", id, new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, Secure = h.Request.IsHttps });
+        return "c:" + id;
+    }
     private static string? Token(HttpContext h) => h.Request.Headers["Idempotency-Key"].FirstOrDefault() is { Length: > 0 and <= 36 } k ? k : null;
 
     /// <summary>Domain exceptions -> problem+json (400 validation, 404, 409 conflict / failed condition).</summary>
@@ -290,6 +301,29 @@ public static class V2
         pf.MapGet("/scrap-reasons", async (ProductionRepository p) =>
             Results.Ok((await p.ScrapReasonsAsync()).Select(kv => new ScrapReasonInfo(kv.Key, kv.Value)).OrderBy(r => r.Name).ToList()))
             .RequireAuthorization(StaffPolicy).WithName("listScrapReasons").Produces<List<ScrapReasonInfo>>();
+
+        // C2-5 AI layer (enable_ai, default off): status is public; semantic search is public; ask-the-data needs a staff role.
+        var ai = g.MapGroup("/ai");
+        ai.MapGet("/status", (AiOptions o, IServiceProvider sp, HttpContext h) =>
+        {
+            var (ql, tl) = o.Enabled ? sp.GetRequiredService<AiBudget>().Left(AiSession(h)) : (0, 0);
+            return Results.Ok(new AiStatus(o.Enabled, o.Enabled ? o.Mode : "off", o.ChatModel, o.EmbeddingModel, o.RowLimit, o.TimeoutSeconds, ql, tl,
+                o.Enabled && sp.GetRequiredService<ISqlRunner>().Connected));
+        }).WithName("getAiStatus").Produces<AiStatus>();
+        ai.MapGet("/search", async (string q, int? top, AiOptions o, IServiceProvider sp, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            if (string.IsNullOrWhiteSpace(q) || q.Length > 200) return Results.Problem(title: "q must be 1 to 200 characters.", statusCode: 400);
+            return Results.Ok(await sp.GetRequiredService<SemanticSearch>().SearchAsync(q.Trim(), Math.Clamp(top ?? 10, 1, 30), o.Mode, ct));
+        }).WithName("semanticSearch").Produces<SearchResult>().ProducesProblem(400).ProducesProblem(404);
+        ai.MapGet("/examples", (AiOptions o) => o.Enabled ? Results.Ok(AiText.LoadEval().Select(e => e.Question).ToList()) : AiOff())
+            .RequireAuthorization(StaffPolicy).WithName("askExamples").Produces<List<string>>().ProducesProblem(404);
+        ai.MapPost("/ask", async (AskRequest body, AiOptions o, IServiceProvider sp, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+            o.Enabled ? Results.Ok(await sp.GetRequiredService<AskService>().AskAsync(AiSession(h), Actor(u), body.Question, ct)) : AiOff())
+            .RequireAuthorization(StaffPolicy).WithName("askTheData").Produces<AskResult>().ProducesProblem(404);
+        ai.MapPost("/reindex", async (AiOptions o, IServiceProvider sp, CancellationToken ct) =>
+            o.Enabled ? Results.Ok(new { indexed = await sp.GetRequiredService<SemanticSearch>().ReindexAsync(ct) }) : AiOff())
+            .RequireAuthorization(CatalogAdminPolicy).WithName("reindexSearch").ProducesProblem(404);
 
         return g;
     }

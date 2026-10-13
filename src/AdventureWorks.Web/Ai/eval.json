@@ -1,0 +1,185 @@
+{
+ "about": "C2-5 ask-the-data eval set: 30 questions. 'sql' is the mocked model's answer (over dw views only, checked by SqlGuard); 'expected' is a reference query over the facts and dimensions. CI runs both on the Postgres stand-in and compares results.",
+ "questions": [
+  {
+   "id": 1,
+   "question": "What is the total sales amount across both channels?",
+   "sql": "SELECT SUM(sales_amount) AS total_sales FROM dw.v_sales",
+   "expected": "SELECT SUM(sales_amount) FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f"
+  },
+  {
+   "id": 2,
+   "question": "Sales by channel",
+   "sql": "SELECT channel, SUM(sales_amount) AS total_sales FROM dw.v_sales GROUP BY channel ORDER BY channel",
+   "expected": "SELECT channel, SUM(sales_amount) FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f GROUP BY channel ORDER BY channel"
+  },
+  {
+   "id": 3,
+   "question": "Sales by calendar year",
+   "sql": "SELECT calendar_year, SUM(sales_amount) AS total_sales FROM dw.v_sales GROUP BY calendar_year ORDER BY calendar_year",
+   "expected": "SELECT d.calendar_year, SUM(f.sales_amount) FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f JOIN dw.dim_date d ON d.date_key = f.order_date_key GROUP BY d.calendar_year ORDER BY 1"
+  },
+  {
+   "id": 4,
+   "question": "Which product categories sell the most?",
+   "sql": "SELECT product_category, SUM(sales_amount) AS total_sales FROM dw.v_sales GROUP BY product_category ORDER BY total_sales DESC",
+   "expected": "SELECT pc.english_product_category_name, SUM(f.sales_amount) AS s FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f LEFT JOIN dw.dim_product p ON p.product_key = f.product_key LEFT JOIN dw.dim_product_subcategory ps ON ps.product_subcategory_key = p.product_subcategory_key LEFT JOIN dw.dim_product_category pc ON pc.product_category_key = ps.product_category_key GROUP BY pc.english_product_category_name ORDER BY s DESC"
+  },
+  {
+   "id": 5,
+   "question": "Top 10 products by sales amount",
+   "sql": "SELECT product_name, SUM(sales_amount) AS total_sales FROM dw.v_sales GROUP BY product_name ORDER BY total_sales DESC, product_name LIMIT 10",
+   "expected": "SELECT p.english_product_name, SUM(f.sales_amount) AS s FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f LEFT JOIN dw.dim_product p ON p.product_key = f.product_key LEFT JOIN dw.dim_product_subcategory ps ON ps.product_subcategory_key = p.product_subcategory_key LEFT JOIN dw.dim_product_category pc ON pc.product_category_key = ps.product_category_key GROUP BY p.english_product_name ORDER BY s DESC, 1 LIMIT 10"
+  },
+  {
+   "id": 6,
+   "question": "Internet sales by country",
+   "sql": "SELECT sales_territory_country, SUM(sales_amount) AS total_sales FROM dw.v_sales WHERE channel = 'Internet' GROUP BY sales_territory_country ORDER BY total_sales DESC",
+   "expected": "SELECT t.sales_territory_country, SUM(f.sales_amount) AS s FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f LEFT JOIN dw.dim_sales_territory t ON t.sales_territory_key = f.sales_territory_key WHERE f.channel = 'Internet' GROUP BY 1 ORDER BY s DESC"
+  },
+  {
+   "id": 7,
+   "question": "How many internet orders were placed each year?",
+   "sql": "SELECT calendar_year, COUNT(DISTINCT sales_order_number) AS orders FROM dw.v_sales WHERE channel = 'Internet' GROUP BY calendar_year ORDER BY calendar_year",
+   "expected": "SELECT d.calendar_year, COUNT(DISTINCT f.sales_order_number) FROM dw.fact_internet_sales f JOIN dw.dim_date d ON d.date_key = f.order_date_key GROUP BY 1 ORDER BY 1"
+  },
+  {
+   "id": 8,
+   "question": "Gross margin by product category",
+   "sql": "SELECT product_category, SUM(gross_margin) AS gross_margin FROM dw.v_sales GROUP BY product_category ORDER BY gross_margin DESC",
+   "expected": "SELECT pc.english_product_category_name, SUM(f.sales_amount - f.total_product_cost) AS m FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f LEFT JOIN dw.dim_product p ON p.product_key = f.product_key LEFT JOIN dw.dim_product_subcategory ps ON ps.product_subcategory_key = p.product_subcategory_key LEFT JOIN dw.dim_product_category pc ON pc.product_category_key = ps.product_category_key GROUP BY 1 ORDER BY m DESC"
+  },
+  {
+   "id": 9,
+   "question": "Average order line amount by channel",
+   "sql": "SELECT channel, AVG(sales_amount) AS avg_line_amount FROM dw.v_sales GROUP BY channel ORDER BY channel",
+   "expected": "SELECT channel, AVG(sales_amount) FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f GROUP BY channel ORDER BY 1"
+  },
+  {
+   "id": 10,
+   "question": "Top 5 resellers by sales",
+   "sql": "SELECT customer_or_reseller AS reseller, SUM(sales_amount) AS total_sales FROM dw.v_sales WHERE channel = 'Reseller' GROUP BY customer_or_reseller ORDER BY total_sales DESC, reseller LIMIT 5",
+   "expected": "SELECT r.reseller_name, SUM(f.sales_amount) AS s FROM dw.fact_reseller_sales f LEFT JOIN dw.dim_reseller r ON r.reseller_key = f.reseller_key GROUP BY 1 ORDER BY s DESC, 1 LIMIT 5"
+  },
+  {
+   "id": 11,
+   "question": "Sales by quarter in 2013",
+   "sql": "SELECT calendar_quarter, SUM(sales_amount) AS total_sales FROM dw.v_sales WHERE calendar_year = 2013 GROUP BY calendar_quarter ORDER BY calendar_quarter",
+   "expected": "SELECT d.calendar_quarter, SUM(f.sales_amount) FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f JOIN dw.dim_date d ON d.date_key = f.order_date_key WHERE d.calendar_year = 2013 GROUP BY 1 ORDER BY 1"
+  },
+  {
+   "id": 12,
+   "question": "Sales by territory group",
+   "sql": "SELECT sales_territory_group, SUM(sales_amount) AS total_sales FROM dw.v_sales GROUP BY sales_territory_group ORDER BY total_sales DESC",
+   "expected": "SELECT t.sales_territory_group, SUM(f.sales_amount) AS s FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f LEFT JOIN dw.dim_sales_territory t ON t.sales_territory_key = f.sales_territory_key GROUP BY 1 ORDER BY s DESC"
+  },
+  {
+   "id": 13,
+   "question": "Total freight by channel",
+   "sql": "SELECT channel, SUM(freight) AS freight FROM dw.v_sales GROUP BY channel ORDER BY channel",
+   "expected": "SELECT channel, SUM(freight) FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f GROUP BY 1 ORDER BY 1"
+  },
+  {
+   "id": 14,
+   "question": "Top 10 subcategories by units sold",
+   "sql": "SELECT product_subcategory, SUM(order_quantity) AS units FROM dw.v_sales GROUP BY product_subcategory ORDER BY units DESC, product_subcategory LIMIT 10",
+   "expected": "SELECT ps.english_product_subcategory_name, SUM(f.order_quantity) AS u FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f LEFT JOIN dw.dim_product p ON p.product_key = f.product_key LEFT JOIN dw.dim_product_subcategory ps ON ps.product_subcategory_key = p.product_subcategory_key LEFT JOIN dw.dim_product_category pc ON pc.product_category_key = ps.product_category_key GROUP BY 1 ORDER BY u DESC, 1 LIMIT 10"
+  },
+  {
+   "id": 15,
+   "question": "Monthly internet sales in 2013",
+   "sql": "SELECT month_number_of_year, SUM(sales_amount) AS total_sales FROM dw.v_sales WHERE channel = 'Internet' AND calendar_year = 2013 GROUP BY month_number_of_year ORDER BY month_number_of_year",
+   "expected": "SELECT d.month_number_of_year, SUM(f.sales_amount) FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f JOIN dw.dim_date d ON d.date_key = f.order_date_key WHERE f.channel = 'Internet' AND d.calendar_year = 2013 GROUP BY 1 ORDER BY 1"
+  },
+  {
+   "id": 16,
+   "question": "Top 5 promotions by sales, excluding No Discount",
+   "sql": "SELECT promotion, SUM(sales_amount) AS total_sales FROM dw.v_sales WHERE promotion <> 'No Discount' GROUP BY promotion ORDER BY total_sales DESC, promotion LIMIT 5",
+   "expected": "SELECT pr.english_promotion_name, SUM(f.sales_amount) AS s FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f LEFT JOIN dw.dim_promotion pr ON pr.promotion_key = f.promotion_key WHERE pr.english_promotion_name <> 'No Discount' GROUP BY 1 ORDER BY s DESC, 1 LIMIT 5"
+  },
+  {
+   "id": 17,
+   "question": "Bike sales by year",
+   "sql": "SELECT calendar_year, SUM(sales_amount) AS total_sales FROM dw.v_sales WHERE product_category = 'Bikes' GROUP BY calendar_year ORDER BY calendar_year",
+   "expected": "SELECT d.calendar_year, SUM(f.sales_amount) FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f JOIN dw.dim_date d ON d.date_key = f.order_date_key LEFT JOIN dw.dim_product p ON p.product_key = f.product_key LEFT JOIN dw.dim_product_subcategory ps ON ps.product_subcategory_key = p.product_subcategory_key LEFT JOIN dw.dim_product_category pc ON pc.product_category_key = ps.product_category_key WHERE pc.english_product_category_name = 'Bikes' GROUP BY 1 ORDER BY 1"
+  },
+  {
+   "id": 18,
+   "question": "Sales by fiscal year",
+   "sql": "SELECT fiscal_year, SUM(sales_amount) AS total_sales FROM dw.v_sales GROUP BY fiscal_year ORDER BY fiscal_year",
+   "expected": "SELECT d.fiscal_year, SUM(f.sales_amount) FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f JOIN dw.dim_date d ON d.date_key = f.order_date_key GROUP BY 1 ORDER BY 1"
+  },
+  {
+   "id": 19,
+   "question": "Tax collected by year",
+   "sql": "SELECT calendar_year, SUM(tax_amt) AS tax FROM dw.v_sales GROUP BY calendar_year ORDER BY calendar_year",
+   "expected": "SELECT d.calendar_year, SUM(f.tax_amt) FROM (SELECT 'Internet' AS channel, order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_internet_sales UNION ALL SELECT 'Reseller', order_date_key, product_key, sales_territory_key, promotion_key, order_quantity, sales_amount, total_product_cost, freight, tax_amt FROM dw.fact_reseller_sales) f JOIN dw.dim_date d ON d.date_key = f.order_date_key GROUP BY 1 ORDER BY 1"
+  },
+  {
+   "id": 20,
+   "question": "Top 10 vendors by spend",
+   "sql": "SELECT vendor_name, spend FROM dw.v_vendor_performance ORDER BY spend DESC, vendor_name LIMIT 10",
+   "expected": "SELECT v.vendor_name, SUM(CASE WHEN f.status IN (2, 4) THEN f.line_total ELSE 0 END) AS s FROM dw.fact_purchase_order_line f JOIN dw.dim_vendor v ON v.vendor_key = f.vendor_key GROUP BY v.vendor_key, v.vendor_name ORDER BY s DESC, 1 LIMIT 10"
+  },
+  {
+   "id": 21,
+   "question": "Which 5 vendors with at least 10 lines have the worst on-time rate?",
+   "sql": "SELECT vendor_name, on_time_rate FROM dw.v_vendor_performance WHERE lines >= 10 AND on_time_rate IS NOT NULL ORDER BY on_time_rate, vendor_name LIMIT 5",
+   "expected": "SELECT v.vendor_name, CAST(SUM(f.on_time_flag) AS double precision) / COUNT(f.on_time_flag) AS r FROM dw.fact_purchase_order_line f JOIN dw.dim_vendor v ON v.vendor_key = f.vendor_key GROUP BY v.vendor_key, v.vendor_name HAVING COUNT(*) >= 10 AND COUNT(f.on_time_flag) > 0 ORDER BY r, 1 LIMIT 5"
+  },
+  {
+   "id": 22,
+   "question": "Spend with preferred versus other vendors",
+   "sql": "SELECT preferred_vendor_flag, SUM(spend) AS spend FROM dw.v_vendor_performance GROUP BY preferred_vendor_flag ORDER BY preferred_vendor_flag",
+   "expected": "SELECT v.preferred_vendor_flag, SUM(CASE WHEN f.status IN (2, 4) THEN f.line_total ELSE 0 END) FROM dw.fact_purchase_order_line f JOIN dw.dim_vendor v ON v.vendor_key = f.vendor_key GROUP BY 1 ORDER BY 1"
+  },
+  {
+   "id": 23,
+   "question": "Top 5 vendors by reject rate",
+   "sql": "SELECT vendor_name, reject_rate FROM dw.v_vendor_performance WHERE reject_rate IS NOT NULL ORDER BY reject_rate DESC, vendor_name LIMIT 5",
+   "expected": "SELECT v.vendor_name, CAST(SUM(f.rejected_quantity) AS double precision) / SUM(f.received_quantity) AS r FROM dw.fact_purchase_order_line f JOIN dw.dim_vendor v ON v.vendor_key = f.vendor_key GROUP BY v.vendor_key, v.vendor_name HAVING SUM(f.received_quantity) > 0 ORDER BY r DESC, 1 LIMIT 5"
+  },
+  {
+   "id": 24,
+   "question": "How many purchase orders and lines are there?",
+   "sql": "SELECT SUM(purchase_orders) AS purchase_orders, SUM(lines) AS lines FROM dw.v_vendor_performance",
+   "expected": "SELECT COUNT(DISTINCT purchase_order_id), COUNT(*) FROM dw.fact_purchase_order_line f JOIN dw.dim_vendor v ON v.vendor_key = f.vendor_key"
+  },
+  {
+   "id": 25,
+   "question": "What is the overall scrap rate?",
+   "sql": "SELECT CAST(SUM(scrapped_quantity) AS double precision) / SUM(order_quantity) AS scrap_rate FROM dw.v_production_scrap_on_time",
+   "expected": "SELECT CAST(SUM(f.scrapped_quantity) AS double precision) / SUM(f.order_quantity) FROM dw.fact_work_order f JOIN dw.dim_date d ON d.date_key = f.due_date_key"
+  },
+  {
+   "id": 26,
+   "question": "On-time production rate by year",
+   "sql": "SELECT calendar_year, CAST(SUM(on_time) AS double precision) / SUM(closed) AS on_time_rate FROM dw.v_production_scrap_on_time GROUP BY calendar_year ORDER BY calendar_year",
+   "expected": "SELECT d.calendar_year, CAST(SUM(COALESCE(f.on_time_flag, 0)) AS double precision) / SUM(f.closed_flag) FROM dw.fact_work_order f JOIN dw.dim_date d ON d.date_key = f.due_date_key GROUP BY 1 ORDER BY 1"
+  },
+  {
+   "id": 27,
+   "question": "Which month had the most work orders due?",
+   "sql": "SELECT due_year_month, work_orders FROM dw.v_production_scrap_on_time ORDER BY work_orders DESC, due_year_month LIMIT 1",
+   "expected": "SELECT CAST(due_date_key / 100 AS integer) AS m, COUNT(*) AS n FROM dw.fact_work_order GROUP BY 1 ORDER BY n DESC, m LIMIT 1"
+  },
+  {
+   "id": 28,
+   "question": "Scrapped quantity by year",
+   "sql": "SELECT calendar_year, SUM(scrapped_quantity) AS scrapped FROM dw.v_production_scrap_on_time GROUP BY calendar_year ORDER BY calendar_year",
+   "expected": "SELECT d.calendar_year, SUM(f.scrapped_quantity) FROM dw.fact_work_order f JOIN dw.dim_date d ON d.date_key = f.due_date_key GROUP BY 1 ORDER BY 1"
+  },
+  {
+   "id": 29,
+   "question": "How many work orders were due in 2014?",
+   "sql": "SELECT SUM(work_orders) AS work_orders FROM dw.v_production_scrap_on_time WHERE calendar_year = 2014",
+   "expected": "SELECT COUNT(*) FROM dw.fact_work_order f JOIN dw.dim_date d ON d.date_key = f.due_date_key WHERE d.calendar_year = 2014"
+  },
+  {
+   "id": 30,
+   "question": "Three months with the worst on-time production",
+   "sql": "SELECT due_year_month, on_time_rate FROM dw.v_production_scrap_on_time WHERE closed > 0 ORDER BY on_time_rate, due_year_month LIMIT 3",
+   "expected": "SELECT CAST(due_date_key / 100 AS integer) AS m, CAST(SUM(COALESCE(on_time_flag, 0)) AS double precision) / SUM(closed_flag) AS r FROM dw.fact_work_order GROUP BY 1 HAVING SUM(closed_flag) > 0 ORDER BY r, m LIMIT 3"
+  }
+ ]
+}

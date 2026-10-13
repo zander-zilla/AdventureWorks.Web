@@ -386,6 +386,50 @@ flag off by default, tear-down); wrong SQL answers (show SQL, eval set, narrow s
 account (none: Bedrock in-region, no training on data). Demo talking points: "ask a question, get a chart from the
 warehouse migrated in Chapter 1"; vector search finds "lightweight bike for climbing" without keyword match.
 
+### C2-5 as built (PR #22)
+- **Flag**: Terraform `enable_ai` (default `false`) creates `infra/modules/ai` – S3 Vectors bucket + cosine index `products`
+  (512 dims), Bedrock guardrail (denied topics: personal data, HR pay, prompt injection; PII BLOCK; prompt-attack filter) with
+  a version, the `ai_reader` secret – and passes `Ai__*` settings and an IAM policy (InvokeModel on the two models only,
+  ApplyGuardrail, S3 Vectors put/query, Redshift Data API) to the app. Off = no resources, endpoints answer 404.
+- **Semantic search** `GET /api/v2/ai/search?q=` (public) and page `/app/shop/search`: product name, model, category,
+  subcategory, colour and English model description embedded with Titan Text Embeddings v2 into S3 Vectors; score =
+  0.7 × cosine similarity + 0.3 × keyword overlap. Index built on first search and by `POST /api/v2/ai/reindex` (catalog admin).
+- **Ask the data** `POST /api/v2/ai/ask` (staff) and page `/app/back-office/ask`: Bedrock Converse (default Amazon Nova Pro,
+  temperature 0) with a semantic-layer prompt over `dw.v_sales`, `dw.v_vendor_performance`, `dw.v_production_scrap_on_time`;
+  `SqlGuard` (one SELECT/WITH, no comments, no second statement, no quoted identifiers, deny-list of write / admin keywords,
+  FROM/JOIN only on `dw.v_*` or CTEs) wraps the SQL as `SELECT * FROM (…) AS q LIMIT 200`; Redshift Data API as the read-only
+  `ai_reader` user (`warehouse/sql/redshift/50_ai_reader.sql`), cancelled after 15 s. The SQL is always shown; two-column results
+  get a Recharts bar or line chart.
+- **Budget and logging**: 20 questions and 40,000 model tokens per session per day (signed-in user or `aw_ai` cookie);
+  every question is logged (`ai.ask` with user, SQL, rows, tokens, latency, block reason) to CloudWatch via the task's log driver.
+- **Mock mode** (CI, local, the real-image e2e): hash embeddings + in-memory vectors, and a mocked model that replays the
+  30-question eval set (`src/AdventureWorks.Web/Ai/eval.json`); a local guardrail stand-in mirrors the Bedrock topics and PII.
+- **Tests**: `C25Tests.cs` (guard allow / 15 refusals, all 30 eval answers pass the guard, guardrail, budget, ask pipeline, chart
+  hints, flag off / on over HTTP); warehouse-e2e `test_c2_5_*` runs all 30 mocked answers as a role that sees only the three views
+  (read-only, statement timeout) and compares them with reference queries over facts and dimensions, and proves that role cannot
+  read facts, landing or write; Terraform plan tests (off by default, on creates module + policy); Playwright `e2e/c2-5.spec.ts`.
+  No AWS calls anywhere; the live run of the eval set is a manual step once `enable_ai` is applied.
+
+#### Changes from initial design (C2-5)
+| Plan | As built | Why |
+|---|---|---|
+| Embeddings by a Lambda on product change (CDC stream) | Built in the app on first search + `POST /ai/reindex` (catalog admin) | ~500 products; no extra Lambda / stream consumer while the flag is off. Price edits don't change the text. |
+| "Claude/Nova via Bedrock" | Amazon Nova Pro by default (`chat_model_id` variable) | In-region, no Marketplace subscription step; switchable. |
+| Bedrock Knowledge Bases NL2SQL "if it fits" | Own Converse prompt + `SqlGuard` | Full control of guards and the shown SQL; testable offline with a mocked model. |
+| Prompt/response logging to CloudWatch | Structured `ai.ask` log lines through the app's awslogs driver | Same log group as the app; no extra resources. |
+| Eval set with expected results | 30 questions, mocked answers vs reference queries on the Postgres stand-in | Expected results are computed, not hard-coded, so they follow the data. |
+| — | Search public, ask-the-data staff only | Warehouse figures are internal. |
+| — | Guard refuses `EXTRACT(… FROM …)` and comma joins to non-views | Known limitation of the regex guard; the read-only role is the backstop. |
+
+#### C2-5 decisions (*accepted overnight by Grok Bot under John's delegation, pending John's review*)
+Nova Pro default; 512-dimension Titan v2 + cosine; on-demand indexing instead of a stream Lambda; mocked model = eval replay and
+hash embeddings (lexical, labelled as such); search public, ask staff-only; budget 20 questions / 40k tokens per session per day
+(in memory per task); row limit 200, timeout 15 s; semantic layer = the three `dw.v_*` views; guardrail PII action BLOCK; logging via
+app logs; the real-image e2e runs with the AI layer on in mock mode.
+
+**Left for John**: whether and when to apply `enable_ai = true` (Bedrock per-request cost + S3 Vectors storage), setting the
+`ai_reader` password (run `50_ai_reader.sql`, store it in the secret), confirming the model, and the manual live eval run.
+
 ---
 
 ## Cross-cutting

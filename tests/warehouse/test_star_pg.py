@@ -272,3 +272,53 @@ def test_c2_4_app_work_order_reaches_the_star(conn):
                    WHERE p.product_id IN (%s, %s) AND f.date_key = 20261020 ORDER BY 1""", (pid, comp))
     assert dict(cur.fetchall()) == {pid: 1, comp: -2}
     cur.execute("SELECT COUNT(*) FROM dw.fact_work_order WHERE source = 'sql'"); assert cur.fetchone()[0] == 72591
+
+EVAL = os.path.join(ROOT, "src/AdventureWorks.Web/Ai/eval.json")
+
+def _norm(rows):
+    out = []
+    for r in rows:
+        out.append(tuple(round(float(x), 4) if isinstance(x, (Decimal, float)) else x for x in r))
+    return out
+
+def _close(a, b):
+    if len(a) != len(b): return False
+    for ra, rb in zip(a, b):
+        if len(ra) != len(rb): return False
+        for x, y in zip(ra, rb):
+            if isinstance(x, float) and isinstance(y, (float, int)):
+                if abs(x - y) > max(0.01, abs(y) * 1e-6): return False
+            elif x != y: return False
+    return True
+
+def test_c2_5_eval_set_mocked_model_matches_reference_queries(conn):
+    """C2-5: the 30 ask-the-data questions. The mocked model's SQL (dw.v_* views only, wrapped exactly like SqlGuard does with
+    LIMIT 200) runs as a read-only role that can see nothing but the three views, in a read-only transaction with a statement
+    timeout; its results must equal the reference query over the facts and dimensions."""
+    qs = json.load(open(EVAL))["questions"]
+    assert len(qs) == 30
+    cur = conn.cursor()
+    cur.execute("CREATE ROLE aw_ai_reader_test NOLOGIN; GRANT USAGE ON SCHEMA dw TO aw_ai_reader_test; "
+                "GRANT SELECT ON dw.v_sales, dw.v_vendor_performance, dw.v_production_scrap_on_time TO aw_ai_reader_test")
+    failures = []
+    for q in qs:
+        cur.execute(q["expected"]); expected = _norm(cur.fetchall())
+        cur.execute("SAVEPOINT ai; SET LOCAL ROLE aw_ai_reader_test; SET LOCAL statement_timeout = 15000")
+        cur.execute("SELECT * FROM (%s) AS q LIMIT 200" % q["sql"]); got = _norm(cur.fetchall())
+        cur.execute("RESET ROLE; RELEASE SAVEPOINT ai")
+        assert expected, "reference query %d returned no rows" % q["id"]
+        if not _close(got, expected): failures.append((q["id"], q["question"], got[:3], expected[:3]))
+    assert not failures, failures
+
+def test_c2_5_ai_reader_cannot_touch_anything_else(conn):
+    cur = conn.cursor()
+    cur.execute("CREATE ROLE aw_ai_reader_test2 NOLOGIN; GRANT USAGE ON SCHEMA dw TO aw_ai_reader_test2; GRANT SELECT ON dw.v_sales TO aw_ai_reader_test2")
+    for sql in ("SELECT COUNT(*) FROM dw.fact_internet_sales", "SELECT COUNT(*) FROM dw.dim_customer", "DELETE FROM dw.fact_internet_sales",
+                "SELECT COUNT(*) FROM landing.\"aw-sales\"", "CREATE TABLE dw.x (a int)"):
+        cur.execute("SAVEPOINT p; SET LOCAL ROLE aw_ai_reader_test2")
+        with pytest.raises(Exception):
+            cur.execute(sql)
+        cur.execute("ROLLBACK TO SAVEPOINT p")
+    cur.execute("SAVEPOINT p; SET LOCAL ROLE aw_ai_reader_test2; SET LOCAL transaction_read_only = on")
+    cur.execute("SELECT COUNT(*) FROM dw.v_sales"); assert cur.fetchone()[0] > 0
+    cur.execute("ROLLBACK TO SAVEPOINT p")

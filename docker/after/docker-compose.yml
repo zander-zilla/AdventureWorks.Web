@@ -11,6 +11,9 @@ services:
     network_mode: host
     environment:
       ASPNETCORE_URLS: http://+:5090
+      # C2-5: AI layer in mock mode for the e2e run (no AWS; eval-replay model, hash embeddings, no warehouse)
+      Ai__Enabled: "${AW_AI_ENABLED:-true}"
+      Ai__Mode: mock
       DynamoDb__Endpoints__aw-catalog: http://localhost:8001
       DynamoDb__Endpoints__aw-customer: http://localhost:8002
       DynamoDb__Endpoints__aw-sales: http://localhost:8007

@@ -44,6 +44,25 @@ run "demo_full_stack" {
     condition     = length(module.warehouse.integration_ids) == 7
     error_message = "one zero-ETL integration per domain table"
   }
+  assert {
+    condition     = length(module.ai) == 0 && length(module.app.ai_policy_count) == 0
+    error_message = "C2-5 AI layer must be off by default"
+  }
+}
+
+run "ai_layer_on" {
+  command = plan
+  variables {
+    enable_ai = true
+  }
+  assert {
+    condition     = length(module.ai) == 1 && length(module.app.ai_policy_count) == 1
+    error_message = "enable_ai creates the AI module and the app's AI policy"
+  }
+  assert {
+    condition     = module.ai[0].vector_bucket == "aw-ci-vectors-123456789012"
+    error_message = "vector bucket named per account"
+  }
 }
 
 run "dynamodb_encryption_per_table" {

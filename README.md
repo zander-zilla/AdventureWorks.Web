@@ -22,6 +22,7 @@ pip install playwright && python -m playwright install chromium && pytest tests/
 - Demo logins are the same 5 customers as the before app (for example `catherine0@adventure-works.com`), password `Demo!2026`.
 - `/` opens the Chapter 2 React app (`/app/`). The Razor shop was removed in C2-3; the Chapter 1 version of it is still in the frozen showcase under `/c1/` and in tag `v1.0-migration`.
 - Back office demo staff (password `Demo!2026`): `fulfilment@adventure-works.com` (orders), `ops@adventure-works.com` (orders + price edits), `mikael0@adventure-works.com` (buyer: creates and receives purchase orders), `sheela0@adventure-works.com` (buyer + purchasing manager: also approves / rejects), `production@adventure-works.com` (production supervisor: creates, operates and completes work orders).
+- C2-5 AI layer is off by default. Locally: `Ai__Enabled=true Ai__Mode=mock` (eval-replay model, hash embeddings; set `Ai__WarehouseConnection` to run SQL on the Postgres stand-in). On AWS: `enable_ai = true` in Terraform, then run `warehouse/sql/redshift/50_ai_reader.sql` and store the password in the `ai_reader` secret.
 - Purchase orders created here are `PO-DDB-…` (ids from 100,000); SQL-era POs are shown read-only.
 - Orders placed here are `SO-DDB-…`. They live only in DynamoDB and flow to Redshift through zero-ETL.
 - The image is chiseled and runs as non-root (UID 1654).

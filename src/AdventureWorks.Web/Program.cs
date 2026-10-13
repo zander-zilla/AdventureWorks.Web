@@ -1,4 +1,5 @@
 using System.Globalization;
+using AdventureWorks.Web.Ai;
 using AdventureWorks.Web.Api;
 using AdventureWorks.Web.Data;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -21,6 +22,32 @@ builder.Services.AddSingleton(sp => new SalesRepository(sp.GetRequiredService<Dy
 builder.Services.AddSingleton<FulfilmentRepository>();
 builder.Services.AddSingleton<ProcurementRepository>();
 builder.Services.AddSingleton<ProductionRepository>();
+// C2-5 AI layer: registered only when Ai:Enabled (Terraform enable_ai). Mode mock = hash embeddings, in-memory vectors, eval-replay model.
+var aiOptions = builder.Configuration.GetSection("Ai").Get<AiOptions>() ?? new AiOptions();
+builder.Services.AddSingleton(aiOptions);
+if (aiOptions.Enabled)
+{
+    builder.Services.AddSingleton<AiBudget>();
+    builder.Services.AddSingleton<SemanticSearch>();
+    builder.Services.AddSingleton<AskService>();
+    if (aiOptions.IsBedrock)
+    {
+        builder.Services.AddSingleton<Amazon.BedrockRuntime.IAmazonBedrockRuntime, Amazon.BedrockRuntime.AmazonBedrockRuntimeClient>(_ => new());
+        builder.Services.AddSingleton<IEmbedder, TitanEmbedder>();
+        builder.Services.AddSingleton<ISqlModel, BedrockSqlModel>();
+        builder.Services.AddSingleton<IVectorStore>(_ => new S3VectorStore(new Amazon.S3Vectors.AmazonS3VectorsClient(), aiOptions));
+    }
+    else
+    {
+        builder.Services.AddSingleton<IEmbedder>(new HashEmbedder(aiOptions.Dimensions));
+        builder.Services.AddSingleton<ISqlModel>(new MockSqlModel(AiText.LoadEval()));
+        builder.Services.AddSingleton<IVectorStore, InMemoryVectorStore>();
+    }
+    if (!string.IsNullOrEmpty(aiOptions.RedshiftWorkgroup))
+        builder.Services.AddSingleton<ISqlRunner>(_ => new RedshiftDataRunner(new Amazon.RedshiftDataAPIService.AmazonRedshiftDataAPIServiceClient(), aiOptions));
+    else if (!string.IsNullOrEmpty(aiOptions.WarehouseConnection)) builder.Services.AddSingleton<ISqlRunner>(new PostgresRunner(aiOptions.WarehouseConnection));
+    else builder.Services.AddSingleton<ISqlRunner, NoWarehouseRunner>();
+}
 builder.Services.AddSingleton(builder.Configuration.GetSection("Demo").Get<DemoOptions>() ?? new DemoOptions());
 
 // C2-3 (John's C2-2 decision 3): the Razor UI (shop, account, admin) is gone; Chapter 1 keeps it in tag v1.0-migration

@@ -54,7 +54,7 @@ test('Business processes: landscape, coverage tile, deep link opens a process', 
   expect(errors).toEqual([])
 })
 
-test('Back office live (C2-2..C2-4), What changed, Ask the data are clearly marked', async ({ page }) => {
+test('Back office live (C2-2..C2-5), What changed, Ask the data are clearly marked', async ({ page }) => {
   await page.goto('./#/c2/back-office')
   await expect(page.getByTestId('live-screen').filter({ hasText: 'Back office orders' })).toContainText('Live · C2-2')
   await expect(page.getByTestId('live-screen').filter({ hasText: 'Procurement: reorder' })).toContainText('Live · C2-3')
@@ -71,8 +71,9 @@ test('Back office live (C2-2..C2-4), What changed, Ask the data are clearly mark
   await expect(page.getByText('dw.v_production_scrap_on_time')).toBeVisible()
   await shot(page, 'c2-1-what-changed')
   await page.getByRole('link', { name: /Ask the data/ }).click()
-  await expect(page.getByText('Coming soon (optional C2-5)')).toBeVisible()
-  await shot(page, 'c2-1-ask-the-data')
+  await expect(page.getByText('Built in C2-5 · off by default (enable_ai)')).toBeVisible()
+  await expect(page.getByLabel('Eval set examples')).toContainText('Sales by channel')
+  await shot(page, 'c2-5-showcase-ask-the-data')
 })
 
 test('Chapter switch: Chapter 1 is the frozen v1.0-migration site under /c1/, deep links both ways', async ({ page }) => {

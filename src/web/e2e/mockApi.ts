@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test'
 import { procurementMock } from './mockProcurement'
 import { productionMock } from './mockProduction'
+import { aiMock } from './mockAi'
 
 // Stateful in-memory stand-in for /api/v2 (C2-2 shop + back office), used when no real backend is configured.
 // Shapes follow the generated OpenAPI types; the real flow runs the same spec against the app image (after.yml).
@@ -43,6 +44,7 @@ export async function mockApi(page: Page) {
   }
   const procurement = procurementMock()
   const production = productionMock()
+  const ai = aiMock()
   const push = (event: string, subject: string, writes: string[]) => feed.unshift({ id: `${now()}#${feed.length}`, at: now(), event, subject, actor: String(me.email), writes })
 
   await page.route('**/api/v2/**', async r => {
@@ -63,6 +65,8 @@ export async function mockApi(page: Page) {
       return json(r, me)
     }
     if (p === '/auth/logout') { me = { authenticated: false, name: null, email: null, customerId: null, roles: [] }; return r.fulfill({ status: 204 }) }
+    const aiRes = p.startsWith('/ai/') ? ai(p, m, url, body) : null
+    if (aiRes) return json(r, aiRes.json, aiRes.status ?? 200)
     if (p === '/categories') return json(r, cats)
     const sub = p.match(/^\/subcategories\/(\d+)\/products$/); if (sub) return json(r, Number(sub[1]) === 2 ? [bike] : [{ ...helmet, listPrice: price.listPrice }])
     if (p === '/products') return json(r, { items: [helmet, bike].map(x => ({ id: x.id, name: x.name, productNumber: x.productNumber, listPrice: x.listPrice, active: true })), next: null })

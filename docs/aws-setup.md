@@ -142,8 +142,11 @@ emails must come back "Blocked by the Bedrock guardrail". To turn AI off again, 
   in step 1 above.
 - **Shop guardrail**: created by Terraform (`terraform -chdir=infra/live output -raw ai_shop_guardrail_id`). Competitor words
   go in `ai_competitor_words` (list, empty by default) in the env's tfvars.
-- **Watchdog**: on AWS it shows the recorded scenarios until `Ai__MonitorApiUrl` is wired (follow-up, decision R4/W in
-  docs/chapter-2/PLAN.md). It never reads or redrives the DLQ.
+- **Watchdog**: when the monitor API exists (`enable_showcase`, `enable_source`, `enable_monitor_api`), Terraform passes its
+  Function URL to the app (`Ai__MonitorApiUrl`, `Ai__MonitorSigV4=true`) and gives the app role `lambda:InvokeFunctionUrl` +
+  `lambda:InvokeFunction` on `<name>-monitor-api` only (AWS_IAM auth). The app signs each GET with SigV4 using the task role.
+  If the call fails the watchdog says *The monitor API did not answer* (runbook `#unavailable`); it never shows a recorded
+  scenario as live. Without the monitor API it shows the recorded scenarios. It never reads or redrives the DLQ.
 - **Cost**: the same per-session budget as C2-5 (20 model calls / 40k tokens per day); the chat adds at most 10 Nova Lite
   turns per session. The PO e-mail is a draft only (no SES).
 

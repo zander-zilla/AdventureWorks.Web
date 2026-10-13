@@ -355,6 +355,7 @@ resource "aws_lambda_function_url" "monitor_api" {
 
 output "monitor_table" { value = var.enable_monitor_api ? aws_dynamodb_table.monitor[0].name : null }
 output "monitor_api_function" { value = var.enable_monitor_api ? aws_lambda_function.monitor_api[0].function_name : null }
+output "monitor_api_function_arn" { value = var.enable_monitor_api ? aws_lambda_function.monitor_api[0].arn : null }
 output "monitor_api_url" { value = var.enable_monitor_api ? aws_lambda_function_url.monitor_api[0].function_url : null }
 output "kinesis_stream_arn" { value = aws_kinesis_stream.cdc.arn }
 output "replication_task_arn" { value = aws_dms_replication_task.cdc.replication_task_arn }

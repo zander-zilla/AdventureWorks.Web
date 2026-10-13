@@ -372,3 +372,39 @@ run "showcase_chapter1_frozen_prefix" {
     error_message = "chapter1_url output"
   }
 }
+
+run "ai_watchdog_monitor_api" {
+  command = plan
+  module {
+    source = "../modules/ai"
+  }
+  variables {
+    name                     = "aw-ci"
+    redshift_workgroup       = "aw-ci"
+    monitor_api_url          = "https://abc.lambda-url.us-east-1.on.aws/"
+    monitor_api_function_arn = "arn:aws:lambda:us-east-1:123456789012:function:aw-ci-monitor-api"
+  }
+  assert {
+    condition     = one([for e in output.environment : e.value if e.name == "Ai__MonitorApiUrl"]) == "https://abc.lambda-url.us-east-1.on.aws/" && one([for e in output.environment : e.value if e.name == "Ai__MonitorSigV4"]) == "true"
+    error_message = "the app gets the monitor API URL and signs its calls"
+  }
+  assert {
+    condition     = strcontains(output.monitor_policy_json, "lambda:InvokeFunctionUrl") && strcontains(output.monitor_policy_json, "aw-ci-monitor-api") && strcontains(output.monitor_policy_json, "AWS_IAM")
+    error_message = "invoke permission on the monitor API Function URL only"
+  }
+}
+
+run "ai_watchdog_without_monitor_api" {
+  command = plan
+  module {
+    source = "../modules/ai"
+  }
+  variables {
+    name               = "aw-ci"
+    redshift_workgroup = "aw-ci"
+  }
+  assert {
+    condition     = output.monitor_policy_json == "[]" && length([for e in output.environment : e if e.name == "Ai__MonitorApiUrl"]) == 0
+    error_message = "no monitor API: recorded scenarios, no Lambda permission"
+  }
+}

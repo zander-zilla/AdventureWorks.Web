@@ -27,3 +27,9 @@ Wait until the parent appears in DynamoDB, then redrive the DLQ (SQS console: *S
 ## dead-letter-queue
 Changes failed for another reason (stale `src_lsn` condition, validation). Read each message's error (the watchdog shows
 table, operation and a redacted error only; message bodies may hold customer data), fix the cause, then redrive.
+
+## unavailable
+The app could not read the monitor API (AWS only, `Ai__MonitorApiUrl` set). Check that the monitor API Lambda is deployed
+(`enable_monitor_api`), its logs, and that the app task role has `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` on
+`<name>-monitor-api` (Terraform adds both when `enable_ai` and the monitor API are on). The watchdog does not fall back to a
+recorded scenario on AWS, so it never shows "healthy" while it is blind.

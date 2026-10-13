@@ -41,9 +41,17 @@ public static class Forecast
         return (0.5 * h[n - 12] * g + 0.5 * mean3, g, "seasonal naive with trend (0.5·last year·growth + 0.5·3-month mean)");
     }
 
-    public static DemandForecast Compute(int productId, IEnumerable<DemandMonth> raw, int leadTimeDays, int horizon = 3)
+    /// <summary>Drops incomplete trailing months: anything after the loader's last complete month (DEMAND#META ASOF) and the
+    /// current calendar month (still running).</summary>
+    public static IEnumerable<DemandMonth> Complete(IEnumerable<DemandMonth> raw, string? completeThrough, DateTime today)
     {
-        var hist = Fill(raw);
+        var running = today.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+        return raw.Where(m => string.CompareOrdinal(m.Month, running) < 0 && (completeThrough is null || string.CompareOrdinal(m.Month, completeThrough) <= 0));
+    }
+
+    public static DemandForecast Compute(int productId, IEnumerable<DemandMonth> raw, int leadTimeDays, int horizon = 3, string? completeThrough = null, DateTime? today = null)
+    {
+        var hist = Fill(Complete(raw, completeThrough, today ?? DateTime.UtcNow));
         var y = hist.Select(m => (double)m.Qty).ToList();
         var (f1, g, method) = Step(y);
         var next = new List<ForecastPoint>();
@@ -90,12 +98,23 @@ public sealed class DemandRepository(DynamoTables t)
         });
         return items.Select(i => new DemandMonth(i.Str("month") ?? i["SK"].S[2..], i.Int("qty") ?? 0, i.Int("orders") ?? 0)).ToList();
     }
+
+    /// <summary>Last complete month of the derived history (null when the loader has not written it).</summary>
+    public async Task<string?> CompleteThroughAsync()
+    {
+        var r = await t.For(DynamoTables.Inventory).GetItemAsync(new GetItemRequest
+        {
+            TableName = t.Name(DynamoTables.Inventory), Key = new() { ["PK"] = Av.S("DEMAND#META"), ["SK"] = Av.S("ASOF") },
+        });
+        return r.Item is { Count: > 0 } i ? i.Str("complete_through") : null;
+    }
 }
 
 /// <summary>Smart reorder (forecast + vendor rules) and the reorder / PO e-mail facts.</summary>
-public sealed class ReorderFacts(ProcurementRepository procurement, DemandRepository demand)
+public sealed class ReorderFacts(ProcurementRepository procurement, DemandRepository demand, TimeProvider clock)
 {
-    public async Task<DemandForecast> ForecastAsync(int productId, int leadTimeDays) => Forecast.Compute(productId, await demand.HistoryAsync(productId), leadTimeDays);
+    public async Task<DemandForecast> ForecastAsync(int productId, int leadTimeDays) =>
+        Forecast.Compute(productId, await demand.HistoryAsync(productId), leadTimeDays, completeThrough: await demand.CompleteThroughAsync(), today: clock.GetUtcNow().UtcDateTime);
 
     public async Task<List<SmartSuggestion>> SmartAsync()
     {

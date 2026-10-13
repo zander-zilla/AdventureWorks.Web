@@ -23,6 +23,7 @@ public static partial class WatchRules
     public static WatchCause Classify(WatchSnapshot s)
     {
         var st = s.Status;
+        if (st.Source == "unavailable") return new("unavailable", "The monitor API did not answer", "warn", "Check the monitor API Lambda and the app's lambda:InvokeFunctionUrl permission", Rb + "#unavailable");
         if (st.Paused) return new("paused", "The consumer is paused", "warn", "Resume the consumer (POST /api/resume) once the maintenance is over", Rb + "#paused");
         if ((st.Dlq ?? 0) > 0)
         {
@@ -75,16 +76,79 @@ public sealed class ReplayWatchSource : IWatchSource
     }
 }
 
-/// <summary>AWS: the replication monitor API (cdc/monitor_api, GET /api/status + /api/changes). DLQ depth only, no message bodies.</summary>
-public sealed class MonitorWatchSource(HttpClient http, AiOptions o) : IWatchSource
+/// <summary>AWS: the replication monitor API (cdc/monitor_api, GET /api/status + /api/changes) on its Lambda Function URL
+/// (AWS_IAM), signed with SigV4 by the app's task role when Ai:MonitorSigV4 is on. DLQ depth only, no message bodies.
+/// When the call fails the snapshot says so (cause "unavailable") instead of showing a recorded scenario as if it were live.</summary>
+public sealed class MonitorWatchSource(HttpClient http, AiOptions o, ILogger<MonitorWatchSource> log, Func<CancellationToken, Task<SigV4.Creds>>? creds = null) : IWatchSource
 {
     static readonly JsonSerializerOptions J = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
     public bool Replay => false;
+
+    static async Task<SigV4.Creds> TaskRole(CancellationToken ct)
+    {
+        var c = await Amazon.Runtime.Credentials.DefaultAWSCredentialsIdentityResolver.GetCredentials().GetCredentialsAsync();
+        return new SigV4.Creds(c.AccessKey, c.SecretKey, c.UseToken ? c.Token : null);
+    }
+
+    async Task<T?> Get<T>(string url, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        if (o.MonitorSigV4)
+        {
+            var region = o.MonitorRegion ?? Environment.GetEnvironmentVariable("AWS_REGION") ?? "us-east-1";
+            SigV4.Sign(req, await (creds ?? TaskRole)(ct), region, "lambda", DateTime.UtcNow);
+        }
+        using var res = await http.SendAsync(req, ct);
+        res.EnsureSuccessStatusCode();
+        return await res.Content.ReadFromJsonAsync<T>(J, ct);
+    }
+
     public async Task<WatchSnapshot> GetAsync(string? scenario, CancellationToken ct)
     {
         var b = o.MonitorApiUrl!.TrimEnd('/');
-        var st = await http.GetFromJsonAsync<WatchStatus>($"{b}/api/status", J, ct) ?? throw new InvalidOperationException("empty status");
-        var ch = await http.GetFromJsonAsync<List<WatchChange>>($"{b}/api/changes?limit=20", J, ct) ?? [];
-        return new WatchSnapshot("live", st, ch, []);
+        try
+        {
+            var st = await Get<WatchStatus>($"{b}/api/status", ct) ?? throw new InvalidOperationException("empty status");
+            var ch = await Get<List<WatchChange>>($"{b}/api/changes?limit=20", ct) ?? [];
+            return new WatchSnapshot("live", st, ch, []);
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException or JsonException or Amazon.Runtime.AmazonClientException)
+        {
+            log.LogWarning("watchdog monitor API unavailable: {Error}", e.Message);
+            return new WatchSnapshot("live", new WatchStatus(false, 0, 0, null, new LagMs(0, 0, 0), "unavailable"), [], []);
+        }
     }
+}
+
+/// <summary>Minimal AWS Signature Version 4 for a GET without body (Lambda Function URL with AWS_IAM auth).</summary>
+public static class SigV4
+{
+    public sealed record Creds(string AccessKey, string SecretKey, string? Token);
+
+    public static void Sign(HttpRequestMessage req, Creds c, string region, string service, DateTime utcNow)
+    {
+        var u = req.RequestUri!;
+        var amzDate = utcNow.ToString("yyyyMMdd'T'HHmmss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+        var day = amzDate[..8];
+        var payloadHash = Hex(System.Security.Cryptography.SHA256.HashData([]));
+        var headers = new SortedDictionary<string, string>(StringComparer.Ordinal) { ["host"] = u.IsDefaultPort ? u.Host : $"{u.Host}:{u.Port}", ["x-amz-date"] = amzDate };
+        if (c.Token is not null) headers["x-amz-security-token"] = c.Token;
+        var query = string.Join('&', (u.Query.TrimStart('?')).Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => { var kv = p.Split('=', 2); return (K: Enc(Uri.UnescapeDataString(kv[0])), V: Enc(kv.Length > 1 ? Uri.UnescapeDataString(kv[1]) : "")); })
+            .OrderBy(p => p.K, StringComparer.Ordinal).ThenBy(p => p.V, StringComparer.Ordinal).Select(p => $"{p.K}={p.V}"));
+        var path = string.Join('/', u.AbsolutePath.Split('/').Select(seg => Enc(Uri.UnescapeDataString(seg))));
+        var signed = string.Join(';', headers.Keys);
+        var canonical = $"GET\n{(path.Length == 0 ? "/" : path)}\n{query}\n{string.Concat(headers.Select(h => $"{h.Key}:{h.Value.Trim()}\n"))}\n{signed}\n{payloadHash}";
+        var scope = $"{day}/{region}/{service}/aws4_request";
+        var toSign = $"AWS4-HMAC-SHA256\n{amzDate}\n{scope}\n{Hex(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(canonical)))}";
+        var k = Hmac(Hmac(Hmac(Hmac(System.Text.Encoding.UTF8.GetBytes("AWS4" + c.SecretKey), day), region), service), "aws4_request");
+        var sig = Hex(Hmac(k, toSign));
+        req.Headers.TryAddWithoutValidation("x-amz-date", amzDate);
+        if (c.Token is not null) req.Headers.TryAddWithoutValidation("x-amz-security-token", c.Token);
+        req.Headers.TryAddWithoutValidation("Authorization", $"AWS4-HMAC-SHA256 Credential={c.AccessKey}/{scope}, SignedHeaders={signed}, Signature={sig}");
+    }
+
+    static string Enc(string s) => Uri.EscapeDataString(s);   // RFC 3986 unreserved kept, everything else %XX (upper case)
+    static byte[] Hmac(byte[] key, string data) => System.Security.Cryptography.HMACSHA256.HashData(key, System.Text.Encoding.UTF8.GetBytes(data));
+    static string Hex(byte[] b) => Convert.ToHexStringLower(b);
 }

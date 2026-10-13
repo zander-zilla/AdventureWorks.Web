@@ -321,3 +321,38 @@ public sealed class ShopChatTests
         Assert.Equal(0, b.TurnsLeft("s", "shop", o.ShopTurns)); Assert.Equal(2, b.TurnsLeft("s", "triage", 2));
     }
 }
+
+/// <summary>Polish: SigV4 signing of the monitor API calls (AWS test suite vector) and the unavailable cause.</summary>
+public sealed class MonitorSigV4Tests
+{
+    [Fact]
+    public void Get_vanilla_matches_the_aws_test_suite()
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, "https://example.amazonaws.com/");
+        SigV4.Sign(req, new SigV4.Creds("AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY", null), "us-east-1", "service", new DateTime(2015, 8, 30, 12, 36, 0, DateTimeKind.Utc));
+        Assert.Equal("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, SignedHeaders=host;x-amz-date, Signature=5fa00fa31553b73ebf1942676e86291e8372ff2a2260956d9b8aae1d763fbf31",
+            req.Headers.GetValues("Authorization").Single());
+    }
+
+    sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> f) : HttpMessageHandler
+    {
+        public List<HttpRequestMessage> Seen { get; } = [];
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct) { Seen.Add(r); return Task.FromResult(f(r)); }
+    }
+
+    [Fact]
+    public async Task Signed_calls_to_the_function_url_and_unavailable_fallback()
+    {
+        var h = new Handler(r => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(r.RequestUri!.AbsolutePath == "/api/status"
+            ? """{"paused":false,"queued":2400,"applied_events":9,"dlq":0,"lag_ms":{"last":95000,"p50":900,"max":99000},"source":"aws"}""" : "[]") });
+        var o = new AiOptions { Enabled = true, MonitorApiUrl = "https://abc.lambda-url.us-east-1.on.aws/", MonitorSigV4 = true, MonitorRegion = "us-east-1" };
+        var src = new MonitorWatchSource(new HttpClient(h), o, NullLogger<MonitorWatchSource>.Instance, _ => Task.FromResult(new SigV4.Creds("AK", "SK", "TOKEN")));
+        var s = await src.GetAsync(null, default);
+        Assert.Equal("backlog", WatchRules.Classify(s).Key);
+        Assert.All(h.Seen, r => { Assert.Contains("/lambda/aws4_request", r.Headers.GetValues("Authorization").Single()); Assert.Equal("TOKEN", r.Headers.GetValues("x-amz-security-token").Single()); });
+        Assert.Contains(h.Seen, r => r.RequestUri!.Query == "?limit=20");
+
+        var down = new MonitorWatchSource(new HttpClient(new Handler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Forbidden))), o, NullLogger<MonitorWatchSource>.Instance, _ => Task.FromResult(new SigV4.Creds("AK", "SK", null)));
+        Assert.Equal("unavailable", WatchRules.Classify(await down.GetAsync(null, default)).Key);
+    }
+}

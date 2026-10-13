@@ -45,7 +45,9 @@ public sealed class AiOptions
     };
     public int ShopTurns { get; set; } = 10;                     // decision 7 (C2-6): turns per session per day
     public string? MonitorApiUrl { get; set; }                   // watchdog facts on AWS (monitor API); unset = recorded replay
-    public string? DlqUrl { get; set; }                          // watchdog read-only peek (<= 10 messages)
+    public string? DlqUrl { get; set; }                          // unused (decision R4: DLQ depth comes from the monitor API)
+    public bool MonitorSigV4 { get; set; }                       // sign monitor API calls (Lambda Function URL, AWS_IAM) with the task role
+    public string? MonitorRegion { get; set; }                   // default: AWS_REGION
     public AiFeature Feature(string name)
     {
         var f = Features.GetValueOrDefault(name) ?? new AiFeatureOptions();

@@ -36,12 +36,42 @@ export function triageMock(kind: string, o: MockOrder) {
   return assist('triage', 'triage-backorder-note', short >= 0 ? `Backordered ${o.number} [order.number]: ${f[`line${n}.product`]} short by ${f[`line${n}.short`]} [line${n}.short]. Ship once stock arrives.` : `Backordered ${o.number} [order.number] at the customer's request; all ${f['order.lines']} lines are in stock [order.can_ship].`, f)
 }
 
+export const alsoBought: Record<number, { productId: number; name: string; productNumber: string; listPrice: number; orders: number }[]> = {
+  707: [{ productId: 711, name: 'Sport-100 Helmet, Blue', productNumber: 'HL-U509-B', listPrice: 34.99, orders: 412 }, { productId: 870, name: 'Water Bottle - 30 oz.', productNumber: 'WB-H098', listPrice: 4.99, orders: 388 },
+    { productId: 712, name: 'AWC Logo Cap', productNumber: 'CA-1098', listPrice: 8.99, orders: 301 }, { productId: 715, name: 'Long-Sleeve Logo Jersey, L', productNumber: 'LJ-0192-L', listPrice: 49.99, orders: 254 }],
+  749: [{ productId: 707, name: 'Sport-100 Helmet, Red', productNumber: 'HL-U509-R', listPrice: 34.99, orders: 96 }, { productId: 921, name: 'Mountain Tire Tube', productNumber: 'TT-M928', listPrice: 4.99, orders: 71 }],
+}
+const ALSO = /\b(also|goes? with|go with|pairs?|accessor(y|ies)|match(es|ing)?|together)\b/i
+const BLOCK = /discount|% off|coupon|deliver(ed|y)? by|order (of|for) |ignore (all |the )?previous|system prompt|politic|medical|password/i
+export function chatMock(message: string, productId: number | null, turnsLeft: number) {
+  const f: Record<string, unknown> = { shop: 'Adventure Works Cycles online shop' }
+  if (turnsLeft < 0) return { answer: { ...assist('shop', 'shop-reply', '', f), text: null, cites: [], blocked: 'This chat is limited to 10 questions a day. Browse the catalog or search instead.' }, cards: [], tools: [], turnsLeft: 0 }
+  if (BLOCK.test(message)) return { answer: { ...assist('shop', 'shop-reply', '', f), text: null, cites: [], blocked: 'Sorry, I can only help with Adventure Works products. (no price, discount or delivery promises; the cart shows current prices and delivery options)' }, cards: [], tools: [], turnsLeft }
+  const wantsAlso = ALSO.test(message); const onlyAlso = wantsAlso && productId != null && message.split(/\s+/).length <= 8
+  const tools: string[] = []; const cards: { productId: number; name: string; listPrice: number; category: string | null; source: string }[] = []
+  let text = ''
+  if (!onlyAlso) {
+    tools.push('search'); const hs = /helmet/i.test(message) ? [{ productId: 707, name: 'Sport-100 Helmet, Red', category: 'Accessories', listPrice: 34.99 }, { productId: 711, name: 'Sport-100 Helmet, Blue', category: 'Accessories', listPrice: 34.99 }] : hits
+    Object.assign(f, { 'search.query': message, 'search.count': hs.length }); hs.forEach((h, i) => { f[`p${i + 1}.name`] = h.name; cards.push({ productId: h.productId, name: h.name, listPrice: h.listPrice, category: h.category, source: 'search' }) })
+    text = `Here are ${hs.length} matches for "${message}" [search.count]: ${hs.slice(0, 3).map(h => h.name).join(', ')} [p1.name].`
+  }
+  const forId = productId ?? cards[0]?.productId
+  if (wantsAlso && forId != null) {
+    tools.push('also-bought'); const list = (alsoBought[forId] ?? []).slice(0, 3); const forName = forId === 707 ? 'Sport-100 Helmet, Red' : forId === 749 ? 'Road-150 Red, 62' : cards[0]?.name
+    f['also.for'] = forName; list.forEach((a, i) => { f[`also${i + 1}.name`] = a.name; cards.push({ productId: a.productId, name: a.name, listPrice: a.listPrice, category: null, source: 'also-bought' }) })
+    if (list.length) text += ` Customers who bought ${forName} also bought ${list.map(a => a.name).join(', ')} [also.for].`
+  }
+  return { answer: assist('shop', 'shop-reply', text.trim() || 'Ask me about bikes, components, clothing or accessories [shop].', f), cards, tools, turnsLeft }
+}
+
 export function aiMock() {
+  let turns = 10
   let left = 20, tokens = 40000
   const status = () => ({ enabled: true, mode: 'mock', chatModel: 'amazon.nova-pro-v1:0', embeddingModel: 'amazon.titan-embed-text-v2:0', rowLimit: 200, timeoutSeconds: 15,
     questionsLeft: left, tokensLeft: tokens, warehouseConnected: true })
   return (p: string, m: string, url: URL, body: () => Record<string, unknown>): { status?: number; json: unknown } | null => {
     if (p === '/ai/status') return { json: status() }
+    if (p === '/ai/chat' && m === 'POST') { turns--; const b = body(); return { json: chatMock(String(b.message ?? ''), (b.productId as number | null) ?? null, turns) } }
     if (p === '/ai/examples') return { json: examples }
     if (p === '/ai/search') return { json: { query: url.searchParams.get('q'), mode: 'mock', hits } }
     if (p === '/ai/ask' && m === 'POST') {

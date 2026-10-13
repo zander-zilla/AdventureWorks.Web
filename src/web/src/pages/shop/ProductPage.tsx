@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { api, ApiError, hasRole, money } from '../../api/client'
 import { useAuth } from '../../api/auth'
 import { useLoad } from '../../api/useLoad'
+import { AlsoBoughtShelf, ShopChat } from '../ai/ShopChat'
 import { Button, DataTable, EmptyState, PageHeader, SelectField, StatusPill, TextField, useToast } from '../../components'
 
 const day = (s?: string | null) => (s ? s.slice(0, 10) : '—')
@@ -59,6 +60,9 @@ export function ProductPage() {
       </div>
 
       {hasRole(me, 'CatalogAdmin') && <PriceEditor id={p.id} price={p.listPrice} version={p.version} history={priceHistory} onSaved={() => detail.reload()} />}
+
+      <AlsoBoughtShelf id={p.id} />
+      <ShopChat productId={p.id} />
 
       <section id="reviews" className="mt-6" aria-labelledby="reviews-h">
         <h2 id="reviews-h" className="mb-3 font-display text-xl font-semibold">Reviews</h2>

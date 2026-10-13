@@ -517,6 +517,72 @@ DynamoDB: none (facts from CloudWatch/SQS). IAM: read-only SQS peek and CloudWat
 behind `enable_ai`. Effort S-M (2 d).
 
 
+### C2-6 as built (PR #25)
+- **Shared parts** (`Ai/Assist.cs`, `Ai/AiServices.cs`): `AiAssist.RunAsync(feature, kind, facts)` – the server builds the facts,
+  the model writes a short text that cites fact keys in `[brackets]`, and an output check rejects answers over 1,200 characters,
+  with an e-mail address or phone number that is not in the facts, with a number (2+ digits or decimals) that matches no fact
+  value, or with no valid citation. Per-feature settings `Ai:Features:<feature>` (model, guardrail id / version, grounding)
+  fall back to the C2-5 model and guardrail, so ask-the-data is unchanged. One shared session budget (C2-5) plus a per-feature
+  turn counter (shop: 10 a day). Prompts in `Ai/prompts/*.md` (embedded, tested for the rules). Mocked model v2
+  (`MockTemplates`) writes deterministic answers from the facts; it routes the shop feature through a regex stand-in of the
+  shop guardrail. Every call logs `ai.assist` (feature, kind, user, cites, block, tokens).
+- **Triage copilot** (`POST /back-office/orders/{id}/assist/{explain|approve-note|backorder-note}`, Fulfilment): facts from
+  SAL-05 queue + counts, INV-01 stock per line, customer history, ship method. The order drawer has **Explain**, **Draft
+  approve note** and **Draft backorder note**; a draft fills the new order-note box (sent with approve / backorder / reject /
+  cancel, stored on the order event).
+- **Smart reorder** (Buyer): `GET /procurement/smart-suggestions` (C2-3 rule + forecast + smart quantity),
+  `GET /procurement/products/{id}/forecast`, `POST /procurement/smart-suggestions/{id}/explain`,
+  `POST /procurement/orders/{id}/email-draft`. Forecast (`Ai/Reorder.cs`, INV-07): monthly units, gaps filled with 0;
+  f = 0.5 · y(m−12) · g + 0.5 · mean(last 3), g = last 3 months / same 3 months a year earlier, clamped 0.5–2; under 12 months
+  of history the 3-month mean. Smart quantity = safety stock + forecast demand over the vendor lead time − on hand − on order,
+  within the vendor's min / max. The page adds a **Forecast** column (click for the chart of 24 months + 3 forecast months and
+  **Explain**) and **Use forecast quantities**; the C2-3 rule stays the default. The PO drawer drafts the vendor e-mail
+  (vendor contact from PUR-01, need-by from the line due dates) for **Copy** or **Open in mail app** – nothing is sent.
+- **Data for reorder and also-bought**: `scripts/loader/derive_ai.py` (after the Phase 3 load; `derive-ai` command of the tools
+  task on AWS; a CI step in after.yml) writes `DEMAND#<pid> / M#yyyy-MM` (aw-inventory, `ProductDemandMonth`) and
+  `ALSO#<pid> / RANK#nn` (aw-catalog, `AlsoBought`, top 6) with `src = derived`. Warehouse views `dw.v_product_demand_monthly`
+  and `dw.v_product_affinity`; warehouse-e2e checks the demand view against the facts and backtests the forecast
+  (`test_c2_6_demand_view_and_forecast_backtest`, WAPE in the job summary).
+- **Replication watchdog** (staff, `GET /back-office/replication/watchdog`, `POST …/watchdog/explain`): facts from the monitor
+  API (`Ai:MonitorApiUrl`) or, when unset, recorded scenarios embedded in the image (`Ai/watchdog/{healthy,lag-spike,dlq,paused}.json`).
+  `WatchRules.Classify` names the cause (paused, dead-letter orphans, dead-letter, backlog, slow apply, healthy) with a runbook
+  anchor in `docs/runbooks/replication-watchdog.md`; the model only explains. DLQ errors are redacted (e-mail, phone) before
+  the UI or the model sees them. The replication page shows the cause, lag / queue / DLQ tiles, scenario buttons (replay only)
+  and **Explain**.
+- **Shopper chat** (`POST /api/v2/ai/chat`, anonymous or signed in): the server routes the tools in code – semantic search
+  (C2-5), product details (CAT-01) and customers also bought (CAT-12) – and passes the results as facts; product cards come
+  from the tool results, never from the model text. Input is anonymized (e-mail, phone) before the model; shop guardrail with
+  grounding on the product facts; 10 turns per session per day. Panel on the shop home and product pages.
+  `GET /api/v2/products/{id}/also-bought` is public and the product page shows **Customers also bought** with the AI layer off.
+- **Shop guardrail**: see below (Terraform `aws_bedrock_guardrail.shop`, plan test `ai_shop_guardrail`).
+- **Tests**: `C26Tests.cs` (triage golden cases, output-check rejections, feature fallback, budgets, shop guardrail, forecast
+  golden maths, smart quantity rules, reorder / PO e-mail drafts, watchdog scenarios and redaction, chat routing and grounded
+  replies); warehouse-e2e C2-6 tests; Playwright `e2e/c2-6.spec.ts` (mocked API and the real image with the mocked model).
+  Screenshots `c2-6-*.png`.
+
+#### Changes from initial design (C2-6)
+| Plan | As built | Why |
+|---|---|---|
+| Transition note field (SAL-06) already exists | Added `note` to the order transition request (max 500), stored on the order event | The order transition had no note; needed for the drafted notes. |
+| Forecast items `FORECAST#month` on the product partition, written nightly | Monthly **history** in `DEMAND#<pid>` partitions (derived loader); forecast computed on request in .NET | Dedicated partitions leave the product partition and its parsers untouched; the forecast is cheap (≤ 60 months) and always uses the current formula. |
+| Demand from `dw.v_sales` (Redshift) | From SQL Server order lines at load time (`derive_ai.py`); same series as `dw.v_product_demand_monthly` | The app reads DynamoDB only; no Redshift call on the reorder page. App orders after the load are not in the history (re-run `derive-ai` to refresh). |
+| Suggested qty = max(rule, forecast) | Rule and forecast shown side by side; **Use forecast quantities** applies the forecast | The buyer chooses; the rule stays the default so nothing changes without a click. |
+| Backtest gate: MAPE must beat the reorder rule | WAPE of the forecast vs the 12-month mean baseline, one step ahead over the last 12 months, published in the job summary; the gate is a sanity bound | The reorder rule is a stock level, not a demand forecast, so it cannot be backtested as one; MAPE is undefined for zero months. |
+| Also-bought: `ALSO#rank` on the product, lift ≥ 1.2, top 10 | `ALSO#<pid> / RANK#nn`, top 6 by orders together | Same reason as DEMAND#; plain co-purchase counts are easier to explain on screen. |
+| Chat: model picks tools through Converse tool use | Server routes tools in code (keyword intent: search, details, also bought) | No tool-use injection surface; deterministic and testable; the model only writes the reply. |
+| Watchdog: SQS peek (≤ 10, redacted) + CloudWatch `GetMetricData` on AWS | Monitor API status + recorded scenarios; DLQ **depth** only on AWS; message samples only in the recorded scenarios | No new SDK, IAM or network path from the app to SQS / CloudWatch; the monitor API already has the numbers. On AWS `Ai:MonitorApiUrl` is not set yet (see decision W). |
+| Explain by "the model chooses from known causes" | Rules choose the cause; the model only explains it | The cause must not depend on the model. |
+| — | Shop guardrail (John, 2026-10-13) | See the section below. |
+
+#### New C2-6 decisions for John (working choices in PR #25, with recommendations)
+| # | Decision | Recommendation (working choice) |
+|---|---|---|
+| R1 | Where reorder history and also-bought come from | **`derive_ai.py` after the Phase 3 load, into dedicated `DEMAND#` / `ALSO#` partitions** (product partitions untouched). On AWS run `scripts/aws/run-tool.sh demo derive-ai` after `bulk-load`. |
+| R2 | Forecast method | **0.5 · last year's month · growth (0.5–2) + 0.5 · 3-month mean; 3-month mean under 12 months**; backtested against the 12-month mean in warehouse-e2e. |
+| R3 | Reorder screens | **Separate smart-suggestions and PO e-mail endpoints; C2-3 suggestions unchanged; draft e-mail copy / mailto only.** |
+| R4 | Watchdog | **Rules pick the cause, the model explains; monitor API or recorded scenarios; DLQ depth only on AWS (no SQS read from the app).** Follow-up W: give the app the monitor API URL on AWS (it sits behind CloudFront with an IAM-signed Lambda URL, so this needs a small signed client or a CloudFront path) – recommended as a follow-up PR. |
+| R5 | Shopper chat tools | **Server routes tools in code; 10 turns; cards from tool results; also-bought on the product page even with AI off.** |
+
 #### Shop guardrail (confirmed by John (Oct 13, 2026))
 The public shopper chat gets its own `aws_bedrock_guardrail.shop` (created only with `enable_ai`); ask-the-data and the back-office
 features keep the existing guardrail. Settings: 1. content filters HATE, INSULTS, SEXUAL, VIOLENCE, MISCONDUCT at HIGH on input and

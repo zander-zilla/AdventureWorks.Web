@@ -357,7 +357,10 @@ def test_c2_6_demand_view_and_forecast_backtest(conn):
             past = h[:t]; y = h[t]
             err_f += abs(_forecast(past) - y); err_b += abs(sum(past[-12:]) / 12 - y); actual += y
     wape_f, wape_b = err_f / actual, err_b / actual
-    print("C2-6 backtest: products=%d WAPE forecast=%.3f baseline=%.3f" % (products, wape_f, wape_b))
+    line = "C2-6 backtest: products=%d WAPE forecast=%.3f baseline=%.3f" % (products, wape_f, wape_b)
+    print(line)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        open(os.environ["GITHUB_STEP_SUMMARY"], "a").write(line + "\n")
     assert products >= 50
     assert wape_f < 1.0 and wape_b < 1.5
 

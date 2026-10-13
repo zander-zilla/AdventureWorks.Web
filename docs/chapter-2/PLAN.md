@@ -281,7 +281,7 @@ design anticipated it"; reorder → PO → receipt chain business people recogni
   accepted.
 - **Create** = one transaction: PO header (`PO-DDB-n`, ids from 100,000 via a `COUNTER/PO` item), lines, vendor-product
   `on_order_qty` += qty, `POSTATUS#1` marker, a `PurchaseOrderEvent` and a change-feed item. Tax 8 % and freight 2.5 % of
-  subtotal (the ratios of the SQL-era data, verified by a warehouse test). Max 15 lines per PO.
+  subtotal (the ratios of the SQL-era data: tax on all 4,012 headers, freight on 4,000; verified by a warehouse test). Max 15 lines per PO.
 - **Receive** = one transaction (`ProcurementRepository.ReceivePlan`): header (status/ship date/revision), POSTATUS
   marker move, each line's received/rejected qty (conditioned on the previous received qty), vendor-product
   `on_order_qty` −= received and last receipt cost/date, `INV#<location>` upsert (INV-01), the product stock summary

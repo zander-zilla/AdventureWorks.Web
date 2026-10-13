@@ -28,6 +28,7 @@ patterns unused by the app). The story for the audience: *"migration was step on
 | C2-3 | Procurement workspace | Low stock → suggested PO → approve → receive (partial/reject) | L (6-8 d) |
 | C2-4 | Production floor | Open work orders, routing timeline, BOM explorer, where-used, scrap | M (5-6 d) |
 | C2-5 | *Optional* Bedrock AI layer | Semantic product search, natural-language Q&A over Redshift | M (5-7 d) |
+| C2-6 | AI everywhere (**planned**, for John's sign-off) | Order triage copilot, smart reorder with forecast + PO email draft, shopper assistant chat, replication watchdog | L (9-12 d) |
 
 Total ≈ 26-34 working days without C2-5, 31-41 with it. Estimates are for one engineer plus agent help, incl. tests and docs.
 
@@ -431,6 +432,123 @@ app logs; the real-image e2e runs with the AI layer on in mock mode.
 `ai_reader` password (run `50_ai_reader.sql`, store it in the secret), confirming the model, and the manual live eval run.
 
 ---
+
+## C2-6 AI everywhere (plan, for John's sign-off)
+
+John's scope (2026-10-13): four AI features on top of the C2-5 layer, in the screens people already use. **Everything sits behind
+`enable_ai`** (off = the screens look as they do today). Everything reuses the C2-5 parts: Bedrock Converse through the same
+model wrapper, the Bedrock guardrail, the per-session budget (one shared counter, so new features can't raise spend), the
+`ai.*` structured logs, and the mocked model in CI. The AI only drafts and explains. Every write stays a button a person
+presses, through the existing endpoints and DynamoDB transactions.
+
+Shared building blocks (built first, used by all four)
+- **`AiAssist` service**: `ExplainAsync(kind, facts)` / `DraftAsync(kind, facts)`. The server collects the facts from DynamoDB
+  and sends them as compact JSON; the model never queries anything itself. The answer is short text plus cited fact keys, so
+  the UI can highlight *why*.
+- **Prompt templates** in `Ai/prompts/*.md`, versioned and unit-tested for the presence of the guard rules.
+- **Mock model v2**: deterministic template answers built from the facts JSON (no replay needed). A golden set of about 10
+  cases per feature (40 in total) runs in CI. Assertions check that the cited facts exist and that numbers in the text match
+  the facts (no invented numbers).
+- **Output checks**: drafts are plain text, at most 1,200 characters, and must not contain any email address or phone number
+  that isn't already in the facts. The guardrail runs on output too (contextual grounding check where the model supports it).
+- **Budget**: costs come from the C2-5 per-session budget. Back-office drafts count as 1 question each; the shopper chat counts
+  every turn and is limited to 10 turns per session.
+
+### 1. Order triage copilot (back office, C2-2 orders)
+Steps
+1. Order drawer → **Explain** button. Facts: status age vs the median for that status (SAL-05 queue counts), stock per line
+   (INV-01 / `stock_qty`), whether the order can ship, offer and discount, customer order history (count and last date from
+   the customer's orders, CUS-*), ship method, territory, and credit-card expiry vs the order date.
+2. The answer is a risk or stuck reason in two or three sentences, each citing facts ("line 2 HL Road Frame: 0 in stock,
+   needs 4; 31 days in *In process* vs a median of 2").
+3. **Draft note** for *approve* or *backorder*. It fills the existing transition note field (SAL-06). The clerk edits it and
+   presses the existing button; nothing is sent to customers.
+4. Optional: a **Needs attention** filter that ranks the queue by a rule-based risk score. The score itself is code, not AI;
+   only the explanation is AI.
+
+DynamoDB: existing SAL-05, SAL-06, INV-01, plus the customer orders pattern. No new pattern. Effort M (3 d).
+
+### 2. Smart reorder (procurement, C2-3)
+Steps
+1. **Demand forecast** per product: monthly units from `dw.v_sales` (SQL-era history plus app orders through zero-ETL). Use
+   seasonal naive plus a trailing 3-month trend (moving-average blend) computed in SQL/.NET, which is explainable and needs
+   no ML service. A nightly job writes `FORECAST#yyyy-MM` items on the product (aw-inventory: `PK=PRODUCT#id`,
+   `SK=FORECAST#month`, `units`, `method`, `mape_backtest`).
+2. **Reorder suggestions** (INV-02) gain *forecast demand over the vendor's average lead time + safety stock*. The suggested
+   quantity is max(current rule, forecast-based), capped at the vendor maximum, as today. Both numbers are shown with a
+   sparkline.
+3. **Draft vendor PO email**: after a PO is created, the copilot writes the email (lines, quantities, need-by date from the
+   lead time, vendor contact name from PUR-01). It is shown for copy, or opened with `mailto:`. **The app sends no email**
+   (no SES in scope).
+4. Backtest in CI on the Postgres stand-in: MAPE of the method over the last 12 SQL-era months must beat the current
+   reorder-point rule. The number is published in the docs.
+
+DynamoDB: **new pattern INV-07** (forecast by product and month, same partition as the product, no new GSI). It reuses INV-02
+and PUR-01..07. Redshift: new view `dw.v_product_demand_monthly`. Effort M-L (3-4 d).
+
+### 3. Shopper assistant chat (shop)
+Steps
+1. A chat panel in the shop, for anonymous users or customers. Each turn uses tools that the server runs:
+   `search_products(q)` (the C2-5 semantic search), `product_details(id)` (CAT-*), and `also_bought(id)`. The model picks
+   tools through Converse tool use, and only these three read-only tools exist.
+2. **Customers also bought**: co-purchase counts from order history (both channels). They are computed in Redshift
+   (`dw.v_product_affinity`: pairs in the same order, lift ≥ 1.2, top 10 per product) and loaded nightly into
+   `ALSO#rank` items on the product (aw-catalog). The same list appears on the product page without AI when the flag is off
+   (decision 3).
+3. Answers link products (cards with price and stock) and never invent prices. Prices are rendered from tool results, not
+   from model text. No orders, addresses or account data are reachable from the chat.
+4. Guardrail plus a shop topic filter (off-topic, competitor and personal-data questions are declined). Budget: 10 turns per
+   session; anonymous users are keyed by the `aw_ai` cookie (C2-5).
+
+DynamoDB: **new pattern CAT-12** (also-bought by product: `PK=PRODUCT#id`, `SK=ALSO#rank`). It reuses CAT-03/04/11. Effort L (3-4 d).
+
+### 4. Replication watchdog (back office, replication monitor)
+Steps
+1. On the replication monitor: **Explain** next to the lag tile and the dead-letter (DLQ) count. Facts: CDC lag timeline (the
+   monitor API / CloudWatch metrics already shown), the last DMS task state, DLQ sample messages (key, error, attempt count;
+   payload fields that could hold personal data are redacted before the model sees them), and the Lambda error rate.
+2. A plain-English answer with likely cause and next step from a **runbook map** (docs/aws-setup.md *Troubleshooting*).
+   The model chooses from known causes and cites the matching runbook entry; free-form advice is labelled as such.
+3. Locally and in CI the facts come from the recorded replay (Phase 8 replay mode). On AWS they come from the monitor API,
+   read-only: the app gets `sqs:ReceiveMessage` with visibility timeout 0 plus a peek of at most 10 messages. It never
+   deletes or redrives; a redrive stays a manual runbook step.
+
+DynamoDB: none (facts from CloudWatch/SQS). IAM: read-only SQS peek and CloudWatch `GetMetricData` on the CDC resources,
+behind `enable_ai`. Effort S-M (2 d).
+
+### Backlog (not in C2-6 scope)
+- **Review insights**: pros and cons and negative trends per product from ProductReview (CAT-11), as a summary on the product page and a trend tile.
+- **Scrap explainer**: why scrap rose in a month, from `dw.v_production_scrap_on_time` plus work-order reasons (C2-4).
+
+### Tests, effort, risks
+- CI: mocked model with golden cases per feature; backtest gate for the forecast; Playwright for each screen (mock and real
+  image, AI mock mode as in C2-5); guard tests for chat tool use (no tool outside the allow-list, prices only from tools).
+- Effort ≈ 9-12 days: shared parts 1-1.5 d, triage 3 d, smart reorder 3-4 d, assistant 3-4 d, watchdog 2 d, docs and showcase 1 d.
+- Risks:
+  - Hallucinated facts: mitigated by server-side facts only, cited keys, number checks and the AI-only-drafts rule.
+  - Cost: shared budget, chat turn cap, Nova Lite for chat (decision 2).
+  - Forecast quality: the backtest gate, and falling back to today's rule when MAPE is worse.
+  - Personal data in DLQ payloads: redaction plus the guardrail.
+  - Prompt injection through review or product text: tool results are wrapped as data, and there is an output check.
+
+### Demo talking points
+- "Why is this order stuck?" gets a two-sentence answer that cites the stock and the queue age; one click puts the note in.
+- The reorder screen shows the forecast curve next to the old rule, and the PO email is drafted in the vendor's terms.
+- The shop assistant answers "a light bike for climbing under $2,000, and what goes with it?" using semantic search plus
+  also-bought, with real prices.
+- Replication lag spikes, and the watchdog explains it in plain English with the runbook step.
+
+### Decisions for John (C2-6, with recommendations)
+| # | Decision | Recommendation |
+|---|---|---|
+| 1 | Build order | **Shared parts → triage → smart reorder → watchdog → shopper chat**: back-office value first; chat has the most guardrail work. |
+| 2 | Model per feature | **Nova Pro for drafts and explanations, Nova Lite for shopper chat** (cheaper, lower latency); both configurable. |
+| 3 | "Customers also bought" without AI | **Yes**: show the list on the product page even with `enable_ai` off. It is plain data (CAT-12), not AI. |
+| 4 | Forecast method | **Seasonal naive + trend blend in SQL/.NET with a backtest gate**, not Amazon Forecast or SageMaker (Forecast is closed to new customers; no extra service). |
+| 5 | Vendor PO email delivery | **Draft only (copy / `mailto:`)**; no SES sending from the demo. |
+| 6 | Watchdog access to the dead-letter queue | **Read-only peek (≤ 10 messages, redacted), no redrive from the app.** |
+| 7 | Shopper chat for anonymous visitors | **Yes, 10 turns per session**, keyed by the `aw_ai` cookie, on the shared daily budget. |
+| 8 | Backlog | **Review insights next (S-M), then scrap explainer (S)**; not in C2-6. |
 
 ## Cross-cutting
 - **API**: `/api/v2` minimal APIs, OpenAPI, generated TS client; problem+json errors; authorization policies per role.

@@ -75,7 +75,7 @@ function OrderDrawer({ id, onClose, onChanged }: { id: number; onClose: () => vo
   }
   const b: BackOfficeOrder | undefined = d.data
   return (
-    <Drawer open title={b ? `Order ${b.order.number}` : 'Order'} onClose={onClose}
+    <Drawer open wide title={b ? `Order ${b.order.number}` : 'Order'} onClose={onClose}
       footer={b && <>{(b.actions as Op[]).map(op => (
         <Button key={op} size="sm" variant={op === 'cancel' || op === 'reject' ? 'danger' : op === 'ship' || op === 'approve' ? 'primary' : 'secondary'}
           disabled={busy || (op === 'ship' && shipping && !tracking.trim())} onClick={() => run(op)} data-testid={`action-${op}`}>{op === 'ship' && shipping ? 'Confirm ship' : label[op]}</Button>))}</>}>
@@ -91,13 +91,13 @@ function OrderDrawer({ id, onClose, onChanged }: { id: number; onClose: () => vo
             <div className="mb-1 text-xs text-mute uppercase">Stock (INV-01)</div>
             <ul className="flex flex-col gap-1" data-testid="stock">
               {b.stock.map(s => {
-                const need = b.order.lines.filter(l => l.productId === s.productId).reduce((a, l) => a + l.quantity, 0)
+                const need = (b.order.lines ?? []).filter(l => l.productId === s.productId).reduce((a, l) => a + l.quantity, 0)
                 const best = Math.max(0, ...s.locations.map(l => l.quantity))
                 return <li key={s.productId} className={best >= need ? '' : 'text-warn'}>Product {s.productId}: need {need}, on hand {s.onHand} (best location {best}){s.onHand - need < s.reorderPoint ? ' · will drop below reorder point' : ''}</li>
               })}
             </ul>
           </div>
-          <OrderBody o={b.order} />
+          <OrderBody o={b.order} compact />
         </div>)}
     </Drawer>
   )

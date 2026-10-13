@@ -12,7 +12,7 @@
     "e2e": "playwright test",
     "build:showcase": "tsc -b && vite build -c vite.showcase.config.ts",
     "e2e:showcase": "playwright test -c playwright.showcase.config.ts",
-    "gen:api": "openapi-typescript openapi/v2.json -o src/api/schema.d.ts"
+    "gen:api": "openapi-typescript openapi/v2.json -o src/api/schema.d.ts --properties-required-by-default"
   },
   "dependencies": {
     "openapi-fetch": "^0.17.0",

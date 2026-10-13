@@ -1,5 +1,6 @@
 """Integration tests on the Postgres stand-in after scripts/warehouse-up.sh (set AW_WH_IT=1)."""
 import json, os, sys
+from decimal import Decimal
 import pytest
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.insert(0, os.path.join(ROOT, "warehouse/local"))
@@ -44,6 +45,67 @@ def test_replicated_changes_flow_into_facts(conn):
     assert n >= 1 and amt == cur.fetchone()[0]
     cur.execute("SELECT COUNT(*) FROM dw.fact_internet_sales WHERE sales_order_number = 'SO43698'")
     assert cur.fetchone()[0] == 0
+
+def _j(v):
+    """Python -> DynamoDB JSON attribute map (the zero-ETL landing shape)."""
+    out = {}
+    for k, x in v.items():
+        out[k] = {"BOOL": x} if isinstance(x, bool) else {"N": str(x)} if isinstance(x, (int, float)) else {"S": x}
+    return json.dumps(out)
+
+def test_c2_2_app_writes_reach_the_star(conn):
+    """C2-2 reconciliation: the items the app writes (shipped order with offer + tracking, TransactionHistory type S,
+    ListPriceHistory close + new, ProductReview; all src=ddb, src_lsn=~app) flow through staging into the star:
+    tax/freight allocated by line share, promotion key, tracking, a 2026 DimDate, one inventory row per moved day
+    (no 12-year grid), a new DimProduct SCD2 version."""
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM dw.fact_product_inventory"); inv_rows0 = cur.fetchone()[0]
+    app = {"src": "ddb", "src_lsn": "~app"}
+    # shipped native order: copy of SO43697 re-keyed, as SalesRepository.Plan + FulfilmentRepository.ShipPlan write it
+    cur.execute("""INSERT INTO landing."aw-sales" ("PK", "SK", value)
+                   SELECT 'ORDER#1000000002', "SK", value || %s::jsonb || jsonb_build_object('tax_amt', jsonb_build_object('N', ROUND((value->'sub_total'->>'N')::numeric * 0.088, 4)::text))
+                   FROM landing."aw-sales" WHERE "PK" = 'ORDER#0000043697' AND "SK" = 'ORDER'""",
+                (_j(dict(app, sales_order_id=1000000002, sales_order_number="SO-DDB-1000000002", status=5, order_date="2026-10-12T15:00:00",
+                         due_date="2026-10-24T15:00:00", ship_date="2026-10-12T18:00:00", ship_method_id=5, carrier_tracking_number="1ZC22WH")),))
+    cur.execute("""INSERT INTO landing."aw-sales" ("PK", "SK", value)
+                   SELECT 'ORDER#1000000002', "SK", value || %s::jsonb FROM landing."aw-sales" WHERE "PK" = 'ORDER#0000043697' AND "SK" LIKE 'LINE#%%'""",
+                (_j(dict(app, sales_order_id=1000000002, special_offer_id=2, unit_price_discount=0.02, carrier_tracking_number="1ZC22WH")),))
+    cur.execute("""SELECT (value->'product_id'->>'N')::int, (value->'order_qty'->>'N')::int FROM landing."aw-sales" WHERE "PK" = 'ORDER#1000000002' AND "SK" LIKE 'LINE#%%' LIMIT 1""")
+    pid, qty = cur.fetchone()
+    cur.execute("""INSERT INTO landing."aw-inventory" ("PK", "SK", value) VALUES (%s, %s, %s::jsonb)""",
+                ("PRODUCT#%06d" % pid, "TXN#2026-10-12T18:00:00#10000001", _j(dict(app, type="InventoryTransaction", transaction_id=10000001, product_id=pid,
+                 reference_order_id=1000000002, reference_order_line_id=1, transaction_date="2026-10-12T18:00:00", transaction_type="S", quantity=qty,
+                 actual_cost=1.0, modified_date="2026-10-12T18:00:00", archived=False))))
+    # price edit (CatalogRepository.PriceHistoryActions): close the open version, add today's
+    cur.execute("""SELECT "PK", "SK", (value->'product_id'->>'N')::int FROM landing."aw-catalog"
+                   WHERE value->'type'->>'S' = 'ListPriceHistory' AND NOT value ? 'end_date' ORDER BY "PK" LIMIT 1""")
+    ppk, psk, ppid = cur.fetchone()
+    cur.execute("SELECT COUNT(*) FROM dw.dim_product WHERE product_id = %s", (ppid,)); versions0 = cur.fetchone()[0]
+    cur.execute("""UPDATE landing."aw-catalog" SET value = value || %s::jsonb WHERE "PK" = %s AND "SK" = %s""", (_j(dict(app, end_date="2026-10-11T00:00:00")), ppk, psk))
+    cur.execute("""INSERT INTO landing."aw-catalog" ("PK", "SK", value) VALUES (%s, 'PRICE#2026-10-12T00:00:00', %s::jsonb)""",
+                (ppk, _j(dict(app, type="ListPriceHistory", product_id=ppid, start_date="2026-10-12T00:00:00", list_price=99.99, modified_date="2026-10-12T00:00:00"))))
+    cur.execute("""INSERT INTO landing."aw-catalog" ("PK", "SK", value) VALUES ('PRODUCT#000709', 'REVIEW#2026-10-12T18:00:00#10001', %s::jsonb)""",
+                (_j(dict(app, type="ProductReview", product_review_id=10001, product_id=709, reviewer_name="Walter Brian", review_date="2026-10-12T18:00:00",
+                         email_address="walter0@adventure-works.com", rating=4, comments="Comfortable socks.", modified_date="2026-10-12T18:00:00")),))
+    for v in ("order", "order_line", "inventory_transaction", "list_price_history", "product_review"):
+        cur.execute("REFRESH MATERIALIZED VIEW stg.%s" % v)
+    cur.execute("CALL dw.sp_build_star()")
+
+    cur.execute("""SELECT COUNT(*), SUM(tax_amt), MIN(carrier_tracking_number), MIN(promotion_key), MIN(order_date_key) FROM dw.fact_internet_sales
+                   WHERE sales_order_number = 'SO-DDB-1000000002'""")
+    n, tax, track, promo, odk = cur.fetchone()
+    cur.execute("""SELECT ROUND((value->'tax_amt'->>'N')::numeric, 4) FROM landing."aw-sales" WHERE "PK" = 'ORDER#1000000002' AND "SK" = 'ORDER'""")
+    header_tax = cur.fetchone()[0]
+    assert n >= 1 and abs(tax - header_tax) <= Decimal("0.0001") * n   # same allocation as Pricing.Allocate in the app
+    assert track == "1ZC22WH" and promo == 2 and odk == 20261012
+    cur.execute("SELECT MAX(full_date) FROM dw.dim_date"); assert str(cur.fetchone()[0]) == "2026-12-31"
+    cur.execute("SELECT units_out FROM dw.fact_product_inventory f JOIN dw.dim_product p ON p.product_key = f.product_key WHERE p.product_id = %s AND f.date_key = 20261012", (pid,))
+    assert cur.fetchone()[0] == qty
+    cur.execute("SELECT COUNT(*) FROM dw.fact_product_inventory"); assert cur.fetchone()[0] - inv_rows0 <= 5
+    cur.execute("SELECT COUNT(*), MAX(list_price) FILTER (WHERE end_date IS NULL) FROM dw.dim_product WHERE product_id = %s", (ppid,))
+    versions, current = cur.fetchone()
+    assert versions == versions0 + 1 and current == Decimal("99.99")
+    cur.execute("SELECT COUNT(*) FROM stg.product_review WHERE product_review_id = 10001 AND src = 'ddb'"); assert cur.fetchone()[0] == 1
 
 def test_reconciliation_gate_passed():
     r = json.load(open("/tmp/warehouse-reconcile.json"))

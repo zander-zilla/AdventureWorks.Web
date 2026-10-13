@@ -36,11 +36,11 @@ export function MyOrder() {
   )
 }
 
-export function OrderBody({ o }: { o: Order }) {
+export function OrderBody({ o, compact }: { o: Order; compact?: boolean }) {
   return (
-    <div className="grid grid-cols-3 gap-5">
-      <div className="col-span-2 flex flex-col gap-3">
-        <DataTable caption="Order lines" rows={o.lines} rowKey={l => String(l.lineNo)} columns={[
+    <div className={compact ? 'flex flex-col gap-4' : 'grid grid-cols-3 gap-5'}>
+      <div className={compact ? 'flex flex-col gap-3' : 'col-span-2 flex flex-col gap-3'}>
+        <DataTable caption="Order lines" rows={o.lines ?? []} rowKey={l => String(l.lineNo)} columns={[
           { key: 'p', header: 'Product', value: l => l.name },
           { key: 'q', header: 'Qty', value: l => l.quantity, align: 'right' },
           { key: 'u', header: 'Unit', value: l => l.unitPrice, render: l => money.format(l.unitPrice), align: 'right' },
@@ -57,9 +57,9 @@ export function OrderBody({ o }: { o: Order }) {
       <aside className="rounded-aw border border-line bg-panel p-4" aria-label="Status history">
         <div className="mb-2 text-xs text-mute">Ship to: {o.shipTo ?? '—'}</div>
         {o.carrierTrackingNumber && <div className="mb-3 text-sm">Tracking: <b data-testid="tracking">{o.carrierTrackingNumber}</b></div>}
-        <Timeline items={o.events.map(e => ({ title: `${e.action} → ${orderStatus[e.toStatus]?.[0] ?? e.toStatus}`, when: e.at.replace('T', ' ').slice(0, 16), detail: [e.actor, e.note].filter(Boolean).join(' · '),
+        <Timeline items={(o.events ?? []).map(e => ({ title: `${e.action} → ${orderStatus[e.toStatus]?.[0] ?? e.toStatus}`, when: e.at.replace('T', ' ').slice(0, 16), detail: [e.actor, e.note].filter(Boolean).join(' · '),
           tone: e.toStatus === 5 ? 'ok' : e.toStatus === 3 ? 'warn' : e.toStatus >= 4 ? 'danger' : 'info' }))} />
-        {o.events.length === 0 && <p className="text-sm text-mute">No history recorded (migrated order).</p>}
+        {(o.events ?? []).length === 0 && <p className="text-sm text-mute">No history recorded (migrated order).</p>}
       </aside>
     </div>
   )

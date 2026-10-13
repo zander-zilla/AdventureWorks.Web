@@ -98,15 +98,21 @@ DROP TABLE IF EXISTS dw.wrk_inv_moves;
 CREATE TABLE dw.wrk_inv_moves AS
 SELECT product_id, CAST(transaction_date AS date) AS d,
        SUM(CASE WHEN transaction_type IN ('P', 'W') THEN quantity ELSE 0 END) AS units_in,
-       SUM(CASE WHEN transaction_type = 'S' THEN quantity ELSE 0 END) AS units_out
+       SUM(CASE WHEN transaction_type = 'S' THEN quantity ELSE 0 END) AS units_out,
+       MAX(CASE WHEN src = 'ddb' THEN 1 ELSE 0 END) AS app
 FROM stg.inventory_transaction GROUP BY product_id, CAST(transaction_date AS date);
 
 DELETE FROM dw.fact_product_inventory;
 INSERT INTO dw.fact_product_inventory
 WITH span AS (SELECT product_id, MIN(d) AS first_d FROM dw.wrk_inv_moves GROUP BY product_id),
-last_d AS (SELECT MAX(d) AS d FROM dw.wrk_inv_moves),
+-- C2-2: the daily grid is continuous up to the last migrated (SQL-era) movement; app movements (src = ddb, years later)
+-- add only their own product/day rows, so one shipment in 2026 does not add 12 years x 500 products of empty days.
+last_d AS (SELECT MAX(d) AS d FROM dw.wrk_inv_moves WHERE app = 0),
 grid AS (SELECT s.product_id, dd.full_date AS d, dd.date_key
-         FROM span s CROSS JOIN last_d ld JOIN dw.dim_date dd ON dd.full_date >= s.first_d AND dd.full_date <= ld.d),
+         FROM span s CROSS JOIN last_d ld JOIN dw.dim_date dd ON dd.full_date >= s.first_d AND dd.full_date <= ld.d
+         UNION
+         SELECT m.product_id, dd.full_date, dd.date_key
+         FROM dw.wrk_inv_moves m CROSS JOIN last_d ld JOIN dw.dim_date dd ON dd.full_date = m.d WHERE m.d > ld.d),
 onhand AS (SELECT product_id, SUM(quantity) AS qty FROM stg.product_inventory GROUP BY product_id),
 net AS (SELECT product_id, SUM(units_in - units_out) AS total FROM dw.wrk_inv_moves GROUP BY product_id),
 pv AS (SELECT g.product_id, g.d, dp.product_key, dp.standard_cost,

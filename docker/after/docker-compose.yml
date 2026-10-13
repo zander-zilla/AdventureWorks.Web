@@ -14,6 +14,9 @@ services:
       DynamoDb__Endpoints__aw-catalog: http://localhost:8001
       DynamoDb__Endpoints__aw-customer: http://localhost:8002
       DynamoDb__Endpoints__aw-sales: http://localhost:8007
+      # C2-2: fulfilment (stock, TransactionHistory) and pricing (tax, ship methods)
+      DynamoDb__Endpoints__aw-inventory: http://localhost:8004
+      DynamoDb__Endpoints__aw-reference: http://localhost:8006
       # Phase 8: let the local showcase (scripts/showcase-up.sh, :8088) embed the app in its App tab.
       Showcase__FrameAncestors: "http://localhost:* http://127.0.0.1:*"
     read_only: true

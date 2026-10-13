@@ -5,14 +5,18 @@ CREATE OR REPLACE PROCEDURE dw.sp_build_star()
 AS $$
 BEGIN
     -- 02_dims.sql
-    -- DimDate: generated, 2005-01-01 .. 2014-12-31 (3,652 days, same range as AdventureWorksDW2022); FY starts 1 July and is
+    -- DimDate: generated, 2005-01-01 .. 2014-12-31 (3,652 days, same range as AdventureWorksDW2022; C2-2: up to the end of
+    -- the year of the latest order when app orders exist); FY starts 1 July and is
     -- named by the calendar year it starts in (FY2012 = Jul 2012 - Jun 2013), the convention AdventureWorksDW2022 uses from 2011 on.
     DELETE FROM dw.dim_date;
     INSERT INTO dw.dim_date
     WITH d10 AS (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
                  UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9),
     nums AS (SELECT a.n + 10 * b.n + 100 * c.n + 1000 * e.n AS n FROM d10 a CROSS JOIN d10 b CROSS JOIN d10 c CROSS JOIN d10 e),
-    days AS (SELECT CAST(DATE '2005-01-01' + n AS date) AS d FROM nums WHERE n < 3652),
+    -- C2-2: extends past 2014 to the end of the latest order year once the app writes orders (2026); unchanged otherwise.
+    lim AS (SELECT CAST(GREATEST(DATE '2014-12-31', COALESCE(CAST(TO_CHAR(MAX(o.due_date), 'YYYY') || '-12-31' AS date), DATE '2014-12-31'))
+                   - DATE '2005-01-01' AS integer) AS n_last FROM stg.order o),
+    days AS (SELECT CAST(DATE '2005-01-01' + n AS date) AS d FROM nums CROSS JOIN lim WHERE n <= lim.n_last),
     p AS (SELECT d, CAST(EXTRACT(DOW FROM d) AS integer) AS dow, CAST(EXTRACT(DOY FROM d) AS integer) AS doy,
                  CAST(EXTRACT(MONTH FROM d) AS integer) AS m, CAST(EXTRACT(YEAR FROM d) AS integer) AS y, CAST(EXTRACT(DAY FROM d) AS integer) AS dom
           FROM days)
@@ -253,14 +257,20 @@ BEGIN
     CREATE TABLE dw.wrk_inv_moves AS
     SELECT product_id, CAST(transaction_date AS date) AS d,
            SUM(CASE WHEN transaction_type IN ('P', 'W') THEN quantity ELSE 0 END) AS units_in,
-           SUM(CASE WHEN transaction_type = 'S' THEN quantity ELSE 0 END) AS units_out
+           SUM(CASE WHEN transaction_type = 'S' THEN quantity ELSE 0 END) AS units_out,
+           MAX(CASE WHEN src = 'ddb' THEN 1 ELSE 0 END) AS app
     FROM stg.inventory_transaction GROUP BY product_id, CAST(transaction_date AS date);
     DELETE FROM dw.fact_product_inventory;
     INSERT INTO dw.fact_product_inventory
     WITH span AS (SELECT product_id, MIN(d) AS first_d FROM dw.wrk_inv_moves GROUP BY product_id),
-    last_d AS (SELECT MAX(d) AS d FROM dw.wrk_inv_moves),
+    -- C2-2: the daily grid is continuous up to the last migrated (SQL-era) movement; app movements (src = ddb, years later)
+    -- add only their own product/day rows, so one shipment in 2026 does not add 12 years x 500 products of empty days.
+    last_d AS (SELECT MAX(d) AS d FROM dw.wrk_inv_moves WHERE app = 0),
     grid AS (SELECT s.product_id, dd.full_date AS d, dd.date_key
-             FROM span s CROSS JOIN last_d ld JOIN dw.dim_date dd ON dd.full_date >= s.first_d AND dd.full_date <= ld.d),
+             FROM span s CROSS JOIN last_d ld JOIN dw.dim_date dd ON dd.full_date >= s.first_d AND dd.full_date <= ld.d
+             UNION
+             SELECT m.product_id, dd.full_date, dd.date_key
+             FROM dw.wrk_inv_moves m CROSS JOIN last_d ld JOIN dw.dim_date dd ON dd.full_date = m.d WHERE m.d > ld.d),
     onhand AS (SELECT product_id, SUM(quantity) AS qty FROM stg.product_inventory GROUP BY product_id),
     net AS (SELECT product_id, SUM(units_in - units_out) AS total FROM dw.wrk_inv_moves GROUP BY product_id),
     pv AS (SELECT g.product_id, g.d, dp.product_key, dp.standard_cost,

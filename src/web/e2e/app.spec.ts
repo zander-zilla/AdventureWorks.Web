@@ -28,9 +28,9 @@ async function shot(page: Page, name: string) {
 async function theme(page: Page, t: 'dark' | 'light') { await page.addInitScript(v => localStorage.setItem('aw.theme', v), t) }
 
 for (const t of ['dark', 'light'] as const) {
-  test(`app shell + home (${t})`, async ({ page }) => {
+  test(`app shell + Chapter 2 overview (${t})`, async ({ page }) => {
     await mock(page); await theme(page, t)
-    await page.goto('./')
+    await page.goto('./overview')
     await expect(page.locator('html')).toHaveAttribute('data-theme', t)
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Chapter 2')
     await expect(page.getByRole('navigation', { name: 'Main' })).toContainText('Component gallery')
@@ -53,7 +53,7 @@ for (const t of ['dark', 'light'] as const) {
 }
 
 test('theme toggle persists across reload', async ({ page }) => {
-  await mock(page); await page.goto('./')
+  await mock(page); await page.goto('./overview')
   const before = await page.locator('html').getAttribute('data-theme')
   await page.getByTestId('theme-toggle').click()
   await page.reload()
@@ -84,7 +84,7 @@ test('Chapter switch: Chapter 1 goes to the showcase /c1/ (VITE_SHOWCASE_URL, lo
   test.skip(real, 'needs the build-time showcase URL of the target environment')
   await mock(page)
   await page.route('http://localhost:8088/c1/', r => r.fulfill({ contentType: 'text/html', body: '<h1>Chapter 1 frozen</h1>' }))
-  await page.goto('./')
+  await page.goto('./overview')
   await page.getByRole('radio', { name: 'Chapter 1 · Migration' }).click()
   await expect(page).toHaveURL('http://localhost:8088/c1/')
 })

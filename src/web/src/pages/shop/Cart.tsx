@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { api, ApiError, money, type Quote } from '../../api/client'
+import { api, ApiError, money } from '../../api/client'
 import { useLoad } from '../../api/useLoad'
 import { Button, EmptyState, PageHeader, SelectField, useToast } from '../../components'
 
@@ -10,15 +10,12 @@ export function Cart() {
   const cart = useLoad(() => api.cart())
   const methods = useLoad(() => api.shipMethods())
   const [method, setMethod] = useState<number>(1)
-  const [quote, setQuote] = useState<Quote>()
   const [busy, setBusy] = useState(false)
   const toast = useToast()
   const nav = useNavigate()
   const lines = cart.data ?? []
-  useEffect(() => {
-    if (lines.length === 0) { setQuote(undefined); return }
-    api.quote(method).then(setQuote).catch(() => setQuote(undefined))
-  }, [cart.data, method, lines.length])
+  const q = useLoad(() => (lines.length ? api.quote(method) : Promise.resolve(undefined)), [method, cart.data])
+  const quote = q.error ? undefined : q.data
   if (cart.error) return <EmptyState title="Sign in to see your cart" action={<Link to="/login"><Button>Sign in</Button></Link>} />
   const setQty = async (pid: number, q: number) => cart.setData(await api.setQuantity(pid, q))
   const place = async () => {
@@ -50,7 +47,7 @@ export function Cart() {
                         className="w-16 rounded-aw border border-line bg-bg px-2 py-1" /></td>
                       <td className="px-3.5 py-2.5 text-right">{money.format(l.unitPrice)}</td>
                       <td className="px-3.5 py-2.5 text-xs">{q && q.unitPriceDiscount > 0 ? <span className="text-ok" data-testid="line-offer">−{Math.round(q.unitPriceDiscount * 100)}% {q.offerDescription}</span> : <span className="text-mute">—</span>}</td>
-                      <td className="px-3.5 py-2.5 text-right">{money.format(q?.lineTotal ?? l.lineTotal)}</td>
+                      <td className="px-3.5 py-2.5 text-right">{money.format(q?.lineTotal ?? l.unitPrice * l.quantity)}</td>
                     </tr>)
                 })}
               </tbody>

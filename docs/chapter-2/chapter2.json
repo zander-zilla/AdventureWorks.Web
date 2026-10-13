@@ -79,17 +79,25 @@
   {
    "id": "C2-3",
    "name": "Procurement workspace",
-   "status": "planned",
+   "status": "done",
    "pages": [
     {
-     "path": "/app/procurement",
-     "name": "Low stock → suggested PO → approve → receive (INV-02, PUR-02..07)",
+     "path": "/app/back-office/procurement",
+     "name": "Procurement: reorder suggestions → create PO → approve / reject → receive into inventory (INV-02, PUR-02..07, INV-01, INV-03)",
      "processes": [
       "procure-to-pay",
       "inventory"
      ]
+    },
+    {
+     "path": "/app/back-office/procurement/vendors",
+     "name": "Vendors with performance (on-time, reject rate, lead time, spend) (PUR-01, PUR-05)",
+     "processes": [
+      "procure-to-pay"
+     ]
     }
-   ]
+   ],
+   "pr": 20
   },
   {
    "id": "C2-4",
@@ -268,6 +276,76 @@
    "path": "/api/v2/back-office/products/{id}/price",
    "phase": "C2-2",
    "pattern": "CAT-07"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/suggestions",
+   "phase": "C2-3",
+   "pattern": "INV-02"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/vendors",
+   "phase": "C2-3"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/vendors/{id}",
+   "phase": "C2-3",
+   "pattern": "PUR-01"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/products/{id}/vendors",
+   "phase": "C2-3",
+   "pattern": "PUR-02"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/purchase-orders",
+   "phase": "C2-3",
+   "pattern": "PUR-07"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/procurement/purchase-orders",
+   "phase": "C2-3",
+   "pattern": "PUR-03"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/purchase-orders/counts",
+   "phase": "C2-3",
+   "pattern": "PUR-07"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/purchase-orders/mine",
+   "phase": "C2-3",
+   "pattern": "PUR-06"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/purchase-orders/{id}",
+   "phase": "C2-3",
+   "pattern": "PUR-04"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/procurement/purchase-orders/{id}/{op}",
+   "phase": "C2-3",
+   "pattern": "PUR-04"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/procurement/purchase-orders/{id}/receive",
+   "phase": "C2-3",
+   "pattern": "INV-01"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/locations",
+   "phase": "C2-3"
   }
  ],
  "access_patterns": [
@@ -308,15 +386,17 @@
   },
   {
    "id": "INV-02",
-   "use": "Low stock dashboard",
+   "use": "Reorder suggestions (sparse GSI1 REORDER index on stock vs reorder point / safety stock)",
    "phase": "C2-3",
-   "new": false
+   "new": false,
+   "status": "live"
   },
   {
    "id": "PUR-02..07",
-   "use": "Suggested PO, create, approve, receive",
+   "use": "Suppliers for a product, create PO, approve / reject, receive, POs by vendor / buyer / status",
    "phase": "C2-3",
-   "new": false
+   "new": false,
+   "status": "live"
   },
   {
    "id": "INV-04..06",
@@ -337,13 +417,28 @@
    "phase": "C2-2",
    "new": false,
    "status": "live"
+  },
+  {
+   "id": "PUR-01",
+   "use": "Vendor detail with contacts, addresses and supplied products",
+   "phase": "C2-3",
+   "new": false,
+   "status": "live"
+  },
+  {
+   "id": "PUR-08",
+   "use": "Not added: the vendor list is a cached Scan of 104 vendors; see PLAN C2-3",
+   "phase": "C2-3",
+   "new": true,
+   "status": "not-needed"
   }
  ],
  "redshift_views": [
   {
-   "name": "dw.vendor_performance",
-   "use": "On-time and reject rate tile",
-   "phase": "C2-3"
+   "name": "dw.v_vendor_performance",
+   "use": "On-time rate, reject rate, lead time and spend per vendor (dim_vendor + fact_purchase_order_line)",
+   "phase": "C2-3",
+   "status": "live"
   },
   {
    "name": "dw.production_scrap_on_time",

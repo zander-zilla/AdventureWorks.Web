@@ -15,7 +15,7 @@ const nav: NavGroup[] = [
   { title: 'Chapter 2', items: [
     { to: '/c2/story', label: 'Story', icon: '▶' },
     { to: '/c2/processes', label: 'Business processes', icon: '⇶' },
-    { to: '/c2/back-office', label: 'Back office', icon: '⇄', badge: 'C2-2' },
+    { to: '/c2/back-office', label: 'Back office', icon: '⇄', badge: 'C2-3' },
     { to: '/c2/changes', label: 'What changed', icon: '△' },
     { to: '/c2/ask', label: 'Ask the data', icon: '✦', badge: 'C2-5' },
   ] },

@@ -30,7 +30,7 @@ LEFT JOIN dw.dim_promotion pr ON pr.promotion_key = f.promotion_key
 LEFT JOIN dw.dim_reseller r ON r.reseller_key = f.reseller_key;
 
 -- C2-3 vendor performance (John's decision 5): the same definitions as the app's vendor page (ProcurementRepository.Performance):
--- reject rate = rejected / received; fill rate = received / ordered; on time = share of shipped lines with on_time_flag = 1;
+-- reject rate = rejected / received; fill rate = received / ordered; on time = share of shipped lines with on_time_flag = 1.
 -- spend = line totals of approved (2) and complete (4) POs; average lead = order -> ship days per PO.
 DROP VIEW IF EXISTS dw.v_vendor_performance;
 CREATE VIEW dw.v_vendor_performance AS

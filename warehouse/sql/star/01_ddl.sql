@@ -114,7 +114,7 @@ DROP TABLE IF EXISTS dw.fact_product_inventory;
 CREATE TABLE dw.fact_product_inventory (product_key integer NOT NULL, date_key integer NOT NULL, movement_date date, unit_cost decimal(19,4),
   units_in integer, units_out integer, units_balance integer, PRIMARY KEY (product_key, date_key));
 
--- C2-3 procurement (no AdventureWorksDW2022 equivalent: the DW has no purchasing fact). DimVendor is Purchasing.Vendor;
+-- C2-3 procurement (no AdventureWorksDW2022 equivalent: the DW has no purchasing fact). DimVendor is Purchasing.Vendor.
 -- FactPurchaseOrderLine is one row per PurchaseOrderDetail (SQL-era and app-written POs alike, src tells them apart).
 DROP TABLE IF EXISTS dw.dim_vendor;
 CREATE TABLE dw.dim_vendor (vendor_key integer NOT NULL, vendor_alternate_key varchar(15), vendor_name varchar(50), credit_rating smallint,

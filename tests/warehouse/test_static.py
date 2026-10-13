@@ -47,3 +47,22 @@ def test_quicksight_dashboard_definition():
     assert cols <= _v_sales_columns(), cols - _v_sales_columns()
     tf = open(os.path.join(ROOT, "infra/modules/warehouse/quicksight.tf")).read()
     assert cols <= set(re.findall(r'name = "([a-z_]+)"', tf)), "dashboard uses columns the data set does not import"
+
+
+def test_no_comment_only_statements():
+    """warehouse/local/pg.py splits on ';' at end of line, so a comment line ending in ';' inside a statement
+    block yields a comment-only statement, which psycopg2 rejects ("can't execute an empty query")."""
+    sys.path.insert(0, os.path.join(ROOT, "warehouse/local"))
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("awpg_split", os.path.join(ROOT, "warehouse/local/pg.py"))
+    src = open(spec.origin).read().replace("import os, psycopg2", "import os")
+    ns = {}; exec(compile(src, spec.origin, "exec"), ns)
+    bad = []
+    for f in PORTABLE + ["../redshift/30_physical.sql"]:
+        path = os.path.join(STAR, f)
+        if not os.path.exists(path):
+            continue
+        for s in ns["split"](open(path).read()):
+            if not strip_comments(s).strip().strip(";").strip():
+                bad.append((f, s.strip().splitlines()[0][:80]))
+    assert not bad, bad

@@ -122,7 +122,7 @@ public sealed class FulfilmentRepository(DynamoTables t, TimeProvider clock, Pri
 
     // ---------------------------------------------------------------- SAL-06
 
-    public async Task<TransitionResult> ApplyAsync(long orderId, string action, long expectedVersion, string actor, ShipRequest? ship = null, string? idempotencyToken = null)
+    public async Task<TransitionResult> ApplyAsync(long orderId, string action, long expectedVersion, string actor, ShipRequest? ship = null, string? idempotencyToken = null, string? note = null)
     {
         var o = await new SalesRepository(t, clock).GetOrderAsync(orderId, consistent: true) ?? throw new KeyNotFoundException();
         if (!OrderStatus.Actions.ContainsKey(action)) throw new ArgumentException($"Unknown action '{action}'.");
@@ -130,7 +130,7 @@ public sealed class FulfilmentRepository(DynamoTables t, TimeProvider clock, Pri
         if (!OrderStatus.CanApply(action, o.Status))
             throw new ConflictException($"Cannot {action} {o.Number}: it is {OrderStatus.Text(o.Status)}.");
         var now = Now();
-        if (action != "ship") { await StatusOnlyAsync(o, action, OrderStatus.Actions[action].To, actor, now, null, idempotencyToken); return new(Reload(o, OrderStatus.Actions[action].To), action, []); }
+        if (action != "ship") { await StatusOnlyAsync(o, action, OrderStatus.Actions[action].To, actor, now, string.IsNullOrWhiteSpace(note) ? null : note.Trim(), idempotencyToken); return new(Reload(o, OrderStatus.Actions[action].To), action, []); }
 
         if (ship is null || string.IsNullOrWhiteSpace(ship.TrackingNumber) || ship.TrackingNumber.Trim().Length > 25)
             throw new ArgumentException("Ship needs a ship method and a tracking number (1-25 characters).");

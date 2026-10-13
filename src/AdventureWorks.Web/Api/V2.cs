@@ -14,7 +14,7 @@ public sealed record CartItemRequest(int ProductId, int Quantity);
 public sealed record QuantityRequest(int Quantity);
 public sealed record CheckoutRequest(int? ShipMethodId);
 public sealed record ReviewRequest(int Rating, string Comments);
-public sealed record TransitionRequest(long Version, int? ShipMethodId, string? TrackingNumber);
+public sealed record TransitionRequest(long Version, int? ShipMethodId, string? TrackingNumber, string? Note = null);
 public sealed record BulkItem(long Id, long Version);
 public sealed record BulkRequest(List<BulkItem> Orders);
 public sealed record BulkResult(long Id, bool Ok, string Message);
@@ -194,8 +194,18 @@ public static class V2
             (long id, string op, TransitionRequest body, ClaimsPrincipal u, HttpContext http, FulfilmentRepository f) => Guard(async () =>
             {
                 var ship = op == "ship" ? new ShipRequest(body.ShipMethodId ?? 0, body.TrackingNumber ?? "") : null;
-                return Results.Ok(await f.ApplyAsync(id, op, body.Version, Actor(u), ship, Token(http)));
+                if (body.Note is { Length: > 500 }) return Results.Problem(title: "A note holds at most 500 characters.", statusCode: 400);
+                return Results.Ok(await f.ApplyAsync(id, op, body.Version, Actor(u), ship, Token(http), body.Note));
             })).RequireAuthorization(FulfilmentPolicy).WithName("transitionOrder").Produces<TransitionResult>().ProducesProblem(400).ProducesProblem(409);
+        // C2-6 order triage copilot (enable_ai): explain risk / stuck, draft the approve or backorder note (the clerk edits and submits).
+        bo.MapPost("/orders/{id:long}/assist/{kind}", async (long id, string kind, AiOptions o, IServiceProvider sp, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            if (!TriageFacts.Kinds.Contains(kind)) return Results.Problem(title: "kind must be explain, approve-note or backorder-note.", statusCode: 400);
+            var facts = await sp.GetRequiredService<TriageFacts>().BuildAsync(id);
+            if (facts is null) return Results.NotFound();
+            return Results.Ok(await sp.GetRequiredService<AiAssist>().RunAsync("triage", "triage-" + kind, facts, AiSession(h), Actor(u), ct: ct));
+        }).RequireAuthorization(FulfilmentPolicy).WithName("triageAssist").Produces<AssistResult>().ProducesProblem(400).ProducesProblem(404);
         bo.MapPost("/orders/bulk-approve", async (BulkRequest body, ClaimsPrincipal u, FulfilmentRepository f) =>
         {
             var results = new List<BulkResult>();

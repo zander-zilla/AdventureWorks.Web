@@ -121,6 +121,7 @@ test('catalog admin edits a price: history item written (CAT-07 fix)', async ({ 
   await signIn(page, OPS)
   await page.goto('./shop/products/707')
   const history = page.getByRole('table', { name: 'Price history' })
+  await expect(history.locator('tbody tr').first()).toBeVisible()   // wait for the detail load before counting
   const before = await history.locator('tbody tr').count()
   await page.getByLabel('New list price').fill('36.49')
   await page.getByTestId('save-price').click()

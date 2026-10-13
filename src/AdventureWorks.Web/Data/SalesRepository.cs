@@ -5,13 +5,14 @@ using AdventureWorks.Web.Models;
 namespace AdventureWorks.Web.Data;
 
 /// <summary>aw-sales (docs/design/tables/sales.md): cart (SAL-01), checkout (SAL-02), my orders (SAL-03), order (SAL-04).</summary>
-public sealed class SalesRepository(DynamoTables t, TimeProvider clock)
+public sealed class SalesRepository(DynamoTables t, TimeProvider clock, PricingRepository? pricingRepo = null, CatalogRepository? catalogRepo = null)
 {
+    private readonly PricingRepository pricing = pricingRepo ?? new PricingRepository(t, new PricingOptions(), clock);
+    private readonly CatalogRepository catalog = catalogRepo ?? new CatalogRepository(t);
     public const int MaxTransactActions = 100;
     /// <summary>P3-5: header + lines must fit one TransactWriteItems (100 actions) with a little headroom.</summary>
     public const int MaxOrderLines = 95;
     public static readonly TimeSpan CartTtl = TimeSpan.FromDays(7);   // D3
-    public const decimal TaxRate = 0.08m, FreightRate = 0.025m;
 
     private IAmazonDynamoDB Db => t.For(DynamoTables.Sales);
     private string Table => t.Name(DynamoTables.Sales);
@@ -95,7 +96,9 @@ public sealed class SalesRepository(DynamoTables t, TimeProvider clock)
         h["purchase_order_number"] = Av.S("DDB-" + now.ToString("yyyyMMddHHmmss"));
         h["customer_id"] = Av.N(customerId); h["customer_account_number"] = Av.S(c.AccountNumber); h["customer_name"] = Av.S(c.DisplayName);
         h.Set("store_name", c.StoreName); h["customer_email"] = Av.S(email);
-        h["ship_method_id"] = Av.N(5); h["ship_method_name"] = Av.S("CARGO TRANSPORT 5");
+        h["src_lsn"] = Av.S(Keys.AppLsn);
+        h["ship_method_id"] = Av.N(o.ShipMethodId ?? 5); h["ship_method_name"] = Av.S(o.ShipMethodName ?? "CARGO TRANSPORT 5");
+        if (o.TerritoryId is { } terr) h["territory_id"] = Av.N(terr);
         if (c.Addresses.FirstOrDefault() is { } a)
         {
             foreach (var pre in new[] { "ship_to", "bill_to" })
@@ -107,7 +110,7 @@ public sealed class SalesRepository(DynamoTables t, TimeProvider clock)
         if (c.Cards.FirstOrDefault() is { } card) { h["credit_card_id"] = Av.N(card.CreditCardId); h["card_type"] = Av.S(card.CardType); h["card_last4"] = Av.S(card.Last4); }
         h["sub_total"] = Av.N(o.SubTotal); h["tax_amt"] = Av.N(o.TaxAmt); h["freight"] = Av.N(o.Freight); h["total_due"] = Av.N(o.TotalDue);
         h["GSI1PK"] = Av.S(Keys.Customer(customerId)); h["GSI1SK"] = Av.S(Keys.CustomerOrder(now, o.Id));
-        h["GSI2PK"] = Av.S($"ORDERSTATUS#{o.Status}"); h["GSI2SK"] = Av.S(Keys.Iso(now));
+        h["GSI2PK"] = Av.S($"ORDERSTATUS#{o.Status}"); h["GSI2SK"] = Av.S($"{Keys.Iso(now)}#{o.Id:0000000000}");
 
         var tx = new List<TransactWriteItem> { new() { Put = new Put { TableName = table, Item = h, ConditionExpression = "attribute_not_exists(PK)" } } };
         foreach (var l in o.Lines)
@@ -115,9 +118,13 @@ public sealed class SalesRepository(DynamoTables t, TimeProvider clock)
             var li = Av.Item(pk, Keys.OrderLine(l.LineNo), "OrderLine");
             li["sales_order_id"] = Av.N(o.Id); li["sales_order_detail_id"] = Av.N(l.LineNo); li["product_id"] = Av.N(l.ProductId);
             li["product_name"] = Av.S(l.Name); li.Set("product_number", l.ProductNumber); li["order_qty"] = Av.N(l.Quantity);
-            li["unit_price"] = Av.N(l.UnitPrice); li["unit_price_discount"] = Av.N(0); li["line_total"] = Av.N(l.LineTotal); li["special_offer_id"] = Av.N(1);
+            li["unit_price"] = Av.N(l.UnitPrice); li["unit_price_discount"] = Av.N(l.UnitPriceDiscount); li["line_total"] = Av.N(l.LineTotal); li["special_offer_id"] = Av.N(l.SpecialOfferId);
+            li["src_lsn"] = Av.S(Keys.AppLsn);
             tx.Add(new TransactWriteItem { Put = new Put { TableName = table, Item = li } });
         }
+        tx.Add(new TransactWriteItem { Put = new Put { TableName = table, Item = ChangeFeed.Event(o.Id, now, 0, "place", null, o.Status, email, null) } });
+        tx.Add(new TransactWriteItem { Put = new Put { TableName = table, Item = ChangeFeed.Entry(now, "order.placed", o.Number, email,
+            [$"aw-sales {pk} ORDER (Order -> stg.order)", $"aw-sales {pk} LINE#0000001..{o.Lines.Count:0000000} (OrderLine -> stg.order_line)"]) } });
         var after = new List<Dictionary<string, AttributeValue>>();
         foreach (var l in o.Lines)
         {
@@ -128,25 +135,29 @@ public sealed class SalesRepository(DynamoTables t, TimeProvider clock)
         return new CheckoutPlan(tx, after);
     }
 
-    public static Order PriceOrder(long id, int customerId, IReadOnlyList<CartLine> cart, DateTime now)
+    /// <summary>C2-2: the order from a server-side quote (offers, tax by ship-to state, freight by ship method).</summary>
+    public static Order BuildOrder(long id, int customerId, Quote q, DateTime now)
     {
-        var o = new Order { Id = id, Number = Keys.OrderNumber(id), CustomerId = customerId, OrderDate = now, Status = 1, Source = "ddb" };
-        var n = 1;
-        foreach (var c in cart) o.Lines.Add(new OrderLine(n++, c.ProductId, c.Name, c.ProductNumber, c.Quantity, c.UnitPrice, c.LineTotal));
-        o.SubTotal = o.Lines.Sum(l => l.LineTotal);
-        o.TaxAmt = Math.Round(o.SubTotal * TaxRate, 4);
-        o.Freight = Math.Round(o.SubTotal * FreightRate, 4);
-        o.TotalDue = o.SubTotal + o.TaxAmt + o.Freight;
+        var o = new Order { Id = id, Number = Keys.OrderNumber(id), CustomerId = customerId, OrderDate = now, Status = OrderStatus.InProcess, Source = "ddb",
+            ShipMethodId = q.ShipMethod.Id, ShipMethodName = q.ShipMethod.Name, TerritoryId = q.Tax?.TerritoryId, Version = 1, RevisionNumber = 1 };
+        foreach (var l in q.Lines)
+            o.Lines.Add(new OrderLine(l.LineNo, l.ProductId, l.Name, l.ProductNumber, l.Quantity, l.UnitPrice, l.LineTotal, l.UnitPriceDiscount, l.SpecialOfferId));
+        o.SubTotal = q.SubTotal; o.TaxAmt = q.TaxAmt; o.Freight = q.Freight; o.TotalDue = q.TotalDue;
         return o;
     }
 
-    public async Task<Order> CheckoutAsync(int customerId, CustomerView customer, string email)
+    /// <summary>Server-side quote for the current cart (the shop shows it; checkout recomputes it, never trusts the client).</summary>
+    public async Task<Quote> QuoteAsync(int customerId, CustomerView customer, int? shipMethodId) =>
+        await pricing.QuoteAsync(await GetCartAsync(customerId), customer.Addresses.FirstOrDefault(), shipMethodId, catalog);
+
+    public async Task<Order> CheckoutAsync(int customerId, CustomerView customer, string email, int? shipMethodId = null)
     {
         var cart = await GetCartAsync(customerId);
         if (cart.Count == 0) throw new InvalidOperationException("Cart is empty.");
         if (cart.Count > MaxOrderLines) throw new InvalidOperationException($"An order can have at most {MaxOrderLines} lines (P3-5).");
         var now = clock.GetUtcNow().UtcDateTime; now = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
-        var order = PriceOrder(await NextOrderIdAsync(), customerId, cart, now);
+        var quote = await pricing.QuoteAsync(cart, customer.Addresses.FirstOrDefault(), shipMethodId, catalog);
+        var order = BuildOrder(await NextOrderIdAsync(), customerId, quote, now);
         var plan = Plan(Table, order, customer, email, customerId, now);
         await Db.TransactWriteItemsAsync(new TransactWriteItemsRequest { TransactItems = plan.Transaction });
         foreach (var chunk in plan.CartKeysAfter.Chunk(25))
@@ -176,16 +187,21 @@ public sealed class SalesRepository(DynamoTables t, TimeProvider clock)
         var o = ToOrder(head);
         foreach (var l in items.Where(i => i.Str("type") == "OrderLine" && i.IsLive()).OrderBy(i => i.Int("sales_order_detail_id")))
             o.Lines.Add(new OrderLine(l.Int("sales_order_detail_id")!.Value, l.Int("product_id")!.Value, l.Str("product_name") ?? "", l.Str("product_number"),
-                l.Int("order_qty") ?? 0, l.Dec("unit_price") ?? 0, l.Dec("line_total") ?? 0));
+                l.Int("order_qty") ?? 0, l.Dec("unit_price") ?? 0, l.Dec("line_total") ?? 0, l.Dec("unit_price_discount") ?? 0, l.Int("special_offer_id") ?? 1,
+                l.Str("carrier_tracking_number")));
+        foreach (var e in items.Where(i => i.Str("type") == "OrderEvent").OrderBy(i => i.Str("SK")))
+            o.Events.Add(new OrderEvent(e.Date("at") ?? DateTime.MinValue, e.Str("action") ?? "", e.Int("from_status"), e.Int("to_status") ?? 0, e.Str("actor") ?? "", e.Str("note")));
         return o;
     }
 
-    private static Order ToOrder(Dictionary<string, AttributeValue> h) => new()
+    public static Order ToOrder(Dictionary<string, AttributeValue> h) => new()
     {
         Id = h.Long("sales_order_id")!.Value, Number = h.Str("sales_order_number") ?? Keys.OrderNumber(h.Long("sales_order_id")!.Value),
         CustomerId = h.Int("customer_id") ?? 0, OrderDate = h.Date("order_date") ?? DateTime.MinValue, Status = h.Int("status") ?? 0,
         SubTotal = h.Dec("sub_total") ?? 0, TaxAmt = h.Dec("tax_amt") ?? 0, Freight = h.Dec("freight") ?? 0, TotalDue = h.Dec("total_due") ?? 0,
         ShipTo = h.Str("ship_to_line1") is { } l1 ? $"{l1}, {h.Str("ship_to_city")} {h.Str("ship_to_state")} {h.Str("ship_to_postal_code")}" : null,
-        Source = h.Str("src") ?? "sql",
+        Source = h.Str("src") ?? "sql", CustomerName = h.Str("customer_name"), TerritoryId = h.Int("territory_id"), ShipMethodId = h.Int("ship_method_id"),
+        ShipMethodName = h.Str("ship_method_name"), CarrierTrackingNumber = h.Str("carrier_tracking_number"), ShipDate = h.Date("ship_date"),
+        RevisionNumber = h.Int("revision_number") ?? 0, Version = h.Long("ver") ?? 1,
     };
 }

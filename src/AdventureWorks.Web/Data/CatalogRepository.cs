@@ -108,7 +108,7 @@ public sealed class CatalogRepository(DynamoTables t)
         Id = i.Int("product_id")!.Value, Name = i.Str("name")!, ProductNumber = i.Str("product_number") ?? "",
         Color = i.Str("color"), Size = i.Str("size"), ListPrice = i.Dec("list_price") ?? 0, StandardCost = i.Dec("standard_cost") ?? 0,
         SubcategoryId = i.Int("product_subcategory_id"), SubcategoryName = i.Str("subcategory_name"), CategoryId = i.Int("category_id"),
-        CategoryName = i.Str("category_name"), ModelId = i.Int("product_model_id"), ModelName = i.Str("model_name"), Weight = i.Dec("weight"),
+        CategoryName = i.Str("category_name"), ModelId = i.Int("product_model_id"), ModelName = i.Str("model_name"), Weight = i.Dec("weight"), WeightUnit = i.Str("weight_unit_measure_code")?.Trim(),
         SellStartDate = i.Date("sell_start_date"), SellEndDate = i.Date("sell_end_date"), StockQty = i.Dec("stock_qty") ?? 0,
         Active = (i.Str("active") ?? "A") == "A", Version = i.Long("ver") ?? 1, Source = i.Str("src") ?? "sql",
     };
@@ -188,7 +188,104 @@ public sealed class CatalogRepository(DynamoTables t)
         };
         if (!old.Name.Equals(p.Name, StringComparison.OrdinalIgnoreCase)) tx.Add(Del("PRODUCTNAMES", old.Name.ToLowerInvariant()));
         if (old.ProductNumber != p.ProductNumber) tx.Add(Del(Keys.ProductNumber(old.ProductNumber), "PRODUCTNUMBER"));
+        // C2-2 CAT-07 fix (PR #15 catalog finding): a list price change also writes the ListPriceHistory item and closes the
+        // open one, in the same transaction, so Redshift dim_product gets its SCD2 row via zero-ETL.
+        if (old.ListPrice != p.ListPrice)
+            tx.AddRange(PriceHistoryActions(Table, p.Id, p.ListPrice, DateTime.UtcNow.Date, await GetPriceHistoryAsync(p.Id)));
+        tx[0].Put.Item["src_lsn"] = Av.S(Keys.AppLsn);   // app-owned from now on: the one-way CDC must not overwrite the edit
         await Db.TransactWriteItemsAsync(new TransactWriteItemsRequest { TransactItems = tx });
+    }
+
+    public sealed record PricePoint(DateTime StartDate, DateTime? EndDate, decimal ListPrice, string Source);
+
+    // CAT-09 (list price side): the product's price history, oldest first.
+    public async Task<List<PricePoint>> GetPriceHistoryAsync(int productId)
+    {
+        var items = await Db.QueryAll(new QueryRequest { TableName = Table, ConsistentRead = true, KeyConditionExpression = "PK = :pk AND begins_with(SK, :p)",
+            ExpressionAttributeValues = new() { [":pk"] = Av.S(Keys.Product(productId)), [":p"] = Av.S("PRICE#") } });
+        return items.Where(i => i.IsLive()).Select(i => new PricePoint(i.Date("start_date") ?? DateTime.MinValue, i.Date("end_date"), i.Dec("list_price") ?? 0, i.Str("src") ?? "sql"))
+            .OrderBy(x => x.StartDate).ToList();
+    }
+
+    /// <summary>Pure (unit-tested): new PRICE#&lt;today&gt; item (end_date open) and the previous open item closed the day
+    /// before, as in Production.ProductListPriceHistory. A second change on the same day replaces today's item.</summary>
+    public static List<TransactWriteItem> PriceHistoryActions(string table, int productId, decimal newPrice, DateTime today, IReadOnlyList<PricePoint> history)
+    {
+        var tx = new List<TransactWriteItem>();
+        var now = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+        foreach (var open in history.Where(h => h.EndDate is null && h.StartDate < today))
+            tx.Add(new TransactWriteItem { Update = new Update { TableName = table, Key = K(Keys.Product(productId), Keys.Price(open.StartDate)),
+                UpdateExpression = "SET end_date = :e, modified_date = :m, updated_at = :u, src = :src, src_lsn = :lsn ADD ver :one",
+                ConditionExpression = "attribute_exists(PK) AND attribute_not_exists(end_date)",
+                ExpressionAttributeValues = new() { [":e"] = Av.S(Keys.Iso(today.AddDays(-1))), [":m"] = Av.S(Keys.Iso(today)), [":u"] = Av.S(now),
+                    [":src"] = Av.S("ddb"), [":lsn"] = Av.S(Keys.AppLsn), [":one"] = Av.N(1) } } });
+        var item = Av.Item(Keys.Product(productId), Keys.Price(today), "ListPriceHistory");
+        item["product_id"] = Av.N(productId); item["start_date"] = Av.S(Keys.Iso(today)); item["list_price"] = Av.N(newPrice);
+        item["modified_date"] = Av.S(Keys.Iso(today)); item["src_lsn"] = Av.S(Keys.AppLsn);
+        tx.Add(new TransactWriteItem { Put = new Put { TableName = table, Item = item } });
+        return tx;
+    }
+
+    /// <summary>Back-office price edit (CAT-07 with the fix): optimistic on ver.</summary>
+    public async Task<Product> SetListPriceAsync(int id, decimal price, long expectedVersion)
+    {
+        if (price < 0) throw new ArgumentException("Price must be zero or more.");
+        var p = await GetProductAsync(id) ?? throw new KeyNotFoundException();
+        p.ListPrice = price; p.Version = expectedVersion;
+        await UpdateProductAsync(p);
+        return (await GetProductAsync(id))!;
+    }
+
+    // ------------------------------------------------------------------ CAT-11 reviews
+
+    public sealed record Review(int Id, DateTime Date, string ReviewerName, int Rating, string? Comments, string Source);
+    public const int MaxReviewLength = 3850;   // Production.ProductReview.Comments nvarchar(3850)
+    public const int ReviewIdStart = 10_000;    // SQL ids are 1-4
+
+    public async Task<List<Review>> GetReviewsAsync(int productId)
+    {
+        var items = await Db.QueryAll(new QueryRequest { TableName = Table, ScanIndexForward = false, KeyConditionExpression = "PK = :pk AND begins_with(SK, :r)",
+            ExpressionAttributeValues = new() { [":pk"] = Av.S(Keys.Product(productId)), [":r"] = Av.S("REVIEW#") } });
+        return items.Where(i => i.IsLive()).Select(i => new Review(i.Int("product_review_id") ?? 0, i.Date("review_date") ?? DateTime.MinValue,
+            i.Str("reviewer_name") ?? "", i.Int("rating") ?? 0, i.Str("comments"), i.Str("src") ?? "sql")).ToList();
+    }
+
+    private static readonly string[] Blocked = ["damn", "crap", "shit", "fuck", "bastard", "idiot"];
+
+    /// <summary>Pure validation (unit-tested): rating 1-5, comments 10..3850 characters, no blocked words.</summary>
+    public static string? ValidateReview(int rating, string? comments)
+    {
+        if (rating is < 1 or > 5) return "Rating must be 1 to 5.";
+        var c = comments?.Trim() ?? "";
+        if (c.Length < 10) return "Please write at least 10 characters.";
+        if (c.Length > MaxReviewLength) return $"At most {MaxReviewLength} characters.";
+        var words = System.Text.RegularExpressions.Regex.Split(c.ToLowerInvariant(), "[^a-z]+");
+        if (words.Any(w => Blocked.Contains(w))) return "Please keep it friendly (blocked word).";
+        return null;
+    }
+
+    /// <summary>CAT-11 add: one review per customer per product, enforced by a conditional put of a REVIEWER#&lt;customer&gt;
+    /// marker in the same transaction as the REVIEW item.</summary>
+    public async Task<Review> AddReviewAsync(int productId, int customerId, string reviewerName, string email, int rating, string comments, DateTime now)
+    {
+        if (ValidateReview(rating, comments) is { } err) throw new ArgumentException(err);
+        if (await GetProductAsync(productId) is null) throw new KeyNotFoundException();
+        var r = await Db.UpdateItemAsync(new UpdateItemRequest { TableName = Table, Key = K("COUNTER", "REVIEW"), ReturnValues = ReturnValue.UPDATED_NEW,
+            UpdateExpression = "ADD next_id :one SET #t = if_not_exists(#t, :t), src = :src", ExpressionAttributeNames = new() { ["#t"] = "type" },
+            ExpressionAttributeValues = new() { [":one"] = Av.N(1), [":t"] = Av.S("ReviewIdCounter"), [":src"] = Av.S("ddb") } });
+        var id = ReviewIdStart + int.Parse(r.Attributes["next_id"].N);
+        var item = Av.Item(Keys.Product(productId), Keys.Review(now, id), "ProductReview");
+        item["product_review_id"] = Av.N(id); item["product_id"] = Av.N(productId); item["reviewer_name"] = Av.S(reviewerName);
+        item["review_date"] = Av.S(Keys.Iso(now)); item["email_address"] = Av.S(email); item["rating"] = Av.N(rating);
+        item["comments"] = Av.S(comments.Trim()); item["modified_date"] = Av.S(Keys.Iso(now)); item["src_lsn"] = Av.S(Keys.AppLsn);
+        var marker = Av.Item(Keys.Product(productId), $"REVIEWER#{customerId:000000}", "ReviewMarker");
+        marker["derived"] = Av.B(true); marker["product_review_id"] = Av.N(id);
+        await Db.TransactWriteItemsAsync(new TransactWriteItemsRequest { TransactItems =
+        [
+            Put(marker, "attribute_not_exists(PK)"),
+            Put(item, "attribute_not_exists(PK)"),
+        ] });
+        return new Review(id, now, reviewerName, rating, comments.Trim(), "ddb");
     }
 
     /// <summary>Delete is only allowed for products without history (no photos/offers/reviews in the collection);

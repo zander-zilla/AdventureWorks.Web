@@ -14,7 +14,11 @@ builder.Services.AddSingleton(sp => new DynamoTables(dynamo));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<CatalogRepository>();
 builder.Services.AddSingleton<CustomerRepository>();
-builder.Services.AddSingleton<SalesRepository>();
+builder.Services.AddSingleton(builder.Configuration.GetSection("Pricing").Get<PricingOptions>() ?? new PricingOptions());
+builder.Services.AddSingleton<PricingRepository>();
+builder.Services.AddSingleton(sp => new SalesRepository(sp.GetRequiredService<DynamoTables>(), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<PricingRepository>(), sp.GetRequiredService<CatalogRepository>()));
+builder.Services.AddSingleton<FulfilmentRepository>();
 builder.Services.AddSingleton(builder.Configuration.GetSection("Demo").Get<DemoOptions>() ?? new DemoOptions());
 
 builder.Services.AddControllersWithViews();
@@ -25,7 +29,10 @@ if (!string.IsNullOrEmpty(frameAncestors))
     builder.Services.AddAntiforgery(o => o.SuppressXFrameOptionsHeader = true);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o => { o.LoginPath = "/Account/Login"; o.Cookie.Name = "aw.after"; o.SlidingExpiration = true; V2.ApiAwareRedirects(o); });
-builder.Services.AddAuthorizationBuilder().AddPolicy(V2.CustomerPolicy, p => p.RequireClaim("customer_id"));
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(V2.CustomerPolicy, p => p.RequireClaim("customer_id"))
+    .AddPolicy(V2.FulfilmentPolicy, p => p.RequireRole(V2.FulfilmentRole))
+    .AddPolicy(V2.CatalogAdminPolicy, p => p.RequireRole(V2.CatalogAdminRole));
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi("v2", o => o.ShouldInclude = d => d.RelativePath?.StartsWith("api/v2") == true);
 // ALB terminates TLS: trust X-Forwarded-Proto so Request.IsHttps reflects the browser's scheme (cookie policy below).
@@ -76,7 +83,13 @@ app.MapOpenApi("/api/{documentName}/openapi.json");
 app.MapApiV2();
 // Chapter 2 SPA (src/web, built into wwwroot/app by the Dockerfile / `npm run build`): client-side routes fall back to index.html.
 app.MapFallbackToFile("/app/{*path:nonfile}", "app/index.html");
-app.MapControllerRoute("default", "{controller=Shop}/{action=Index}/{id?}");
+// C2-2 (John's decision 7): once C2-2 is done, / opens the new UI. The Razor shop stays reachable at /Shop (and /classic,
+// which the frozen Chapter 1 showcase's App tab uses) for Chapter 1 parity. Ui:Root=razor restores the Chapter 1 root.
+// Without a default controller, Razor links to Shop/Index render as /Shop (not /), so the classic UI stays self-contained.
+var razorRoot = string.Equals(app.Configuration["Ui:Root"], "razor", StringComparison.OrdinalIgnoreCase);
+if (!razorRoot) app.MapGet("/", () => Results.Redirect("/app/")).ExcludeFromDescription();
+app.MapGet("/classic", () => Results.Redirect("/Shop")).ExcludeFromDescription();
+app.MapControllerRoute("default", razorRoot ? "{controller=Shop}/{action=Index}/{id?}" : "{controller}/{action=Index}/{id?}");
 app.Run();
 
 public sealed class DemoOptions
@@ -88,6 +101,19 @@ public sealed class DemoOptions
         "catherine0@adventure-works.com", "cory0@adventure-works.com", "christopher1@adventure-works.com",
         "donald0@adventure-works.com", "walter0@adventure-works.com",
     ];
+    /// <summary>C2-2 back-office demo staff (same demo password; no customer record, roles only).</summary>
+    public List<StaffAccount> Staff { get; set; } =
+    [
+        new() { Email = "fulfilment@adventure-works.com", Name = "Fulfilment clerk (demo)", Roles = [V2.FulfilmentRole] },
+        new() { Email = "ops@adventure-works.com", Name = "Ops manager (demo)", Roles = [V2.FulfilmentRole, V2.CatalogAdminRole] },
+    ];
+}
+
+public sealed class StaffAccount
+{
+    public string Email { get; set; } = "";
+    public string Name { get; set; } = "";
+    public List<string> Roles { get; set; } = [];
 }
 
 public partial class Program { }

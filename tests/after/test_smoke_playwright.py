@@ -23,7 +23,7 @@ def test_shopper_journey(page):
     expect(page.get_by_test_id("user-name")).to_have_text("Catherine Abel")
 
     # browse: category -> subcategory -> product, culture switcher
-    page.goto(BASE + "/")
+    page.goto(BASE + "/classic")   # C2-2: / is the new UI; the Razor shop (Chapter 1) stays at /Shop and /classic
     page.get_by_test_id("subcategory-link").filter(has_text="Mountain Bikes").click()
     page.get_by_test_id("product-link").first.click()
     expect(page.get_by_test_id("product-name")).to_contain_text("Mountain")
@@ -50,3 +50,8 @@ def test_shopper_journey(page):
     expect(page.get_by_test_id("cart-empty")).to_be_visible()
     page.get_by_test_id("nav-orders").click()
     expect(page.get_by_test_id("order-link").filter(has_text=number)).to_have_count(1)
+
+
+def test_root_opens_the_new_ui(page):
+    page.goto(BASE + "/")
+    assert "/app/" in page.url, page.url

@@ -14,3 +14,5 @@ budget_alert_emails = ["john.vandervliet@example.com"]
 # domain_name     = "demo.example.com"
 # route53_zone_id = "Z0123456789ABCDEFGHIJ"
 # certificate_arn = "arn:aws:acm:us-east-1:<account>:certificate/<id>"
+# C2-5 (John, 2026-10-13): Bedrock AI layer on for the demo. After apply, do the AI steps in docs/aws-setup.md section 5b.
+enable_ai = true

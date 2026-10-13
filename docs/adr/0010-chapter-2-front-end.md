@@ -74,4 +74,4 @@ so the `SameSite=Lax` auth cookie is not sent and sign-in only works in a new ta
 
 ### C2-4 update
 Chart library: **Recharts** (^3), used on the lazy-loaded production page only; the dependency-free SVG `Chart` component
-stays for the small C2-0 charts. Decision taken overnight by Grok Bot under John's delegation, pending John's review.
+stays for the small C2-0 charts. Decision taken overnight by Grok Bot under John's delegation, confirmed by John (Oct 13, 2026).

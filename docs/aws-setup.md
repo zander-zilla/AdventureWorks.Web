@@ -98,6 +98,41 @@ Follow docs/design/warehouse.md "Deploying on AWS" steps 3-6: `00_setup.sql` (in
 and `CALL dw.sp_build_star();`. The hourly schedule takes over. QuickSight (showcase only): subscribe to Enterprise, then
 `enable_quicksight = true` + `quicksight_principal_arn`, apply, `aws/warehouse/quicksight/deploy.sh`.
 
+## 5b. AI layer (C2-5; `enable_ai = true`, on in `demo.tfvars` since 2026-10-13)
+Terraform creates the S3 Vectors index, the Bedrock guardrail, an empty `ai_reader` secret and the app's AI policy, and starts
+the app with `Ai__Mode=bedrock`. Four manual steps after the first apply (and after every teardown + redeploy):
+
+1. **Bedrock model access (once per account and region, if needed).** Console → Amazon Bedrock → *Model access* → request
+   **Amazon Nova Pro** (`amazon.nova-pro-v1:0`) and **Amazon Titan Text Embeddings V2** (`amazon.titan-embed-text-v2:0`) in
+   `us-east-1`. Usually granted at once. If the account only allows Nova Pro through a cross-region inference profile,
+   set `chat_model_id = "us.amazon.nova-pro-v1:0"` on `module "ai"` in `infra/live/main.tf` and add the inference-profile
+   ARN to the policy in `infra/modules/ai`.
+2. **Read-only warehouse user.** After step 5 (the star exists), open `warehouse/sql/redshift/50_ai_reader.sql` in the query
+   editor v2 as admin on `aw_dw`. Replace the placeholder password with a strong one (8-64 characters, upper and lower
+   case and a digit), run it, and do not save the real password in the file. The script gives `ai_reader` SELECT on the three
+   `dw.v_*` views only, with a 15 s statement timeout.
+3. **Set the `ai_reader` secret** to the same password (the Data API reads the user from it):
+   ```bash
+   aws secretsmanager put-secret-value --secret-id "$(terraform -chdir=infra/live output -raw ai_reader_secret_arn)" \
+     --secret-string '{"username":"ai_reader","password":"<the password from step 2>"}'
+   ```
+   Then restart the app so it starts clean: `aws ecs update-service --cluster aw-demo --service after --force-new-deployment`.
+4. **Live eval run.** Open `<after_url>app/back-office/ask` as `ops@adventure-works.com` and ask *Sales by channel*. You should see the
+   generated SQL, "passed the guard", a chart and a table. Open `<after_url>app/shop/search` and search *lightweight bike
+   for climbing*: the first search builds the vector index (about 500 products, under a minute). Then run all 30 questions
+   against the reference queries:
+   ```bash
+   python3 scripts/aws/ai-live-eval.py --url "$(terraform -chdir=infra/live output -raw after_url)" \
+     --workgroup "$(terraform -chdir=infra/live output -raw redshift_workgroup)" --only 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
+   python3 scripts/aws/ai-live-eval.py ... --email sheela0@adventure-works.com --only 20,21,22,23,24,25,26,27,28,29,30
+   ```
+   (Two logins because of the 20-questions-per-session budget.) A real model may phrase SQL differently. The script compares
+   results, not SQL text. Record the score in docs/chapter-2/PLAN.md *C2-5 as built*. Wrong answers are guarded by design:
+   the SQL is always shown.
+
+Checks: CloudWatch app log lines `ai.ask` (question, SQL, rows, tokens, block reason). A question about salaries or customer
+emails must come back "Blocked by the Bedrock guardrail". To turn AI off again, set `enable_ai = false` and apply.
+
 ## 6. Demo + smoke checks
 - `terraform -chdir=infra/live output after_url before_url`
 - Before app (`:8080`): log in as a demo customer, place an order → DMS → Kinesis → Lambda → `aw-sales` within seconds:
@@ -132,7 +167,15 @@ bucket, OIDC roles) stays — cents per month; `terraform -chdir=infra/bootstrap
 | Redshift Serverless | $0.375 per RPU-hour **only while active** | 8 RPU base; each hourly build bills ≥ 60 s × 8 RPU ≈ $0.05 → ≈ $1.2/day; zero-ETL ingestion also uses compute. Monthly cap: `redshift_monthly_rpu_hours_limit` = 200 RPU-h (≈ $75) then queries are deactivated |
 | DynamoDB on-demand + PITR + zero-ETL exports | cents/day | few hundred MB; PITR $0.20/GB-mo; exports $0.10/GB |
 | KMS (2 table CMKs + warehouse key), Secrets Manager, CloudWatch Logs (14-day retention) | ≈ $4/month prorated | |
+| **AI layer (C2-5, `enable_ai`)**: Bedrock Nova Pro | ≈ $0.0008 per 1K input / $0.0032 per 1K output tokens | ≈ 1K tokens per question → ≈ $0.001-0.002; a 30-question eval run ≈ $0.05 |
+| Titan Text Embeddings V2 | ≈ $0.00002 per 1K tokens | indexing ~500 products ≈ 50K tokens → < $0.01; each search a few tokens |
+| Bedrock Guardrails (denied topics + PII filter) | ≈ $0.15 per 1K text units per policy | one text unit ≤ 1,000 characters, so each question ≈ $0.0003-0.0005 |
+| S3 Vectors | storage ≈ $0.06/GB-month + per-request PUT/query fees | ~500 × 512-dim vectors ≈ 1 MB → cents/month |
+| Secrets Manager (`ai_reader`) | $0.40/secret-month, prorated | deleted at teardown (no recovery window) |
 | QuickSight Enterprise (W-4, optional) | ≈ $24/author/month | showcase only; unsubscribing is a manual console step |
+
+AI layer total: well under $1 per demo day. The per-session budget (20 questions / 40K tokens per day) caps spend per visitor,
+and the account Budgets alert covers the rest. Redshift RPU time for ask-the-data queries falls under the Redshift line above.
 
 **Rule of thumb: the `demo` environment costs ≈ $1.2-1.3/hour (~$30/day) plus Redshift usage; a 3-hour demo including
 setup ≈ $5-10. `dev` (no SQL Server/DMS) ≈ $0.1/hour plus Redshift.** Setting `app_desired_count = 0` saves little; the

@@ -313,7 +313,7 @@ design anticipated it"; reorder → PO → receipt chain business people recogni
 | — | `PurchaseOrderEvent` items and a `COUNTER/PO` item in `aw-purchasing` | History timeline and id allocation without a SQL sequence. |
 | — | Razor UI removed | John's decision after C2-2. |
 
-### C2-3 recommendations accepted (2026-10-12, *accepted overnight by Grok Bot under John's delegation, pending John's review*)
+### C2-3 recommendations accepted (2026-10-12, *accepted overnight by Grok Bot under John's delegation, confirmed by John (Oct 13, 2026)*)
 All 8 C2-3 recommendations were accepted: 1. Razor admin CRUD stays removed; 2. the creator may approve their own PO;
 3. tax 8 % / freight 2.5 % on new POs; 4. vendor list is a cached Scan; 5. max 15 lines per PO, suggestions capped at the
 vendor's maximum order quantity; 6. `on_order` baseline taken from SQL; 7. CDC skips app-written rows (`src_lsn` `~app`);
@@ -365,7 +365,7 @@ cache per assembly, parallel queries – measured in the Chapter 1 load test); w
 | Tile from a view | New facts + view, not only a view | Facts make the reconcile tests possible (same as C2-3). |
 | Chart library "in C2-4" | Recharts, lazy-loaded; the dependency-free SVG `Chart` stays for small charts | Smallest change to C2-0 pages. |
 
-#### C2-4 decisions (*accepted overnight by Grok Bot under John's delegation, pending John's review*)
+#### C2-4 decisions (*accepted overnight by Grok Bot under John's delegation, confirmed by John (Oct 13, 2026)*)
 All the defaults in the table above were taken with the recommendation shown in *Why*.
 
 ## C2-5 Optional: Bedrock AI layer
@@ -421,13 +421,13 @@ warehouse migrated in Chapter 1"; vector search finds "lightweight bike for clim
 | — | Search public, ask-the-data staff only | Warehouse figures are internal. |
 | — | Guard refuses `EXTRACT(… FROM …)` and comma joins to non-views | Known limitation of the regex guard; the read-only role is the backstop. |
 
-#### C2-5 decisions (*accepted overnight by Grok Bot under John's delegation, pending John's review*)
+#### C2-5 decisions (*accepted overnight by Grok Bot under John's delegation, confirmed by John (Oct 13, 2026)*)
 Nova Pro default; 512-dimension Titan v2 + cosine; on-demand indexing instead of a stream Lambda; mocked model = eval replay and
 hash embeddings (lexical, labelled as such); search public, ask staff-only; budget 20 questions / 40k tokens per session per day
 (in memory per task); row limit 200, timeout 15 s; semantic layer = the three `dw.v_*` views; guardrail PII action BLOCK; logging via
 app logs; the real-image e2e runs with the AI layer on in mock mode.
 
-**Left for John**: whether and when to apply `enable_ai = true` (Bedrock per-request cost + S3 Vectors storage), setting the
+**Update 2026-10-13**: John turned the AI layer on for the demo (`enable_ai = true` in `infra/envs/demo.tfvars`); the post-deploy steps are in docs/aws-setup.md section 5b. **Originally left for John**: whether and when to apply `enable_ai = true` (Bedrock per-request cost + S3 Vectors storage), setting the
 `ai_reader` password (run `50_ai_reader.sql`, store it in the secret), confirming the model, and the manual live eval run.
 
 ---

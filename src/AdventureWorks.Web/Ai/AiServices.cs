@@ -28,7 +28,7 @@ public sealed class AiOptions
     public string? VectorBucket { get; set; }
     public string VectorIndex { get; set; } = "products";
     public string? RedshiftWorkgroup { get; set; }
-    public string RedshiftDatabase { get; set; } = "dev";
+    public string RedshiftDatabase { get; set; } = "aw_dw";
     public string? RedshiftSecretArn { get; set; }              // read-only ai_reader user
     public string? WarehouseConnection { get; set; }            // local Postgres stand-in (optional)
     public int RowLimit { get; set; } = 200;

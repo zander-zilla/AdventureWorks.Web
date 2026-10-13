@@ -24,3 +24,6 @@ output "showcase_bucket" { value = var.enable_showcase ? module.showcase[0].buck
 output "showcase_distribution_id" { value = var.enable_showcase ? module.showcase[0].distribution_id : null }
 output "showcase_monitor_api" { value = local.monitor_api }
 output "cdc_monitor_table" { value = var.enable_source ? module.cdc[0].monitor_table : null }
+# C2-5 (enable_ai): post-deploy steps in docs/aws-setup.md section 5b.
+output "ai_reader_secret_arn" { value = var.enable_ai ? module.ai[0].ai_reader_secret_arn : null }
+output "ai_guardrail_id" { value = var.enable_ai ? module.ai[0].guardrail_id : null }

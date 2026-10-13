@@ -12,7 +12,7 @@ variable "name" { type = string }
 variable "redshift_workgroup" { type = string }
 variable "redshift_database" {
   type    = string
-  default = "dev"
+  default = "aw_dw"
 }
 variable "chat_model_id" {
   description = "Bedrock model for NL -> SQL (Converse API)."
@@ -154,3 +154,4 @@ output "policy_json" {
 
 output "guardrail_id" { value = aws_bedrock_guardrail.ask.guardrail_id }
 output "vector_bucket" { value = aws_s3vectors_vector_bucket.v.vector_bucket_name }
+output "ai_reader_secret_arn" { value = aws_secretsmanager_secret.ai_reader.arn }

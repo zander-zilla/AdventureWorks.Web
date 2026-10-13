@@ -43,6 +43,7 @@ export type AiStatus = S['AiStatus']
 export type AskResult = S['AskResult']
 export type SearchResult = S['SearchResult']
 export type SearchHit = S['SearchHit']
+export type AssistResult = S['AssistResult']
 export type Problem = { title: string; status: number; detail?: string }
 
 export class ApiError extends Error {
@@ -84,10 +85,11 @@ export const api = {
   queue: (status: number, territoryId?: number) => ok(http.GET('/api/v2/back-office/orders', { params: { query: { status, territoryId } } })),
   queueCounts: () => ok(http.GET('/api/v2/back-office/orders/counts')),
   boOrder: (id: number) => ok(http.GET('/api/v2/back-office/orders/{id}', { params: { path: { id } } })),
-  transition: (id: number, op: 'approve' | 'reject' | 'backorder' | 'ship' | 'cancel', version: number, ship?: { shipMethodId: number; trackingNumber: string }) =>
+  triageAssist: (id: number, kind: 'explain' | 'approve-note' | 'backorder-note') => ok(http.POST('/api/v2/back-office/orders/{id}/assist/{kind}', { params: { path: { id, kind } } })),
+  transition: (id: number, op: 'approve' | 'reject' | 'backorder' | 'ship' | 'cancel', version: number, ship?: { shipMethodId: number; trackingNumber: string }, note?: string) =>
     ok(http.POST('/api/v2/back-office/orders/{id}/{op}', {
       params: { path: { id, op } }, headers: idem(),
-      body: { version, shipMethodId: ship?.shipMethodId ?? null, trackingNumber: ship?.trackingNumber ?? null },
+      body: { version, shipMethodId: ship?.shipMethodId ?? null, trackingNumber: ship?.trackingNumber ?? null, note: note || null },
     })),
   bulkApprove: (orders: { id: number; version: number }[]) => ok(http.POST('/api/v2/back-office/orders/bulk-approve', { body: { orders } })),
   changes: (limit = 50) => ok(http.GET('/api/v2/back-office/changes', { params: { query: { limit } } })),

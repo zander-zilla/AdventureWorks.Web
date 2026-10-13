@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { api, ApiError, money, type BackOfficeOrder, type Order } from '../../api/client'
 import { useLoad } from '../../api/useLoad'
+import { AssistBox, plain } from '../ai/AssistPanel'
+import type { AssistResult } from '../../api/client'
 import { Button, DataTable, Drawer, EmptyState, KpiCard, PageHeader, SelectField, TextField, useToast, type Column } from '../../components'
 import { OrderBody, statusPill } from '../shop/MyOrders'
 
@@ -61,16 +63,24 @@ function OrderDrawer({ id, onClose, onChanged }: { id: number; onClose: () => vo
   const [method, setMethod] = useState('5')
   const [tracking, setTracking] = useState('')
   const [busy, setBusy] = useState(false)
+  const ai = useLoad(() => api.aiStatus(), [])
+  const [assist, setAssist] = useState<AssistResult | null>(null)
+  const [note, setNote] = useState('')
   const toast = useToast()
+  const ask = async (kind: 'explain' | 'approve-note' | 'backorder-note') => {
+    setBusy(true)
+    try { const r = await api.triageAssist(id, kind); setAssist(r); if (kind !== 'explain' && r.text) setNote(plain(r.text)) }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Copilot failed', 'error') } finally { setBusy(false) }
+  }
   const run = async (op: Op) => {
     if (!d.data) return
     if (op === 'ship' && !shipping) { setShipping(true); return }
     setBusy(true)
     try {
-      const r = await api.transition(id, op, d.data.order.version, op === 'ship' ? { shipMethodId: Number(method), trackingNumber: tracking } : undefined)
+      const r = await api.transition(id, op, d.data.order.version, op === 'ship' ? { shipMethodId: Number(method), trackingNumber: tracking } : undefined, op === 'ship' ? undefined : note.trim())
       toast(r.outcome === 'shipped' ? `${r.order.number} shipped` : r.outcome === 'backordered' ? `${r.order.number} backordered: ${r.shortages.join('; ')}` : `${r.order.number}: ${r.outcome}`,
         r.outcome === 'shipped' || r.outcome === op ? 'ok' : 'error')
-      setShipping(false); await d.reload(); onChanged()
+      setShipping(false); setNote(''); setAssist(null); await d.reload(); onChanged()
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Action failed', 'error') } finally { setBusy(false) }
   }
   const b: BackOfficeOrder | undefined = d.data
@@ -87,6 +97,18 @@ function OrderDrawer({ id, onClose, onChanged }: { id: number; onClose: () => vo
               <SelectField label="Ship method" value={method} onChange={e => setMethod(e.target.value)} options={(methods.data ?? []).map(m => ({ value: String(m.id), label: m.name }))} />
               <TextField label="Tracking number" value={tracking} maxLength={25} onChange={e => setTracking(e.target.value)} placeholder="e.g. 1Z999AA10123456784" />
             </div>)}
+          {ai.data?.enabled && b.actions.length > 0 && (
+            <AssistBox title="Triage copilot" r={assist}>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => ask('explain')} data-testid="triage-explain">Explain</Button>
+                {b.actions.includes('approve') && <Button size="sm" variant="secondary" disabled={busy} onClick={() => ask('approve-note')} data-testid="triage-approve-note">Draft approve note</Button>}
+                {b.actions.includes('backorder') && <Button size="sm" variant="secondary" disabled={busy} onClick={() => ask('backorder-note')} data-testid="triage-backorder-note">Draft backorder note</Button>}
+              </div>
+            </AssistBox>)}
+          {b.actions.length > 0 && b.actions.some(a => a !== 'ship') && (
+            <label className="flex flex-col gap-1 text-xs text-mute">Note for the order history (optional, goes with approve / backorder / reject / cancel)
+              <textarea className="rounded-aw border border-line bg-bg p-2 text-sm text-ink" rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} data-testid="order-note" />
+            </label>)}
           <div>
             <div className="mb-1 text-xs text-mute uppercase">Stock (INV-01)</div>
             <ul className="flex flex-col gap-1" data-testid="stock">

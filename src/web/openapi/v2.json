@@ -814,6 +814,65 @@
         }
       }
     },
+    "/api/v2/back-office/orders/{id}/assist/{kind}": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "triageAssist",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/back-office/orders/bulk-approve": {
       "post": {
         "tags": [
@@ -2292,6 +2351,77 @@
             "format": "int32"
           },
           "name": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistResult": {
+        "required": [
+          "feature",
+          "kind",
+          "text",
+          "cites",
+          "facts",
+          "blocked",
+          "error",
+          "inputTokens",
+          "outputTokens",
+          "questionsLeft",
+          "tokensLeft",
+          "mode"
+        ],
+        "type": "object",
+        "properties": {
+          "feature": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "facts": {
+            "type": "object"
+          },
+          "blocked": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "inputTokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outputTokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "questionsLeft": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tokensLeft": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "mode": {
             "type": "string"
           }
         }
@@ -4595,6 +4725,12 @@
             "format": "int32"
           },
           "trackingNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "note": {
             "type": [
               "null",
               "string"

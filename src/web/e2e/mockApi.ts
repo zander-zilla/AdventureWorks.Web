@@ -65,7 +65,7 @@ export async function mockApi(page: Page) {
       return json(r, me)
     }
     if (p === '/auth/logout') { me = { authenticated: false, name: null, email: null, customerId: null, roles: [] }; return r.fulfill({ status: 204 }) }
-    const aiRes = p.startsWith('/ai/') ? ai(p, m, url, body) : null
+    const aiRes = p.startsWith('/ai/') || p.includes('/assist') ? ai(p, m, url, body) : null
     if (aiRes) return json(r, aiRes.json, aiRes.status ?? 200)
     if (p === '/categories') return json(r, cats)
     const sub = p.match(/^\/subcategories\/(\d+)\/products$/); if (sub) return json(r, Number(sub[1]) === 2 ? [bike] : [{ ...helmet, listPrice: price.listPrice }])

@@ -23,3 +23,11 @@ ALTER TABLE dw.dim_employee ALTER DISTSTYLE ALL;
 ALTER TABLE dw.fact_purchase_order_line ALTER DISTSTYLE KEY DISTKEY product_key;
 ALTER TABLE dw.fact_purchase_order_line ALTER COMPOUND SORTKEY (order_date_key, vendor_key);
 ALTER TABLE dw.dim_vendor ALTER DISTSTYLE ALL;
+-- C2-4 production: work orders (72,591) and routing steps (67,131) by product, sorted by due / scheduled date; small dims replicated.
+ALTER TABLE dw.fact_work_order ALTER DISTSTYLE KEY DISTKEY product_key;
+ALTER TABLE dw.fact_work_order ALTER COMPOUND SORTKEY (due_date_key, product_key);
+ALTER TABLE dw.fact_work_order_routing ALTER DISTSTYLE KEY DISTKEY product_key;
+ALTER TABLE dw.fact_work_order_routing ALTER COMPOUND SORTKEY (scheduled_start_date_key, location_key);
+ALTER TABLE dw.dim_scrap_reason ALTER DISTSTYLE ALL;
+ALTER TABLE dw.dim_location ALTER DISTSTYLE ALL;
+

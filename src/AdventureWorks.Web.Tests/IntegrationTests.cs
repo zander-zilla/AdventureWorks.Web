@@ -217,4 +217,70 @@ public class IntegrationTests
         var perf = await p.PerformanceAsync(s.Vendor.VendorId, await p.ForVendorAsync(s.Vendor.VendorId));
         Assert.True(perf.Orders >= 1 && perf.Received >= qty);
     }
+
+    /// <summary>C2-4 end to end on DynamoDB Local: INV-06 by due month, INV-04 explosion, INV-05 where-used, KPIs, then plan ->
+    /// create -> record an operation -> complete with scrap; product stock in, components out (TXN W), REORDER, feed.</summary>
+    [Fact] public async Task Production_bom_work_order_create_operate_complete()
+    {
+        if (!On) return;
+        var t = Tables();
+        var pricing = new PricingRepository(t, new PricingOptions(), TimeProvider.System);
+        var f = new FulfilmentRepository(t, TimeProvider.System, pricing);
+        var p = new ProductionRepository(t, TimeProvider.System, f);
+
+        var may = await p.ForMonthAsync("2014-05");
+        Assert.True(may.Total > 1000);                                             // SQL-era work orders due in May 2014 (GSI2 WODUE#2014-05)
+        Assert.All(may.Items, w => Assert.NotEqual("Open", w.State));              // all historical work orders are closed
+        Assert.Contains(may.Items, w => w.ScrapReason is not null);
+        var one = may.Items.First();
+        var detail = (await p.GetAsync(one.Id))!;
+        Assert.True(detail.ReadOnly); Assert.Empty(detail.Actions);
+        var reasons = await p.ScrapReasonsAsync();
+        Assert.Equal(16, reasons.Count);
+        var k = await p.KpisAsync("2014-01", "2014-06");
+        Assert.True(k.WorkOrders > 5000 && k.ScrapRate > 0 && k.ScrapRate < 0.05m && k.OnTimeRate > 0.3m && k.OnTimeRate <= 1);
+
+        var assemblies = await p.AssembliesAsync();
+        Assert.True(assemblies.Count > 50);
+        var bike = assemblies.First(a => a.Name.StartsWith("Road-150", StringComparison.Ordinal));
+        var tree = await p.ExplodeAsync(bike.ProductId, DateTime.UtcNow);
+        Assert.True(tree.Root.Children.Count >= 5 && tree.Nodes > tree.Root.Children.Count);   // multi-level
+        var leaf = ProductionRepository.Flatten(tree.Root).Last(n => n.Level >= 2);
+        var used = await p.WhereUsedAsync(leaf.ProductId, DateTime.UtcNow);
+        Assert.NotEmpty(used.Root.Children);
+
+        ProductionPlan? plan = null;
+        foreach (var a in assemblies.Take(80))
+        {
+            var pl = await p.PlanAsync(a.ProductId, 2);
+            if (pl.Feasible && pl.Components.Count > 0) { plan = pl; break; }
+        }
+        Assert.NotNull(plan);
+        var w = await p.CreateAsync(new CreateWorkOrderRequest(plan!.ProductId, 2, null), "production@adventure-works.com");
+        Assert.True(w.Order.Id >= ProductionRepository.NativeWoIdStart); Assert.Equal("Open", w.Order.State); Assert.False(w.ReadOnly);
+        Assert.Equal(plan.Routing.Count, w.Routing.Count);
+        Assert.Contains(await p.OpenAsync(), x => x.Id == w.Order.Id);
+        var op = await p.RecordOperationAsync(w.Order.Id, new OperationRequest(w.Version, 3.5m), "production@adventure-works.com");
+        Assert.True(op.Order.Routing[0].Done); Assert.Equal(3.5m, op.Order.Routing[0].ActualResourceHrs);
+        await Assert.ThrowsAsync<ConflictException>(() => p.RecordOperationAsync(w.Order.Id, new OperationRequest(w.Version, 1), "x"));   // stale version
+
+        var before = await f.GetStockAsync(plan.ProductId);
+        var compBefore = new Dictionary<int, decimal>();
+        foreach (var c in plan.Components) compBefore[c.ProductId] = (await f.GetStockAsync(c.ProductId)).Total;
+        var reason = reasons.Keys.Min();
+        var done = await p.CompleteAsync(w.Order.Id, new CompleteWorkOrderRequest(op.Order.Version, 1, reason, null), "production@adventure-works.com");
+        Assert.NotEqual("Open", done.Order.Order.State);
+        Assert.Equal(1, done.Order.Order.StockedQty); Assert.Equal(1, done.Order.Order.ScrappedQty); Assert.Equal(reasons[reason], done.Order.Order.ScrapReason);
+        Assert.All(done.Order.Routing, r => Assert.True(r.Done));
+        Assert.Equal(before.Total + 1, (await f.GetStockAsync(plan.ProductId)).Total);
+        foreach (var c in plan.Components) Assert.Equal(compBefore[c.ProductId] - c.Required, (await f.GetStockAsync(c.ProductId)).Total);
+        var inv = t.For(DynamoTables.Inventory);
+        var txns = await inv.QueryAll(new Amazon.DynamoDBv2.Model.QueryRequest { TableName = "aw-inventory", KeyConditionExpression = "PK = :pk AND begins_with(SK, :t)",
+            FilterExpression = "reference_order_id = :wo", ExpressionAttributeValues = new() { [":pk"] = Av.S(Keys.InvProduct(plan.ProductId)), [":t"] = Av.S("TXN#"), [":wo"] = Av.N(w.Order.Id) } });
+        Assert.Equal("W", Assert.Single(txns).Str("transaction_type"));
+        var feed = await f.FeedAsync(100);
+        Assert.Contains(feed, e => e.Event == "wo.complete" && e.Subject == w.Order.Number && e.Writes.Any(x => x.Contains("type W")));
+        Assert.Contains(feed, e => e.Event == "wo.create" && e.Subject == w.Order.Number);
+        await Assert.ThrowsAsync<ConflictException>(() => p.CompleteAsync(w.Order.Id, new CompleteWorkOrderRequest(done.Order.Version, 0, null, null), "x"));   // closed
+    }
 }

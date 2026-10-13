@@ -20,6 +20,7 @@ builder.Services.AddSingleton(sp => new SalesRepository(sp.GetRequiredService<Dy
     sp.GetRequiredService<PricingRepository>(), sp.GetRequiredService<CatalogRepository>()));
 builder.Services.AddSingleton<FulfilmentRepository>();
 builder.Services.AddSingleton<ProcurementRepository>();
+builder.Services.AddSingleton<ProductionRepository>();
 builder.Services.AddSingleton(builder.Configuration.GetSection("Demo").Get<DemoOptions>() ?? new DemoOptions());
 
 // C2-3 (John's C2-2 decision 3): the Razor UI (shop, account, admin) is gone; Chapter 1 keeps it in tag v1.0-migration
@@ -35,6 +36,7 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(V2.CatalogAdminPolicy, p => p.RequireRole(V2.CatalogAdminRole))
     .AddPolicy(V2.ProcurementPolicy, p => p.RequireRole(V2.BuyerRole, V2.PurchasingManagerRole))
     .AddPolicy(V2.PurchasingManagerPolicy, p => p.RequireRole(V2.PurchasingManagerRole))
+    .AddPolicy(V2.ProductionPolicy, p => p.RequireRole(V2.ProductionRole))
     .AddPolicy(V2.StaffPolicy, p => p.RequireRole(V2.StaffRoles));
 builder.Services.AddProblemDetails();
 // C2-2: numbers are plain JSON numbers (no "number | string" in the OpenAPI schema), so the generated SPA client gets number types.
@@ -109,6 +111,8 @@ public sealed class DemoOptions
         // "my POs" (PUR-06, GSI2 EMPLOYEE#) also shows their SQL-era purchase orders. Same demo password; no new auth system.
         new() { Email = "mikael0@adventure-works.com", Name = "Mikael Sandberg", EmployeeId = 251, Roles = [V2.BuyerRole] },
         new() { Email = "sheela0@adventure-works.com", Name = "Sheela Word", EmployeeId = 250, Roles = [V2.BuyerRole, V2.PurchasingManagerRole] },
+        // C2-4: a production supervisor (synthetic, like fulfilment@): work orders are not tied to an employee in AdventureWorks.
+        new() { Email = "production@adventure-works.com", Name = "Production supervisor (demo)", Roles = [V2.ProductionRole] },
     ];
 }
 

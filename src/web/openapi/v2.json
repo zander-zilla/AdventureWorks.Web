@@ -1420,10 +1420,560 @@
           }
         }
       }
+    },
+    "/api/v2/back-office/production/work-orders": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "listWorkOrders",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "openOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "productId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "createWorkOrder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/production/work-orders/open": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "listOpenWorkOrders",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkOrderSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/production/work-orders/{id}": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "getWorkOrder",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/production/work-orders/{id}/operations": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "recordOperation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/production/work-orders/{id}/complete": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "completeWorkOrder",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteWorkOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/production/plan/{productId}": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "planWorkOrder",
+        "parameters": [
+          {
+            "name": "productId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "qty",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "due",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/production/assemblies": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "listAssemblies",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssemblyInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/production/bom/{productId}": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "explodeBom",
+        "parameters": [
+          {
+            "name": "productId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BomTree"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/production/where-used/{productId}": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "whereUsed",
+        "parameters": [
+          {
+            "name": "productId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BomTree"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/production/kpis": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "productionKpis",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionKpis"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/production/scrap-reasons": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "listScrapReasons",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScrapReasonInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AssemblyInfo": {
+        "required": [
+          "productId",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "BackOfficeOrder": {
         "required": [
           "order",
@@ -1450,6 +2000,91 @@
             "items": {
               "$ref": "#/components/schemas/LineStock"
             }
+          }
+        }
+      },
+      "BomNode": {
+        "required": [
+          "productId",
+          "name",
+          "perAssemblyQty",
+          "unitMeasureCode",
+          "level",
+          "startDate",
+          "endDate",
+          "children"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "perAssemblyQty": {
+            "type": "number",
+            "format": "double"
+          },
+          "unitMeasureCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "startDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "endDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BomNode"
+            }
+          }
+        }
+      },
+      "BomTree": {
+        "required": [
+          "root",
+          "asOf",
+          "queries",
+          "nodes",
+          "depthCapped"
+        ],
+        "type": "object",
+        "properties": {
+          "root": {
+            "$ref": "#/components/schemas/BomNode"
+          },
+          "asOf": {
+            "type": "string"
+          },
+          "queries": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nodes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "depthCapped": {
+            "type": "boolean"
           }
         }
       },
@@ -1598,6 +2233,39 @@
           }
         }
       },
+      "CompleteWorkOrderRequest": {
+        "required": [
+          "version",
+          "scrappedQty",
+          "scrapReasonId",
+          "locationId"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scrappedQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "scrapReasonId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "locationId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "CreatePoRequest": {
         "required": [
           "vendorId",
@@ -1622,6 +2290,31 @@
             "items": {
               "$ref": "#/components/schemas/PoLineRequest"
             }
+          }
+        }
+      },
+      "CreateWorkOrderRequest": {
+        "required": [
+          "productId",
+          "orderQty",
+          "dueDate"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orderQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "dueDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -1744,6 +2437,52 @@
           }
         }
       },
+      "MonthKpi": {
+        "required": [
+          "month",
+          "workOrders",
+          "closed",
+          "onTime",
+          "orderQty",
+          "scrappedQty",
+          "scrapRate",
+          "onTimeRate"
+        ],
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "workOrders": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "closed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "onTime": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orderQty": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scrappedQty": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scrapRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "onTimeRate": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "OfferInfo": {
         "required": [
           "id",
@@ -1793,6 +2532,23 @@
               "integer"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "OperationRequest": {
+        "required": [
+          "version",
+          "resourceHrs"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "resourceHrs": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -2027,6 +2783,49 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "PlanComponent": {
+        "required": [
+          "productId",
+          "name",
+          "perAssemblyQty",
+          "required",
+          "onHand",
+          "locationId",
+          "available"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "perAssemblyQty": {
+            "type": "number",
+            "format": "double"
+          },
+          "required": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "onHand": {
+            "type": "number",
+            "format": "double"
+          },
+          "locationId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "available": {
+            "type": "boolean"
           }
         }
       },
@@ -2499,6 +3298,121 @@
           }
         }
       },
+      "ProductionKpis": {
+        "required": [
+          "from",
+          "to",
+          "months",
+          "scrapReasons",
+          "workOrders",
+          "orderQty",
+          "scrappedQty",
+          "scrapRate",
+          "onTimeRate",
+          "open"
+        ],
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "months": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonthKpi"
+            }
+          },
+          "scrapReasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReasonCount"
+            }
+          },
+          "workOrders": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orderQty": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scrappedQty": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scrapRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "onTimeRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "open": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ProductionPlan": {
+        "required": [
+          "productId",
+          "name",
+          "orderQty",
+          "startDate",
+          "dueDate",
+          "routing",
+          "components",
+          "feasible",
+          "problems"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "orderQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "routing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingStep"
+            }
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanComponent"
+            }
+          },
+          "feasible": {
+            "type": "boolean"
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "ProductPage": {
         "required": [
           "items",
@@ -2816,6 +3730,27 @@
           }
         }
       },
+      "ReasonCount": {
+        "required": [
+          "reason",
+          "workOrders",
+          "scrappedQty"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "workOrders": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "scrappedQty": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ReceiveLineRequest": {
         "required": [
           "detailId",
@@ -2992,6 +3927,107 @@
             "format": "int32"
           },
           "comments": {
+            "type": "string"
+          }
+        }
+      },
+      "RoutingStep": {
+        "required": [
+          "operationSequence",
+          "locationId",
+          "locationName",
+          "scheduledStartDate",
+          "scheduledEndDate",
+          "actualStartDate",
+          "actualEndDate",
+          "actualResourceHrs",
+          "plannedCost",
+          "actualCost",
+          "late",
+          "done"
+        ],
+        "type": "object",
+        "properties": {
+          "operationSequence": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "locationId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "scheduledStartDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "scheduledEndDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "actualStartDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "actualEndDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "actualResourceHrs": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "plannedCost": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "actualCost": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "late": {
+            "type": "boolean"
+          },
+          "done": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ScrapReasonInfo": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
             "type": "string"
           }
         }
@@ -3490,6 +4526,192 @@
           },
           "active": {
             "type": "boolean"
+          }
+        }
+      },
+      "WorkOrderDetail": {
+        "required": [
+          "order",
+          "version",
+          "readOnly",
+          "actions",
+          "routing",
+          "events"
+        ],
+        "type": "object",
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/WorkOrderSummary"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "readOnly": {
+            "type": "boolean"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "routing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingStep"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkOrderEvent"
+            }
+          }
+        }
+      },
+      "WorkOrderEvent": {
+        "required": [
+          "at",
+          "action",
+          "actor",
+          "note"
+        ],
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "WorkOrderList": {
+        "required": [
+          "month",
+          "items",
+          "total",
+          "truncated"
+        ],
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkOrderSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WorkOrderResult": {
+        "required": [
+          "order",
+          "outcome"
+        ],
+        "type": "object",
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/WorkOrderDetail"
+          },
+          "outcome": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkOrderSummary": {
+        "required": [
+          "id",
+          "number",
+          "productId",
+          "productName",
+          "orderQty",
+          "stockedQty",
+          "scrappedQty",
+          "startDate",
+          "endDate",
+          "dueDate",
+          "state",
+          "scrapReason",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "number": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "productName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "orderQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "stockedQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "scrappedQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string"
+          },
+          "scrapReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "type": "string"
           }
         }
       }

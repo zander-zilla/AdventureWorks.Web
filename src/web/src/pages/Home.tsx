@@ -18,8 +18,9 @@ export function Overview() {
             { title: 'C2-0 Design system', when: 'done', detail: 'React + Tailwind, /api/v2, /app/', tone: 'ok' },
             { title: 'C2-1 Showcase + chapter switch', when: 'done', tone: 'ok' },
             { title: 'C2-2 Order fulfilment, pricing, reviews, new UI at /', when: 'done', tone: 'ok' },
-            { title: 'C2-3 Procurement workspace, Razor UI retired', when: 'now', tone: 'info' },
-            { title: 'C2-4 Production · C2-5 AI (off by default)', when: 'later', tone: 'neutral' },
+            { title: 'C2-3 Procurement workspace, Razor UI retired', when: 'done', tone: 'ok' },
+            { title: 'C2-4 Production floor: work orders, routing Gantt, BOM explorer, scrap & on-time', when: 'now', tone: 'info' },
+            { title: 'C2-5 AI layer (off by default)', when: 'later', tone: 'neutral' },
           ]} />
         </div>
       </div>

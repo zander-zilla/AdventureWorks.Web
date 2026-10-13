@@ -24,6 +24,7 @@ export function ShopHome() {
           {me?.authenticated && !isStaff(me) && <Link to="/shop/cart"><Button variant="secondary">Your cart</Button></Link>}
           {hasRole(me, 'Fulfilment') && <Link to="/back-office/orders"><Button variant="secondary">Back office · orders</Button></Link>}
           {(hasRole(me, 'Buyer') || hasRole(me, 'PurchasingManager')) && <Link to="/back-office/procurement"><Button variant="secondary">Back office · procurement</Button></Link>}
+          {hasRole(me, 'ProductionSupervisor') && <Link to="/back-office/production"><Button variant="secondary">Back office · production</Button></Link>}
           {!me?.authenticated && <Link to="/login"><Button variant="secondary">Sign in</Button></Link>}
         </div>
       </section>

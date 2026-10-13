@@ -1,5 +1,6 @@
 import type { Page, Route } from '@playwright/test'
 import { procurementMock } from './mockProcurement'
+import { productionMock } from './mockProduction'
 
 // Stateful in-memory stand-in for /api/v2 (C2-2 shop + back office), used when no real backend is configured.
 // Shapes follow the generated OpenAPI types; the real flow runs the same spec against the app image (after.yml).
@@ -41,6 +42,7 @@ export async function mockApi(page: Page) {
       taxAmt: tax, shipMethod: m, weightLb: weight, freight, totalDue: +(sub + tax + freight).toFixed(4), offerDate: '2014-05-01' }
   }
   const procurement = procurementMock()
+  const production = productionMock()
   const push = (event: string, subject: string, writes: string[]) => feed.unshift({ id: `${now()}#${feed.length}`, at: now(), event, subject, actor: String(me.email), writes })
 
   await page.route('**/api/v2/**', async r => {
@@ -55,6 +57,7 @@ export async function mockApi(page: Page) {
       me = e.startsWith('ops@') ? { authenticated: true, name: 'Ops manager (demo)', email: b.email, customerId: null, roles: ['Fulfilment', 'CatalogAdmin'] }
         : e.startsWith('fulfilment@') ? { authenticated: true, name: 'Fulfilment clerk (demo)', email: b.email, customerId: null, roles: ['Fulfilment'] }
         : e.startsWith('mikael0@') ? { authenticated: true, name: 'Mikael Sandberg', email: b.email, customerId: null, roles: ['Buyer'] }
+        : e.startsWith('production@') ? { authenticated: true, name: 'Production supervisor (demo)', email: b.email, customerId: null, roles: ['ProductionSupervisor'] }
         : e.startsWith('sheela0@') ? { authenticated: true, name: 'Sheela Word', email: b.email, customerId: null, roles: ['Buyer', 'PurchasingManager'] }
         : { authenticated: true, name: 'Walter Brian', email: b.email, customerId: 29568, roles: ['Customer'] }
       return json(r, me)
@@ -97,6 +100,7 @@ export async function mockApi(page: Page) {
     if (p.startsWith('/back-office')) {
       if (!me.authenticated) return problem(r, 401, 'Sign in required')
       if (p.startsWith('/back-office/procurement')) return procurement(r, p, m, body, me, push)
+      if (p.startsWith('/back-office/production')) return production(r, p, m, body, me, push)
       if (p === '/back-office/changes') return (me.roles as string[]).some(x => x !== 'Customer') ? json(r, feed) : problem(r, 403, 'Forbidden')
       if (!staff) return problem(r, 403, 'Forbidden')
       if (p === '/back-office/orders') { const s = Number(url.searchParams.get('status') ?? 1); return json(r, { items: orders.filter(o => o.status === s), next: null }) }

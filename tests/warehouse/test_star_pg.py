@@ -198,3 +198,77 @@ def test_c2_3_app_purchase_order_reaches_the_star(conn):
     cur.execute("SELECT units_in FROM dw.fact_product_inventory f JOIN dw.dim_product p ON p.product_key = f.product_key WHERE p.product_id = %s AND f.date_key = 20261012", (pid,))
     assert cur.fetchone()[0] == 9
     cur.execute("SELECT COUNT(*) FROM dw.fact_purchase_order_line WHERE source = 'sql'"); assert cur.fetchone()[0] == 8845   # SQL-era lines untouched
+
+def test_c2_4_production_star_reconciles_with_oltp(conn):
+    """FactWorkOrder / FactWorkOrderRouting / DimScrapReason rebuilt from aw-inventory match Production.WorkOrder(Routing) in
+    AdventureWorks2022 (counts, quantity sums, states, scrap reasons, routing steps by sequence and location, late steps, cost)."""
+    m = json.load(open(EVIDENCE))["metrics"]
+    ordered, stocked, scrapped = (int(x) for x in m["wo.qty"]["ordered/stocked/scrapped"].split("/"))
+    cur = conn.cursor()
+    cur.execute("""SELECT COUNT(*), SUM(order_quantity), SUM(stocked_quantity), SUM(scrapped_quantity), SUM(on_time_flag), SUM(1 - on_time_flag),
+                          SUM(CASE WHEN scrapped_quantity > 0 THEN 1 ELSE 0 END), SUM(CASE WHEN product_key IS NULL THEN 1 ELSE 0 END), SUM(1 - closed_flag)
+                   FROM dw.fact_work_order WHERE source = 'sql'""")
+    n, o, st, sc, on_time, late, with_scrap, no_product, still_open = cur.fetchone()
+    assert n == m["wo.state"]["closed_on_time"] + m["wo.state"]["closed_late"] == 72591
+    assert (o, st, sc) == (ordered, stocked, scrapped)
+    assert (on_time, late) == (m["wo.state"]["closed_on_time"], m["wo.state"]["closed_late"])
+    assert with_scrap == m["wo.with_scrap"]["all"] and no_product == 0 and still_open == 0
+    cur.execute("""SELECT r.scrap_reason_name, COUNT(*) FROM dw.fact_work_order f JOIN dw.dim_scrap_reason r ON r.scrap_reason_key = f.scrap_reason_key
+                   WHERE f.source = 'sql' GROUP BY r.scrap_reason_name""")
+    assert dict(cur.fetchall()) == m["wo.scrap_reason"]
+    cur.execute("SELECT COUNT(*) FROM dw.dim_scrap_reason"); assert cur.fetchone()[0] == 16
+    cur.execute("""SELECT COUNT(DISTINCT p.product_id) FROM dw.fact_work_order f JOIN dw.dim_product p ON p.product_key = f.product_key WHERE f.source = 'sql'""")
+    assert cur.fetchone()[0] == m["wo.products"]["distinct"]
+    # routing: steps by "sequence:location", late steps, planned / actual cost
+    cur.execute("""SELECT CAST(r.operation_sequence AS varchar(4)) || ':' || l.location_name, COUNT(*) FROM dw.fact_work_order_routing r
+                   JOIN dw.dim_location l ON l.location_key = r.location_key WHERE r.source = 'sql' GROUP BY 1""")
+    assert dict(cur.fetchall()) == m["wor.location"]
+    cur.execute("""SELECT COUNT(DISTINCT work_order_id), SUM(late_flag), SUM(planned_cost), SUM(actual_cost), SUM(CASE WHEN product_key IS NULL THEN 1 ELSE 0 END)
+                   FROM dw.fact_work_order_routing WHERE source = 'sql'""")
+    wos, late_ops, planned, actual, orphan = cur.fetchone()
+    assert wos == m["wo.with_routing"]["all"] and late_ops == m["wor.late_ops"]["ActualEndDate>ScheduledEndDate"] and orphan == 0
+    p_ev, a_ev = (int(x) for x in m["wor.cost"]["planned/actual"].split("/"))
+    assert abs(planned - p_ev) < 1 and abs(actual - a_ev) < 1          # SQL Server CAST(SUM AS bigint) truncates
+    # the view aggregates the fact exactly (same definitions as the app's production floor)
+    cur.execute("SELECT SUM(work_orders), SUM(scrapped_quantity), SUM(on_time), SUM(closed) FROM dw.v_production_scrap_on_time")
+    assert cur.fetchone() == (72591, scrapped, m["wo.state"]["closed_on_time"], 72591)
+    cur.execute("SELECT COUNT(*) FROM dw.v_production_scrap_on_time WHERE scrap_rate < 0 OR scrap_rate > 1 OR on_time_rate < 0 OR on_time_rate > 1")
+    assert cur.fetchone()[0] == 0
+
+def test_c2_4_app_work_order_reaches_the_star(conn):
+    """A work order written by the app (ProductionRepository.CreatePlan + CompletePlan item shapes) lands via zero-ETL: a fact row
+    with WO-DDB number, late flag and days late, its routing steps, the view counts it as an app work order, and the completion's
+    TransactionHistory W moves (+product, -component) reach FactProductInventory."""
+    cur = conn.cursor()
+    app = {"src": "ddb", "src_lsn": "~app"}
+    cur.execute("""SELECT (value->'product_assembly_id'->>'N')::int, (value->'component_id'->>'N')::int FROM landing."aw-inventory"
+                   WHERE "PK" LIKE 'ASSEMBLY#0%%' AND value->>'type' LIKE '%%BomEdge%%' ORDER BY "PK", "SK" LIMIT 1""")
+    pid, comp = cur.fetchone()
+    wo = 100000
+    cur.execute("""INSERT INTO landing."aw-inventory" ("PK", "SK", value) VALUES ('WO#100000', 'WO', %s::jsonb)""",
+                (_j(dict(app, type="WorkOrder", work_order_id=wo, product_id=pid, product_name="p", order_qty=2, stocked_qty=1, scrapped_qty=1, scrap_reason_id=1,
+                         start_date="2026-10-13T00:00:00", end_date="2026-10-20T18:00:00", due_date="2026-10-18T00:00:00", modified_date="2026-10-20T18:00:00")),))
+    for seq, loc, end in ((1, 50, "2026-10-14T10:00:00"), (2, 60, "2026-10-20T18:00:00")):
+        cur.execute("""INSERT INTO landing."aw-inventory" ("PK", "SK", value) VALUES ('WO#100000', %s, %s::jsonb)""",
+                    ("ROUTING#%03d#%03d" % (seq, loc), _j(dict(app, type="WorkOrderRouting", work_order_id=wo, product_id=pid, operation_sequence=seq, location_id=loc,
+                     scheduled_start_date="2026-10-1%dT00:00:00" % (3 + seq), scheduled_end_date="2026-10-1%dT00:00:00" % (4 + seq), actual_start_date="2026-10-13T00:00:00",
+                     actual_end_date=end, actual_resource_hrs=4, planned_cost=49.0, actual_cost=49.0, modified_date=end))))
+    for tid, p, q in ((10000060, pid, 1), (10000061, comp, -2)):
+        cur.execute("""INSERT INTO landing."aw-inventory" ("PK", "SK", value) VALUES (%s, %s, %s::jsonb)""",
+                    ("PRODUCT#%06d" % p, "TXN#2026-10-20T18:00:00#%d" % tid, _j(dict(app, type="InventoryTransaction", transaction_id=tid, product_id=p, reference_order_id=wo,
+                     reference_order_line_id=0, transaction_date="2026-10-20T18:00:00", transaction_type="W", quantity=q, actual_cost=0, modified_date="2026-10-20T18:00:00", archived=False))))
+    for v in ("work_order", "work_order_routing", "inventory_transaction"):
+        cur.execute("REFRESH MATERIALIZED VIEW stg.%s" % v)
+    cur.execute("CALL dw.sp_build_star()")
+    cur.execute("""SELECT work_order_number, closed_flag, on_time_flag, days_late, source, scrapped_quantity, due_date_key, product_key IS NOT NULL, scrap_reason_key
+                   FROM dw.fact_work_order WHERE work_order_id = 100000""")
+    assert cur.fetchone() == ("WO-DDB-100000", 1, 0, 2, "ddb", 1, 20261018, True, 1)
+    cur.execute("SELECT operation_sequence, late_flag FROM dw.fact_work_order_routing WHERE work_order_id = 100000 ORDER BY 1")
+    assert cur.fetchall() == [(1, 0), (2, 1)]
+    cur.execute("SELECT MAX(full_date) FROM dw.dim_date"); assert str(cur.fetchone()[0]) >= "2026-12-31"
+    cur.execute("SELECT work_orders, app_work_orders, on_time FROM dw.v_production_scrap_on_time WHERE due_year_month = 202610")
+    assert cur.fetchone() == (1, 1, 0)
+    cur.execute("""SELECT p.product_id, f.units_in FROM dw.fact_product_inventory f JOIN dw.dim_product p ON p.product_key = f.product_key
+                   WHERE p.product_id IN (%s, %s) AND f.date_key = 20261020 ORDER BY 1""", (pid, comp))
+    assert dict(cur.fetchall()) == {pid: 1, comp: -2}
+    cur.execute("SELECT COUNT(*) FROM dw.fact_work_order WHERE source = 'sql'"); assert cur.fetchone()[0] == 72591

@@ -11,10 +11,11 @@ WITH d10 AS (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELEC
              UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9),
 nums AS (SELECT a.n + 10 * b.n + 100 * c.n + 1000 * e.n AS n FROM d10 a CROSS JOIN d10 b CROSS JOIN d10 c CROSS JOIN d10 e),
 -- C2-2: extends past 2014 to the end of the latest order year once the app writes orders (2026); unchanged otherwise.
--- C2-3: app purchase orders (order / due dates) extend it the same way.
+-- C2-3: app purchase orders (order / due dates) extend it the same way; C2-4: app work orders (due dates) too.
 lim AS (SELECT CAST(GREATEST(DATE '2014-12-31',
                              COALESCE((SELECT CAST(TO_CHAR(MAX(o.due_date), 'YYYY') || '-12-31' AS date) FROM stg.order o), DATE '2014-12-31'),
-                             COALESCE((SELECT CAST(TO_CHAR(MAX(l.due_date), 'YYYY') || '-12-31' AS date) FROM stg.purchase_order_line l), DATE '2014-12-31'))
+                             COALESCE((SELECT CAST(TO_CHAR(MAX(l.due_date), 'YYYY') || '-12-31' AS date) FROM stg.purchase_order_line l), DATE '2014-12-31'),
+                             COALESCE((SELECT CAST(TO_CHAR(MAX(w.due_date), 'YYYY') || '-12-31' AS date) FROM stg.work_order w), DATE '2014-12-31'))
                - DATE '2005-01-01' AS integer) AS n_last),
 days AS (SELECT CAST(DATE '2005-01-01' + n AS date) AS d FROM nums CROSS JOIN lim WHERE n <= lim.n_last),
 p AS (SELECT d, CAST(EXTRACT(DOW FROM d) AS integer) AS dow, CAST(EXTRACT(DOY FROM d) AS integer) AS doy,
@@ -183,3 +184,8 @@ LEFT JOIN phone ph ON ph.business_entity_id = v.business_entity_id AND ph.rn = 1
 DELETE FROM dw.dim_vendor;
 INSERT INTO dw.dim_vendor
 SELECT business_entity_id, account_number, name, credit_rating, preferred_vendor_status, active_flag FROM stg.vendor;
+-- C2-4 DimScrapReason / DimLocation: Production.ScrapReason / Production.Location (keys = OLTP ids).
+DELETE FROM dw.dim_scrap_reason;
+INSERT INTO dw.dim_scrap_reason SELECT scrap_reason_id, name FROM stg.scrap_reason;
+DELETE FROM dw.dim_location;
+INSERT INTO dw.dim_location SELECT location_id, name, cost_rate, availability FROM stg.location;

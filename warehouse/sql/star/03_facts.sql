@@ -156,3 +156,37 @@ FROM stg.purchase_order_line l
 JOIN stg.purchase_order h ON h.purchase_order_id = l.purchase_order_id
 LEFT JOIN pv ON pv.purchase_order_id = l.purchase_order_id AND pv.purchase_order_detail_id = l.purchase_order_detail_id AND pv.rn = 1
 LEFT JOIN dw.dim_employee emp ON emp.business_entity_id = h.employee_id AND emp.status = 'Current';
+
+-- C2-4 FactWorkOrder: one row per work order. AdventureWorks has no status column: closed = EndDate set; on time = closed and
+-- EndDate <= DueDate (by day); days late = EndDate - DueDate when late. product_key = the dim_product version at the start date.
+DELETE FROM dw.fact_work_order;
+INSERT INTO dw.fact_work_order
+WITH pv AS (
+  SELECT w.work_order_id, dp.product_key,
+         ROW_NUMBER() OVER (PARTITION BY w.work_order_id
+                            ORDER BY CASE WHEN dp.start_date <= w.start_date THEN 0 ELSE 1 END, dp.start_date DESC) AS rn
+  FROM stg.work_order w JOIN dw.dim_product dp ON dp.product_id = w.product_id)
+SELECT pv.product_key, w.scrap_reason_id, CAST(TO_CHAR(w.start_date, 'YYYYMMDD') AS integer), CAST(TO_CHAR(w.end_date, 'YYYYMMDD') AS integer),
+       CAST(TO_CHAR(w.due_date, 'YYYYMMDD') AS integer), w.work_order_id,
+       CASE WHEN w.work_order_id >= 100000 THEN 'WO-DDB-' || CAST(w.work_order_id AS varchar(12))
+            ELSE 'WO' || LPAD(CAST(w.work_order_id AS varchar(12)), 6, '0') END,
+       w.order_qty, w.stocked_qty, w.scrapped_qty,
+       CASE WHEN w.end_date IS NULL THEN 0 ELSE 1 END,
+       CASE WHEN w.end_date IS NULL THEN NULL WHEN CAST(w.end_date AS date) <= CAST(w.due_date AS date) THEN 1 ELSE 0 END,
+       CASE WHEN w.end_date IS NULL OR CAST(w.end_date AS date) <= CAST(w.due_date AS date) THEN 0
+            ELSE CAST(CAST(w.end_date AS date) - CAST(w.due_date AS date) AS integer) END,
+       COALESCE(w.src, 'sql'), w.start_date, w.end_date, w.due_date
+FROM stg.work_order w
+LEFT JOIN pv ON pv.work_order_id = w.work_order_id AND pv.rn = 1;
+
+-- C2-4 FactWorkOrderRouting: one row per routing step; late = actual end after scheduled end.
+DELETE FROM dw.fact_work_order_routing;
+INSERT INTO dw.fact_work_order_routing
+SELECT f.product_key, r.location_id, CAST(TO_CHAR(r.scheduled_start_date, 'YYYYMMDD') AS integer), CAST(TO_CHAR(r.scheduled_end_date, 'YYYYMMDD') AS integer),
+       CAST(TO_CHAR(r.actual_start_date, 'YYYYMMDD') AS integer), CAST(TO_CHAR(r.actual_end_date, 'YYYYMMDD') AS integer),
+       r.work_order_id, r.operation_sequence, r.actual_resource_hrs, r.planned_cost, r.actual_cost,
+       CASE WHEN r.actual_end_date IS NULL THEN NULL WHEN r.actual_end_date > r.scheduled_end_date THEN 1 ELSE 0 END,
+       COALESCE(r.src, 'sql')
+FROM stg.work_order_routing r
+LEFT JOIN dw.fact_work_order f ON f.work_order_id = r.work_order_id;
+

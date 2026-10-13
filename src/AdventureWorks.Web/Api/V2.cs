@@ -40,7 +40,9 @@ public static class V2
     // C2-3 procurement: Buyer (vendors, suggestions, create + receive POs) and PurchasingManager (approve / reject; also buys).
     public const string ProcurementPolicy = "procurement", PurchasingManagerPolicy = "purchasing-manager", StaffPolicy = "staff";
     public const string BuyerRole = "Buyer", PurchasingManagerRole = "PurchasingManager";
-    public static readonly string[] StaffRoles = [FulfilmentRole, CatalogAdminRole, BuyerRole, PurchasingManagerRole];
+    // C2-4 production floor: ProductionSupervisor (create / record / complete work orders). BOM and KPIs are open to all staff.
+    public const string ProductionPolicy = "production", ProductionRole = "ProductionSupervisor";
+    public static readonly string[] StaffRoles = [FulfilmentRole, CatalogAdminRole, BuyerRole, PurchasingManagerRole, ProductionRole];
 
     public static bool IsApi(PathString p) => p.StartsWithSegments("/api");
 
@@ -250,6 +252,44 @@ public static class V2
             .RequireAuthorization(ProcurementPolicy).WithName("receivePurchaseOrder").Produces<PoResult>().ProducesProblem(400).ProducesProblem(409);
         pr.MapGet("/locations", () => Results.Ok(Locations.All.Select(kv => new StockAt(kv.Key, kv.Value, 0)).ToList()))
             .RequireAuthorization(ProcurementPolicy).WithName("listLocations").Produces<List<StockAt>>();
+
+        // ------------------------------------------------------------ back office: production floor (C2-4: INV-01/03/04/05/06)
+        var pf = bo.MapGroup("/production");
+        pf.MapGet("/work-orders", (string? month, bool? openOnly, int? productId, ProductionRepository p) => Guard(async () =>
+            Results.Ok(await p.ForMonthAsync(month ?? "2014-06", openOnly ?? false, productId))))
+            .RequireAuthorization(StaffPolicy).WithName("listWorkOrders").Produces<WorkOrderList>().ProducesProblem(400);
+        pf.MapGet("/work-orders/open", async (ProductionRepository p) => Results.Ok(await p.OpenAsync()))
+            .RequireAuthorization(StaffPolicy).WithName("listOpenWorkOrders").Produces<List<WorkOrderSummary>>();
+        pf.MapGet("/work-orders/{id:int}", async (int id, ProductionRepository p) => await p.GetAsync(id) is { } w ? Results.Ok(w) : Results.NotFound())
+            .RequireAuthorization(StaffPolicy).WithName("getWorkOrder").Produces<WorkOrderDetail>().Produces(404);
+        pf.MapPost("/work-orders", (CreateWorkOrderRequest body, ClaimsPrincipal u, HttpContext http, ProductionRepository p) => Guard(async () =>
+        {
+            var w = await p.CreateAsync(body, Actor(u), Token(http));
+            return Results.Created($"/api/v2/back-office/production/work-orders/{w.Order.Id}", w);
+        })).RequireAuthorization(ProductionPolicy).WithName("createWorkOrder").Produces<WorkOrderDetail>(201).ProducesProblem(400).ProducesProblem(404).ProducesProblem(409);
+        pf.MapPost("/work-orders/{id:int}/operations", (int id, OperationRequest body, ClaimsPrincipal u, HttpContext http, ProductionRepository p) =>
+            Guard(async () => Results.Ok(await p.RecordOperationAsync(id, body, Actor(u), Token(http)))))
+            .RequireAuthorization(ProductionPolicy).WithName("recordOperation").Produces<WorkOrderResult>().ProducesProblem(400).ProducesProblem(409);
+        pf.MapPost("/work-orders/{id:int}/complete", (int id, CompleteWorkOrderRequest body, ClaimsPrincipal u, HttpContext http, ProductionRepository p) =>
+            Guard(async () => Results.Ok(await p.CompleteAsync(id, body, Actor(u), Token(http)))))
+            .RequireAuthorization(ProductionPolicy).WithName("completeWorkOrder").Produces<WorkOrderResult>().ProducesProblem(400).ProducesProblem(409);
+        pf.MapGet("/plan/{productId:int}", (int productId, int? qty, DateTime? due, ProductionRepository p) => Guard(async () =>
+            Results.Ok(await p.PlanAsync(productId, qty ?? 1, due))))
+            .RequireAuthorization(ProductionPolicy).WithName("planWorkOrder").Produces<ProductionPlan>().ProducesProblem(400);
+        pf.MapGet("/assemblies", async (ProductionRepository p) => Results.Ok(await p.AssembliesAsync()))
+            .RequireAuthorization(StaffPolicy).WithName("listAssemblies").Produces<List<AssemblyInfo>>();
+        pf.MapGet("/bom/{productId:int}", async (int productId, DateTime? asOf, int? depth, ProductionRepository p) =>
+            Results.Ok(await p.ExplodeAsync(productId, asOf ?? DateTime.UtcNow, depth ?? ProductionRepository.MaxBomDepth)))
+            .RequireAuthorization(StaffPolicy).WithName("explodeBom").Produces<BomTree>();
+        pf.MapGet("/where-used/{productId:int}", async (int productId, DateTime? asOf, int? depth, ProductionRepository p) =>
+            Results.Ok(await p.WhereUsedAsync(productId, asOf ?? DateTime.UtcNow, depth ?? ProductionRepository.MaxBomDepth)))
+            .RequireAuthorization(StaffPolicy).WithName("whereUsed").Produces<BomTree>();
+        pf.MapGet("/kpis", (string? from, string? to, ProductionRepository p) => Guard(async () =>
+            Results.Ok(await p.KpisAsync(from ?? "2013-07", to ?? "2014-06"))))
+            .RequireAuthorization(StaffPolicy).WithName("productionKpis").Produces<ProductionKpis>().ProducesProblem(400);
+        pf.MapGet("/scrap-reasons", async (ProductionRepository p) =>
+            Results.Ok((await p.ScrapReasonsAsync()).Select(kv => new ScrapReasonInfo(kv.Key, kv.Value)).OrderBy(r => r.Name).ToList()))
+            .RequireAuthorization(StaffPolicy).WithName("listScrapReasons").Produces<List<ScrapReasonInfo>>();
 
         return g;
     }

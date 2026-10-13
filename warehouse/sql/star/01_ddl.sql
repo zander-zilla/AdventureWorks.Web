@@ -5,6 +5,7 @@
 CREATE SCHEMA IF NOT EXISTS dw;
 DROP VIEW IF EXISTS dw.v_sales;
 DROP VIEW IF EXISTS dw.v_vendor_performance;
+DROP VIEW IF EXISTS dw.v_production_scrap_on_time;
 
 DROP TABLE IF EXISTS dw.dim_date;
 CREATE TABLE dw.dim_date (
@@ -127,3 +128,26 @@ CREATE TABLE dw.fact_purchase_order_line (product_key integer, vendor_key intege
   line_total decimal(19,4), received_quantity decimal(19,4), rejected_quantity decimal(19,4), stocked_quantity decimal(19,4),
   on_time_flag smallint, lead_time_days integer, source varchar(8), order_date timestamp, due_date timestamp, ship_date timestamp,
   PRIMARY KEY (purchase_order_id, purchase_order_detail_id));
+
+-- C2-4 production floor (no AdventureWorksDW2022 equivalent: the DW has no manufacturing fact). DimScrapReason and DimLocation
+-- are Production.ScrapReason / Production.Location. FactWorkOrder is one row per WorkOrder, FactWorkOrderRouting one row per
+-- WorkOrderRouting step (SQL-era and app-written work orders alike, source tells them apart).
+DROP TABLE IF EXISTS dw.dim_scrap_reason;
+CREATE TABLE dw.dim_scrap_reason (scrap_reason_key integer NOT NULL, scrap_reason_name varchar(50), PRIMARY KEY (scrap_reason_key));
+
+DROP TABLE IF EXISTS dw.dim_location;
+CREATE TABLE dw.dim_location (location_key integer NOT NULL, location_name varchar(50), cost_rate decimal(10,4), availability decimal(8,2),
+  PRIMARY KEY (location_key));
+
+DROP TABLE IF EXISTS dw.fact_work_order;
+CREATE TABLE dw.fact_work_order (product_key integer, scrap_reason_key integer, start_date_key integer, end_date_key integer, due_date_key integer,
+  work_order_id integer NOT NULL, work_order_number varchar(20), order_quantity integer, stocked_quantity integer, scrapped_quantity integer,
+  closed_flag smallint, on_time_flag smallint, days_late integer, source varchar(8), start_date timestamp, end_date timestamp, due_date timestamp,
+  PRIMARY KEY (work_order_id));
+
+DROP TABLE IF EXISTS dw.fact_work_order_routing;
+CREATE TABLE dw.fact_work_order_routing (product_key integer, location_key integer, scheduled_start_date_key integer, scheduled_end_date_key integer,
+  actual_start_date_key integer, actual_end_date_key integer, work_order_id integer NOT NULL, operation_sequence smallint NOT NULL,
+  actual_resource_hrs decimal(9,4), planned_cost decimal(19,4), actual_cost decimal(19,4), late_flag smallint, source varchar(8),
+  PRIMARY KEY (work_order_id, operation_sequence, location_key));
+

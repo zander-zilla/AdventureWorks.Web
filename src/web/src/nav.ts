@@ -12,7 +12,7 @@ export const nav: NavGroup[] = [
     { to: '/back-office/orders', label: 'Orders', icon: '⇄' },
     { to: '/back-office/replication', label: 'Replication monitor', icon: '⟳' },
     { to: '/back-office/procurement', label: 'Procurement', icon: '⛟' },
-    { to: '/production', label: 'Production', icon: '⚙', badge: 'C2-4', disabled: true },
+    { to: '/back-office/production', label: 'Production', icon: '⚙' },
   ] },
   { title: 'Chapter 2', items: [
     { to: '/overview', label: 'Overview', icon: '◎' },

@@ -63,7 +63,9 @@ public sealed class ApiV2Tests : IClassFixture<ApiV2Tests.Factory>
                      "/api/v2/back-office/orders", "/api/v2/back-office/orders/{id}/{op}", "/api/v2/back-office/changes", "/api/v2/back-office/products/{id}/price",
                      "/api/v2/back-office/procurement/suggestions", "/api/v2/back-office/procurement/vendors/{id}", "/api/v2/back-office/procurement/purchase-orders",
                      "/api/v2/back-office/procurement/purchase-orders/{id}/{op}", "/api/v2/back-office/procurement/purchase-orders/{id}/receive",
-                     "/api/v2/back-office/procurement/purchase-orders/mine" })
+                     "/api/v2/back-office/procurement/purchase-orders/mine", "/api/v2/back-office/production/work-orders",
+                     "/api/v2/back-office/production/work-orders/{id}/complete", "/api/v2/back-office/production/bom/{productId}",
+                     "/api/v2/back-office/production/where-used/{productId}", "/api/v2/back-office/production/kpis" })
             Assert.Contains($"\"{p}\"", doc);
         Assert.DoesNotContain("\"/Shop", doc);
         Assert.Contains("\"Quote\"", doc);   // response schemas are declared (the SPA client is generated from them)
@@ -95,6 +97,8 @@ public sealed class ApiV2Tests : IClassFixture<ApiV2Tests.Factory>
     [InlineData("/api/v2/orders")]
     [InlineData("/api/v2/back-office/procurement/suggestions")]
     [InlineData("/api/v2/back-office/procurement/purchase-orders")]
+    [InlineData("/api/v2/back-office/production/work-orders/open")]
+    [InlineData("/api/v2/back-office/production/kpis")]
     public async Task Anonymous_gets_401_on_protected_endpoints(string path) =>
         Assert.Equal(HttpStatusCode.Unauthorized, (await Client().GetAsync(path)).StatusCode);
 
@@ -120,6 +124,18 @@ public sealed class ApiV2Tests : IClassFixture<ApiV2Tests.Factory>
         Assert.Equal(HttpStatusCode.Forbidden, (await clerk.GetAsync("/api/v2/back-office/procurement/suggestions")).StatusCode);
         var bad = await (await SignedIn("sheela0@adventure-works.com")).PostAsJsonAsync("/api/v2/back-office/procurement/purchase-orders/1/explode", new { version = 1 });
         Assert.Equal(HttpStatusCode.NotFound, bad.StatusCode);
+    }
+
+    [Fact] public async Task Production_roles_are_enforced()
+    {
+        var sup = await SignedIn("production@adventure-works.com");
+        var me = await sup.GetFromJsonAsync<JsonElement>("/api/v2/me");
+        Assert.Equal(new[] { "ProductionSupervisor" }, me.GetProperty("roles").EnumerateArray().Select(x => x.GetString()).ToArray());
+        Assert.Equal(HttpStatusCode.Forbidden, (await sup.GetAsync("/api/v2/back-office/procurement/suggestions")).StatusCode);
+        var buyer = await SignedIn("mikael0@adventure-works.com");   // staff may look (BOM, KPIs) but not create
+        Assert.Equal(HttpStatusCode.Forbidden, (await buyer.PostAsJsonAsync("/api/v2/back-office/production/work-orders", new { productId = 749, orderQty = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await buyer.PostAsJsonAsync("/api/v2/back-office/production/work-orders/100000/complete", new { version = 1, scrappedQty = 0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await sup.GetAsync("/api/v2/back-office/production/kpis?from=2013-01&to=2015-06")).StatusCode);
     }
 
     [Theory]

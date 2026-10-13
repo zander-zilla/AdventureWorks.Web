@@ -19,3 +19,7 @@ ALTER TABLE dw.dim_sales_reason ALTER DISTSTYLE ALL;
 ALTER TABLE dw.dim_geography ALTER DISTSTYLE ALL;
 ALTER TABLE dw.dim_reseller ALTER DISTSTYLE ALL;
 ALTER TABLE dw.dim_employee ALTER DISTSTYLE ALL;
+-- C2-3 procurement: small fact (8,845 SQL-era lines), sorted by order date; vendors replicated.
+ALTER TABLE dw.fact_purchase_order_line ALTER DISTSTYLE KEY DISTKEY product_key;
+ALTER TABLE dw.fact_purchase_order_line ALTER COMPOUND SORTKEY (order_date_key, vendor_key);
+ALTER TABLE dw.dim_vendor ALTER DISTSTYLE ALL;

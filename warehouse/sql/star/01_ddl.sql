@@ -4,6 +4,7 @@
 -- warehouse/sql/redshift/30_physical.sql. Names: snake_case of the AdventureWorksDW2022 names (see docs/design/warehouse.md).
 CREATE SCHEMA IF NOT EXISTS dw;
 DROP VIEW IF EXISTS dw.v_sales;
+DROP VIEW IF EXISTS dw.v_vendor_performance;
 
 DROP TABLE IF EXISTS dw.dim_date;
 CREATE TABLE dw.dim_date (
@@ -112,3 +113,17 @@ CREATE TABLE dw.fact_currency_rate (currency_key integer NOT NULL, date_key inte
 DROP TABLE IF EXISTS dw.fact_product_inventory;
 CREATE TABLE dw.fact_product_inventory (product_key integer NOT NULL, date_key integer NOT NULL, movement_date date, unit_cost decimal(19,4),
   units_in integer, units_out integer, units_balance integer, PRIMARY KEY (product_key, date_key));
+
+-- C2-3 procurement (no AdventureWorksDW2022 equivalent: the DW has no purchasing fact). DimVendor is Purchasing.Vendor;
+-- FactPurchaseOrderLine is one row per PurchaseOrderDetail (SQL-era and app-written POs alike, src tells them apart).
+DROP TABLE IF EXISTS dw.dim_vendor;
+CREATE TABLE dw.dim_vendor (vendor_key integer NOT NULL, vendor_alternate_key varchar(15), vendor_name varchar(50), credit_rating smallint,
+  preferred_vendor_flag boolean, active_flag boolean, PRIMARY KEY (vendor_key));
+
+DROP TABLE IF EXISTS dw.fact_purchase_order_line;
+CREATE TABLE dw.fact_purchase_order_line (product_key integer, vendor_key integer, employee_key integer, order_date_key integer,
+  due_date_key integer, ship_date_key integer, purchase_order_id integer NOT NULL, purchase_order_detail_id integer NOT NULL,
+  purchase_order_number varchar(20), status smallint, revision_number smallint, order_quantity integer, unit_price decimal(19,4),
+  line_total decimal(19,4), received_quantity decimal(19,4), rejected_quantity decimal(19,4), stocked_quantity decimal(19,4),
+  on_time_flag smallint, lead_time_days integer, source varchar(8), order_date timestamp, due_date timestamp, ship_date timestamp,
+  PRIMARY KEY (purchase_order_id, purchase_order_detail_id));

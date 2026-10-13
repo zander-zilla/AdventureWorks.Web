@@ -25,7 +25,7 @@ public sealed record BackOfficeOrder(Order Order, string StatusText, string[] Ac
 public sealed record StatusCount(int Status, string Text, int Count);
 
 /// <summary>
-/// Chapter 2 JSON API (ADR 0010): minimal APIs under /api/v2, same cookie auth as the Razor app, problem+json errors,
+/// Chapter 2 JSON API (ADR 0010): minimal APIs under /api/v2, same cookie auth as the Chapter 1 Razor app (removed in C2-3), problem+json errors,
 /// 401/403 instead of login redirects, and a CSRF guard (custom header on unsafe methods). C2-2 adds shop (cart, quote,
 /// checkout, orders, reviews) and back office (orders queue + transitions, change feed, price edit) with roles.
 /// Every endpoint declares its response type so /api/v2/openapi.json drives the generated SPA client (src/web/src/api/schema.d.ts).
@@ -272,7 +272,7 @@ public static class V2
             u.FindAll(ClaimTypes.Role).Select(r => r.Value).DefaultIfEmpty(CustomerRole).Distinct().ToArray())
         : new(false, null, null, null, []);
 
-    /// <summary>Cookie auth: API callers get 401/403 instead of a redirect to the Razor login page.</summary>
+    /// <summary>Cookie auth: API callers get 401/403 instead of a redirect to a login page (the SPA's /app/login).</summary>
     public static void ApiAwareRedirects(CookieAuthenticationOptions o)
     {
         o.Events.OnRedirectToLogin = ctx => Status(ctx, StatusCodes.Status401Unauthorized, "Sign in required");

@@ -14,8 +14,11 @@ BEGIN
                  UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9),
     nums AS (SELECT a.n + 10 * b.n + 100 * c.n + 1000 * e.n AS n FROM d10 a CROSS JOIN d10 b CROSS JOIN d10 c CROSS JOIN d10 e),
     -- C2-2: extends past 2014 to the end of the latest order year once the app writes orders (2026); unchanged otherwise.
-    lim AS (SELECT CAST(GREATEST(DATE '2014-12-31', COALESCE(CAST(TO_CHAR(MAX(o.due_date), 'YYYY') || '-12-31' AS date), DATE '2014-12-31'))
-                   - DATE '2005-01-01' AS integer) AS n_last FROM stg.order o),
+    -- C2-3: app purchase orders (order / due dates) extend it the same way.
+    lim AS (SELECT CAST(GREATEST(DATE '2014-12-31',
+                                 COALESCE((SELECT CAST(TO_CHAR(MAX(o.due_date), 'YYYY') || '-12-31' AS date) FROM stg.order o), DATE '2014-12-31'),
+                                 COALESCE((SELECT CAST(TO_CHAR(MAX(l.due_date), 'YYYY') || '-12-31' AS date) FROM stg.purchase_order_line l), DATE '2014-12-31'))
+                   - DATE '2005-01-01' AS integer) AS n_last),
     days AS (SELECT CAST(DATE '2005-01-01' + n AS date) AS d FROM nums CROSS JOIN lim WHERE n <= lim.n_last),
     p AS (SELECT d, CAST(EXTRACT(DOW FROM d) AS integer) AS dow, CAST(EXTRACT(DOY FROM d) AS integer) AS doy,
                  CAST(EXTRACT(MONTH FROM d) AS integer) AS m, CAST(EXTRACT(YEAR FROM d) AS integer) AS y, CAST(EXTRACT(DAY FROM d) AS integer) AS dom
@@ -168,6 +171,9 @@ BEGIN
     LEFT JOIN pay ON pay.business_entity_id = v.business_entity_id AND pay.rn = 1
     LEFT JOIN email em ON em.business_entity_id = v.business_entity_id AND em.rn = 1
     LEFT JOIN phone ph ON ph.business_entity_id = v.business_entity_id AND ph.rn = 1;
+    DELETE FROM dw.dim_vendor;
+    INSERT INTO dw.dim_vendor
+    SELECT business_entity_id, account_number, name, credit_rating, preferred_vendor_status, active_flag FROM stg.vendor;
     -- 03_facts.sql
     -- Shared order-line working set (same for internet and reseller facts).
     DROP TABLE IF EXISTS dw.wrk_sales_line;
@@ -287,5 +293,28 @@ BEGIN
     DROP TABLE dw.wrk_sales_line;
     DROP TABLE dw.wrk_line_keys;
     DROP TABLE dw.wrk_inv_moves;
+    DELETE FROM dw.fact_purchase_order_line;
+    INSERT INTO dw.fact_purchase_order_line
+    WITH pv AS (
+      SELECT l.purchase_order_id, l.purchase_order_detail_id, dp.product_key,
+             ROW_NUMBER() OVER (PARTITION BY l.purchase_order_id, l.purchase_order_detail_id
+                                ORDER BY CASE WHEN dp.start_date <= h.order_date THEN 0 ELSE 1 END, dp.start_date DESC) AS rn
+      FROM stg.purchase_order_line l JOIN stg.purchase_order h ON h.purchase_order_id = l.purchase_order_id
+      JOIN dw.dim_product dp ON dp.product_id = l.product_id)
+    SELECT pv.product_key, h.vendor_id, emp.employee_key, CAST(TO_CHAR(h.order_date, 'YYYYMMDD') AS integer),
+           CAST(TO_CHAR(l.due_date, 'YYYYMMDD') AS integer), CAST(TO_CHAR(h.ship_date, 'YYYYMMDD') AS integer),
+           l.purchase_order_id, l.purchase_order_detail_id,
+           CASE WHEN l.purchase_order_id >= 100000 THEN 'PO-DDB-' || CAST(l.purchase_order_id AS varchar(12))
+                ELSE 'PO' || LPAD(CAST(l.purchase_order_id AS varchar(12)), 6, '0') END,
+           h.status, h.revision_number, l.order_qty, l.unit_price, l.line_total,
+           l.received_qty, l.rejected_qty, l.stocked_qty,
+           CASE WHEN h.ship_date IS NULL OR l.due_date IS NULL THEN NULL
+                WHEN CAST(h.ship_date AS date) <= CAST(l.due_date AS date) THEN 1 ELSE 0 END,
+           CASE WHEN h.ship_date IS NULL THEN NULL ELSE CAST(CAST(h.ship_date AS date) - CAST(h.order_date AS date) AS integer) END,
+           COALESCE(h.src, 'sql'), h.order_date, l.due_date, h.ship_date
+    FROM stg.purchase_order_line l
+    JOIN stg.purchase_order h ON h.purchase_order_id = l.purchase_order_id
+    LEFT JOIN pv ON pv.purchase_order_id = l.purchase_order_id AND pv.purchase_order_detail_id = l.purchase_order_detail_id AND pv.rn = 1
+    LEFT JOIN dw.dim_employee emp ON emp.business_entity_id = h.employee_id AND emp.status = 'Current';
 END;
 $$ LANGUAGE plpgsql;

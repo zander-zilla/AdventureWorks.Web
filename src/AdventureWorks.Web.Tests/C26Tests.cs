@@ -1,4 +1,5 @@
 using AdventureWorks.Web.Ai;
+using AdventureWorks.Web.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AdventureWorks.Web.Tests;
@@ -163,5 +164,74 @@ public sealed class ShopGuardrailTests
         var triage = BedrockAssistModel.Build(new AssistRequest(o.Feature("triage"), "triage-explain", facts));
         Assert.Equal(("amazon.nova-pro-v1:0", "g-ask", "1"), (triage.ModelId, triage.GuardrailConfig.GuardrailIdentifier, triage.GuardrailConfig.GuardrailVersion));
         Assert.All(triage.Messages[0].Content, c => Assert.Null(c.GuardContent));
+    }
+}
+
+/// <summary>C2-6 smart reorder: forecast maths (golden), smart quantity rules, reorder / PO e-mail drafts through the mocked model.</summary>
+public sealed class ReorderTests
+{
+    static List<DemandMonth> Series(string start, params int[] q) => q.Select((x, i) => new DemandMonth(Forecast.AddMonths(start, i), x, x)).ToList();
+    static AiAssist Assist() { var o = new AiOptions { Enabled = true }; return new AiAssist(new MockAssistModel(), new AiBudget(o, TimeProvider.System), o, NullLogger<AiAssist>.Instance); }
+
+    [Fact]
+    public void Short_history_uses_the_three_month_mean()
+    {
+        var f = Forecast.Compute(1, Series("2014-01", 10, 20, 30, 40), 30);
+        Assert.Equal(30, f.Monthly); Assert.Contains("3-month mean", f.Method); Assert.Equal(30, f.LeadTimeDemand);
+    }
+
+    [Fact]
+    public void Seasonal_naive_with_trend_golden()
+    {
+        // 15 months: same 3 last year = 10+10+10 = 30, last 3 = 20+20+20 = 60 -> g = 2; y(m-12) = h[n-12] = 40
+        var q = new[] { 10, 10, 10, 40, 10, 10, 10, 10, 10, 10, 10, 10, 20, 20, 20 };
+        var f = Forecast.Compute(1, Series("2013-04", q), 15);
+        Assert.Equal(2, f.Growth);
+        Assert.Equal(0.5 * 40 * 2 + 0.5 * 20, f.Monthly);   // 50
+        Assert.Equal(25, f.LeadTimeDemand);                 // 50 * 15 / 30
+        Assert.Equal(60, f.Last3); Assert.Equal(30, f.Same3LastYear);
+        Assert.Equal(3, f.Next.Count); Assert.Equal("2014-07", f.Next[0].Month);
+    }
+
+    [Fact]
+    public void Growth_is_clamped_and_gaps_are_zero_filled()
+    {
+        var raw = Series("2013-01", 100, 100, 100, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1).Where(m => m.Month != "2013-05").ToList();
+        var f = Forecast.Compute(1, raw, 30);
+        Assert.Equal(15, f.History.Count); Assert.Equal(0, f.History[4].Qty);
+        Assert.Equal(0.5, f.Growth);
+    }
+
+    static ReorderSuggestion Rule(decimal stock, int safety, int onOrder, int ruleQty, int min = 1, int max = 1000) =>
+        new(1, "HL Road Frame - Red, 62", "FR-R92R-62", stock, 375, safety, onOrder, ruleQty, ruleQty, null,
+            new VendorProductInfo(1, "Vendor", 1, "HL Road Frame - Red, 62", null, 15, 100, null, null, min, max, onOrder, "EA"), []);
+
+    [Fact]
+    public void Smart_quantity_covers_lead_time_demand_within_vendor_limits()
+    {
+        var f = Forecast.Compute(1, Series("2014-01", 60, 60, 60), 30);          // 60/month, lead 30 days -> 60
+        Assert.Equal(60 + 500 - 100 - 0, Forecast.Smart(Rule(100, 500, 0, 400), f).SmartQty);
+        Assert.Contains("above", Forecast.Smart(Rule(100, 500, 0, 400), f).Reason);
+        Assert.Equal(200, Forecast.Smart(Rule(100, 500, 0, 400, max: 200), f).SmartQty);
+        Assert.Equal(0, Forecast.Smart(Rule(1000, 500, 0, 0), f).SmartQty);
+        Assert.Equal(0, Forecast.Smart(Rule(100, 500, 0, 0) with { Vendor = null }, f).SmartQty);
+    }
+
+    [Fact]
+    public async Task Reorder_explain_and_po_email_pass_the_output_checks()
+    {
+        var facts = new Dictionary<string, object?>
+        {
+            ["suggested.qty"] = 460, ["rule.qty"] = 400, ["forecast.lead_time_days"] = 15, ["forecast.lead_time_demand"] = 61.3, ["history.last3"] = 368, ["history.same3_last_year"] = 290,
+        };
+        var r = await Assist().RunAsync("reorder", "reorder-explain", facts, "s", "u");
+        Assert.Null(r.Error); Assert.Contains("Suggest 460 [suggested.qty]", r.Text);
+        var po = new Dictionary<string, object?>
+        {
+            ["po.number"] = "PO-0000004012", ["vendor.name"] = "Litware, Inc.", ["vendor.contact"] = "Sean Jacobson", ["po.need_by"] = "2026-10-28", ["po.total"] = 1717.88m,
+            ["buyer.name"] = "Ben Miller", ["line1.product"] = "HL Road Frame - Red, 62", ["line1.qty"] = 3, ["line1.unit_price"] = 572.63m,
+        };
+        var e = await Assist().RunAsync("reorder", "po-email", po, "s", "u");
+        Assert.Null(e.Error); Assert.Contains("Dear Sean Jacobson", e.Text); Assert.Contains("572.63", e.Text);
     }
 }

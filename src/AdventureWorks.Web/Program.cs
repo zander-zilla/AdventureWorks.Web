@@ -31,7 +31,9 @@ if (aiOptions.Enabled)
     builder.Services.AddSingleton<SemanticSearch>();
     builder.Services.AddSingleton<AskService>();
     builder.Services.AddSingleton<AiAssist>();
-    builder.Services.AddSingleton<TriageFacts>();                  // C2-6 shared explain / draft service
+    builder.Services.AddSingleton<TriageFacts>();
+    builder.Services.AddSingleton<DemandRepository>();
+    builder.Services.AddSingleton<ReorderFacts>();                  // C2-6 shared explain / draft service
     if (aiOptions.IsBedrock)
     {
         builder.Services.AddSingleton<Amazon.BedrockRuntime.IAmazonBedrockRuntime, Amazon.BedrockRuntime.AmazonBedrockRuntimeClient>(_ => new());

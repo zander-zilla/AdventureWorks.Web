@@ -239,6 +239,24 @@ public static class V2
         var pr = bo.MapGroup("/procurement");
         pr.MapGet("/suggestions", async (ProcurementRepository p) => Results.Ok(await p.SuggestionsAsync()))
             .RequireAuthorization(ProcurementPolicy).WithName("listReorderSuggestions").Produces<List<ReorderSuggestion>>();
+        // C2-6 smart reorder (enable_ai): forecast-backed quantities next to the C2-3 rule (unchanged), explain, PO e-mail draft (copy / mailto only).
+        pr.MapGet("/smart-suggestions", async (AiOptions o, ReorderFacts r) => o.Enabled ? Results.Ok(await r.SmartAsync()) : AiOff())
+            .RequireAuthorization(ProcurementPolicy).WithName("listSmartSuggestions").Produces<List<SmartSuggestion>>().ProducesProblem(404);
+        pr.MapGet("/products/{id:int}/forecast", async (int id, int? leadTimeDays, AiOptions o, ReorderFacts r) =>
+                o.Enabled ? Results.Ok(await r.ForecastAsync(id, Math.Clamp(leadTimeDays ?? 30, 1, 365))) : AiOff())
+            .RequireAuthorization(ProcurementPolicy).WithName("getDemandForecast").Produces<DemandForecast>().ProducesProblem(404);
+        pr.MapPost("/smart-suggestions/{id:int}/explain", async (int id, AiOptions o, ReorderFacts r, AiAssist a, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            if (await r.ExplainAsync(id) is not { } facts) return Results.NotFound();
+            return Results.Ok(await a.RunAsync("reorder", "reorder-explain", facts, AiSession(h), Actor(u), ct: ct));
+        }).RequireAuthorization(ProcurementPolicy).WithName("explainReorder").Produces<AssistResult>().ProducesProblem(404);
+        pr.MapPost("/orders/{id:int}/email-draft", async (int id, AiOptions o, ReorderFacts r, AiAssist a, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            if (await r.PoEmailAsync(id, Staff(u).Name) is not { } facts) return Results.NotFound();
+            return Results.Ok(await a.RunAsync("reorder", "po-email", facts, AiSession(h), Actor(u), ct: ct));
+        }).RequireAuthorization(ProcurementPolicy).WithName("draftPoEmail").Produces<AssistResult>().ProducesProblem(404);
         pr.MapGet("/vendors", async (ProcurementRepository p) => Results.Ok(await p.ListVendorsAsync()))
             .RequireAuthorization(ProcurementPolicy).WithName("listVendors").Produces<List<VendorSummary>>();
         pr.MapGet("/vendors/{id:int}", async (int id, ProcurementRepository p) =>

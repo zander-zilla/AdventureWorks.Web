@@ -61,3 +61,25 @@ FROM dw.fact_work_order f
 JOIN dw.dim_date d ON d.date_key = f.due_date_key
 GROUP BY d.calendar_year, d.month_number_of_year, CAST(f.due_date_key / 100 AS integer);
 
+
+-- C2-6 smart reorder (INV-07): monthly units per product across both channels, the series the forecast runs on
+-- (scripts/loader/derive_ai.py writes the same series from SQL Server into aw-inventory DEMAND# items for the app).
+DROP VIEW IF EXISTS dw.v_product_demand_monthly;
+CREATE VIEW dw.v_product_demand_monthly AS
+SELECT p.product_id, MAX(p.english_product_name) AS product_name, d.calendar_year, d.month_number_of_year,
+       SUM(s.order_quantity) AS units, COUNT(DISTINCT s.sales_order_number) AS orders
+FROM (SELECT product_key, order_date_key, order_quantity, sales_order_number FROM dw.fact_internet_sales
+      UNION ALL SELECT product_key, order_date_key, order_quantity, sales_order_number FROM dw.fact_reseller_sales) s
+JOIN dw.dim_date d ON d.date_key = s.order_date_key
+JOIN dw.dim_product p ON p.product_key = s.product_key
+GROUP BY p.product_id, d.calendar_year, d.month_number_of_year;
+
+-- C2-6 customers also bought (CAT-12): orders containing both products (derive_ai.py ranks the top 6 per product into aw-catalog ALSO#).
+DROP VIEW IF EXISTS dw.v_product_affinity;
+CREATE VIEW dw.v_product_affinity AS
+WITH lines AS (
+  SELECT DISTINCT f.sales_order_number, p.product_id FROM dw.fact_internet_sales f JOIN dw.dim_product p ON p.product_key = f.product_key
+  UNION SELECT DISTINCT f.sales_order_number, p.product_id FROM dw.fact_reseller_sales f JOIN dw.dim_product p ON p.product_key = f.product_key)
+SELECT a.product_id, b.product_id AS other_product_id, COUNT(*) AS orders
+FROM lines a JOIN lines b ON b.sales_order_number = a.sales_order_number AND b.product_id <> a.product_id
+GROUP BY a.product_id, b.product_id;

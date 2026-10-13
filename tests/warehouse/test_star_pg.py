@@ -322,3 +322,50 @@ def test_c2_5_ai_reader_cannot_touch_anything_else(conn):
     cur.execute("SAVEPOINT p; SET LOCAL ROLE aw_ai_reader_test2; SET LOCAL transaction_read_only = on")
     cur.execute("SELECT COUNT(*) FROM dw.v_sales"); assert cur.fetchone()[0] > 0
     cur.execute("ROLLBACK TO SAVEPOINT p")
+
+
+def _forecast(h):
+    """The app's Forecast.Step (src/AdventureWorks.Web/Ai/Reorder.cs), one step ahead."""
+    n = len(h); k = min(3, n); mean3 = sum(h[n - k:]) / k
+    if n < 12:
+        return mean3
+    last3 = sum(h[n - 3:]); prev3 = sum(h[n - 15:n - 12]) if n >= 15 else 0
+    g = 1.0 if prev3 <= 0 else min(2.0, max(0.5, last3 / prev3))
+    return 0.5 * h[n - 12] * g + 0.5 * mean3
+
+
+def test_c2_6_demand_view_and_forecast_backtest(conn):
+    """v_product_demand_monthly sums the sales facts exactly; one-step backtest of the INV-07 forecast over the last 12 months
+    of history, for products with 24+ months: WAPE vs the 12-month mean baseline (the numbers go in the C2-6 docs)."""
+    cur = conn.cursor()
+    cur.execute("SELECT SUM(units) FROM dw.v_product_demand_monthly")
+    total = cur.fetchone()[0]
+    cur.execute("SELECT (SELECT SUM(order_quantity) FROM dw.fact_internet_sales) + (SELECT SUM(order_quantity) FROM dw.fact_reseller_sales)")
+    assert total == cur.fetchone()[0]
+    cur.execute("SELECT product_id, calendar_year * 12 + month_number_of_year - 1, units FROM dw.v_product_demand_monthly ORDER BY 1, 2")
+    series = {}
+    for pid, m, u in cur.fetchall():
+        series.setdefault(pid, {})[m] = float(u)
+    err_f = err_b = actual = 0.0; products = 0
+    for pid, by in series.items():
+        lo, hi = min(by), max(by)
+        h = [by.get(m, 0.0) for m in range(lo, hi + 1)]
+        if len(h) < 24:
+            continue
+        products += 1
+        for t in range(len(h) - 12, len(h)):
+            past = h[:t]; y = h[t]
+            err_f += abs(_forecast(past) - y); err_b += abs(sum(past[-12:]) / 12 - y); actual += y
+    wape_f, wape_b = err_f / actual, err_b / actual
+    print("C2-6 backtest: products=%d WAPE forecast=%.3f baseline=%.3f" % (products, wape_f, wape_b))
+    assert products >= 50
+    assert wape_f < 1.0 and wape_b < 1.5
+
+
+def test_c2_6_affinity_view_is_symmetric(conn):
+    cur = conn.cursor()
+    cur.execute("""SELECT COUNT(*) FROM dw.v_product_affinity a LEFT JOIN dw.v_product_affinity b
+                   ON b.product_id = a.other_product_id AND b.other_product_id = a.product_id WHERE b.orders IS NULL OR b.orders <> a.orders""")
+    assert cur.fetchone()[0] == 0
+    cur.execute("SELECT COUNT(DISTINCT product_id) FROM dw.v_product_affinity")
+    assert cur.fetchone()[0] >= 100

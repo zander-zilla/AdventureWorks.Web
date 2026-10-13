@@ -39,6 +39,10 @@ export type BomTree = S['BomTree']
 export type ProductionPlan = S['ProductionPlan']
 export type ProductionKpis = S['ProductionKpis']
 export type WorkOrderResult = S['WorkOrderResult']
+export type AiStatus = S['AiStatus']
+export type AskResult = S['AskResult']
+export type SearchResult = S['SearchResult']
+export type SearchHit = S['SearchHit']
 export type Problem = { title: string; status: number; detail?: string }
 
 export class ApiError extends Error {
@@ -119,6 +123,10 @@ export const api = {
   whereUsed: (productId: number, asOf?: string) => ok(http.GET('/api/v2/back-office/production/where-used/{productId}', { params: { path: { productId }, query: { asOf } } })),
   kpis: (from: string, to: string) => ok(http.GET('/api/v2/back-office/production/kpis', { params: { query: { from, to } } })),
   scrapReasons: () => ok(http.GET('/api/v2/back-office/production/scrap-reasons')),
+  aiStatus: () => ok(http.GET('/api/v2/ai/status')),
+  semanticSearch: (q: string, top = 12) => ok(http.GET('/api/v2/ai/search', { params: { query: { q, top } } })),
+  askExamples: () => ok(http.GET('/api/v2/ai/examples')),
+  ask: (question: string) => ok(http.POST('/api/v2/ai/ask', { body: { question } })),
   setPrice: (id: number, listPrice: number, version: number) => ok(http.PUT('/api/v2/back-office/products/{id}/price', { params: { path: { id } }, body: { listPrice, version } })),
 }
 

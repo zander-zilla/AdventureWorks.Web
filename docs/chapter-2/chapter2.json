@@ -132,9 +132,27 @@
   {
    "id": "C2-5",
    "name": "Optional Bedrock AI layer (Ask the data)",
-   "status": "planned",
+   "status": "done",
    "optional": true,
-   "pages": []
+   "pages": [
+    {
+     "path": "/app/back-office/ask",
+     "name": "Ask the data: question → guarded SQL over the dw views → table + chart (enable_ai)",
+     "processes": [
+      "sales-management",
+      "procure-to-pay",
+      "plan-to-produce"
+     ]
+    },
+    {
+     "path": "/app/shop/search",
+     "name": "Semantic product search: Titan embeddings + S3 Vectors blended with keywords (enable_ai)",
+     "processes": [
+      "catalog"
+     ]
+    }
+   ],
+   "pr": 22
   }
  ],
  "api_v2": [
@@ -430,6 +448,31 @@
    "method": "GET",
    "path": "/api/v2/back-office/production/scrap-reasons",
    "phase": "C2-4"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/ai/status",
+   "phase": "C2-5"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/ai/search",
+   "phase": "C2-5"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/ai/examples",
+   "phase": "C2-5"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/ai/ask",
+   "phase": "C2-5"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/ai/reindex",
+   "phase": "C2-5"
   }
  ],
  "access_patterns": [

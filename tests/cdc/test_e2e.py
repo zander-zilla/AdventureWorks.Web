@@ -80,3 +80,26 @@ def test_demo_order_replicates_and_reset_tombstones():
     json.dump({"order_id": oid, "end_to_end_insert_s": round(lag_insert, 2), "end_to_end_delete_s": round(lag_delete, 2),
                "consumer_lag_ms": status["lag_ms"], "dlq": status["dlq"]}, open(RESULTS, "w"), indent=1)
     assert status["dlq"] == 0
+
+
+def test_synthetic_trickle_replicates_through_cdc():
+    """C2-7: the daily trickle inserts generated days into SQL Server; CDC carries them to DynamoDB like any other write,
+    marked syn = 1 (the reconcile step after this test then checks SQL vs DynamoDB exactly, generated rows included)."""
+    import ddb
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "synthetic"))
+    import generate as G, load_sql
+    os.environ.setdefault("DDB_MULTI", "1")
+    t0 = time.time()
+    r = load_sql.run(G.ORIGIN + __import__("datetime").timedelta(days=1), mode="trickle", log=lambda *_: None)
+    assert r["batches"] == 2 and r["rows"] > 500
+    first = G.Generator().day(G.ORIGIN)
+    oid = first.rows["Sales.SalesOrderHeader"][0]["SalesOrderID"]; cid = first.rows["Sales.Customer"][0]["CustomerID"]
+    sales, cust = ddb.resource().Table("aw-sales"), ddb.resource().Table("aw-customer")
+
+    def replicated():
+        h = sales.get_item(Key={"PK": "ORDER#%010d" % oid, "SK": "ORDER"}, ConsistentRead=True).get("Item")
+        c = cust.get_item(Key={"PK": "BE#%06d" % cid, "SK": "PERSON"}, ConsistentRead=True).get("Item")
+        return (h, c) if h and c else None
+    (h, c), _ = wait_for(replicated, WAIT_S * 3)
+    assert h["syn"] == 1 and c["syn"] == 1 and h["src"] == "sql" and h["src_lsn"] != "0x" + "0" * 20
+    json.dump({"synthetic_days": r["batches"], "rows": r["rows"], "replicated_s": round(time.time() - t0, 1)}, open("/tmp/cdc-e2e-synthetic.json", "w"))

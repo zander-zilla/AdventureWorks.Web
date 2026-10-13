@@ -77,7 +77,7 @@
    "sql_rows": 19972
   },
   "Person.Person": {
-   "checksum_sql": "24c4bc63a048bd0f",
+   "checksum_sql": "9183cd6dd910adad",
    "expected_items": 19972,
    "sql_rows": 19972
   },

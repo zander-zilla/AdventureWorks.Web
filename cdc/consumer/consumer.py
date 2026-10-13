@@ -101,6 +101,9 @@ class Applier(threading.Thread):
 
 def make_handler(store):
     class H(BaseHTTPRequestHandler):
+        # HTTP/1.1 keep-alive: Debezium's Java client pools connections; an HTTP/1.0 close-after-response made it reuse a
+        # closed socket under a burst (C2-7 trickle day) -> "header parser received no bytes" and the engine stopped.
+        protocol_version = "HTTP/1.1"
         def log_message(self, *a):
             pass
 

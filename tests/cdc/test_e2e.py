@@ -102,4 +102,16 @@ def test_synthetic_trickle_replicates_through_cdc():
         return (h, c) if h and c else None
     (h, c), _ = wait_for(replicated, WAIT_S * 3)
     assert h["syn"] == 1 and c["syn"] == 1 and h["src"] == "sql" and h["src_lsn"] != "0x" + "0" * 20
+    # the reconcile step after this test compares every row: wait until the whole of both days has been applied
+    # (the consumer applies a generated day in ~1-3 min on a CI runner; the first order arrives within seconds)
+    last = G.Generator().range(G.ORIGIN, G.ORIGIN + __import__("datetime").timedelta(days=1))
+    lo = max(r["SalesOrderID"] for r in last.rows["Sales.SalesOrderHeader"])
+    lc = max(r["CustomerID"] for r in last.rows["Sales.Customer"])
+
+    def drained():
+        st = json.load(urllib.request.urlopen(CDC + "/api/status"))
+        h = sales.get_item(Key={"PK": "ORDER#%010d" % lo, "SK": "ORDER"}, ConsistentRead=True).get("Item")
+        c = cust.get_item(Key={"PK": "BE#%06d" % lc, "SK": "PERSON"}, ConsistentRead=True).get("Item")
+        return st if h and c and st["queued"] == 0 else None
+    wait_for(drained, WAIT_S * 10)
     json.dump({"synthetic_days": r["batches"], "rows": r["rows"], "replicated_s": round(time.time() - t0, 1)}, open("/tmp/cdc-e2e-synthetic.json", "w"))

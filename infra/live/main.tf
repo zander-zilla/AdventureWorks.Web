@@ -69,6 +69,16 @@ module "app" {
   sql_security_group_id = var.enable_source ? module.source_db[0].security_group_id : ""
   backups_bucket        = var.enable_source ? module.source_db[0].backups_bucket : ""
   frame_ancestors       = var.enable_showcase ? module.showcase[0].origin : ""
+  ai_environment        = var.enable_ai ? module.ai[0].environment : []
+  ai_policy_json        = var.enable_ai ? module.ai[0].policy_json : ""
+}
+
+# C2-5 Bedrock AI layer (off by default; costs per request + S3 Vectors storage).
+module "ai" {
+  count              = var.enable_ai ? 1 : 0
+  source             = "../modules/ai"
+  name               = local.name
+  redshift_workgroup = module.warehouse.workgroup
 }
 
 # Phase 8 showcase (ADR 0009): static site on S3 + CloudFront; content via scripts/aws/push-showcase.sh.

@@ -45,6 +45,17 @@ variable "frame_ancestors" {
   default     = ""
 }
 
+variable "ai_environment" {
+  description = "C2-5: Ai__* settings from module ai (empty = AI layer off)."
+  type        = list(object({ name = string, value = string }))
+  default     = []
+}
+variable "ai_policy_json" {
+  description = "C2-5: IAM policy for Bedrock, S3 Vectors and the Redshift Data API (empty = AI layer off)."
+  type        = string
+  default     = ""
+}
+
 data "aws_region" "r" {}
 data "aws_partition" "p" {}
 
@@ -134,6 +145,13 @@ resource "aws_iam_role_policy" "after" {
       Resource = flatten([for t in ["aw-catalog", "aw-customer", "aw-sales", "aw-inventory", "aw-reference", "aw-purchasing"] : [var.table_arns[t], "${var.table_arns[t]}/index/*"]])
     }], local.kms)
   })
+}
+
+resource "aws_iam_role_policy" "ai" {
+  count  = var.ai_policy_json == "" ? 0 : 1
+  name   = "ai"
+  role   = aws_iam_role.after.id
+  policy = var.ai_policy_json
 }
 
 resource "aws_iam_role" "tools" {
@@ -300,11 +318,11 @@ resource "aws_ecs_task_definition" "after" {
     essential              = true
     readonlyRootFilesystem = true
     portMappings           = [{ containerPort = 8080, protocol = "tcp" }]
-    environment = [
+    environment = concat([
       { name = "ASPNETCORE_URLS", value = "http://+:8080" },
       { name = "DynamoDb__Region", value = local.region },
       { name = "Showcase__FrameAncestors", value = var.frame_ancestors },
-    ]
+    ], var.ai_environment)
     logConfiguration = merge(local.log, { options = merge(local.log.options, { "awslogs-stream-prefix" = "after" }) })
   }])
 }
@@ -432,3 +450,4 @@ output "ecr_repositories" { value = { for k, v in aws_ecr_repository.r : k => v.
 output "cluster" { value = aws_ecs_cluster.c.name }
 output "tools_task_definition" { value = aws_ecs_task_definition.tools.family }
 output "tasks_security_group_id" { value = aws_security_group.tasks.id }
+output "ai_policy_count" { value = aws_iam_role_policy.ai[*].name }

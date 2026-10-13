@@ -162,3 +162,9 @@ variable "enable_monitor_api" {
   type        = bool
   default     = true
 }
+
+variable "enable_ai" {
+  description = "C2-5: Bedrock AI layer (semantic search on S3 Vectors, ask-the-data with a guardrail). Off by default."
+  type        = bool
+  default     = false
+}

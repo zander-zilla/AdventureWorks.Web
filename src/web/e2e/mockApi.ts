@@ -1,7 +1,7 @@
 import type { Page, Route } from '@playwright/test'
 import { procurementMock } from './mockProcurement'
 import { productionMock } from './mockProduction'
-import { aiMock } from './mockAi'
+import { aiMock, triageMock } from './mockAi'
 
 // Stateful in-memory stand-in for /api/v2 (C2-2 shop + back office), used when no real backend is configured.
 // Shapes follow the generated OpenAPI types; the real flow runs the same spec against the app image (after.yml).
@@ -65,7 +65,9 @@ export async function mockApi(page: Page) {
       return json(r, me)
     }
     if (p === '/auth/logout') { me = { authenticated: false, name: null, email: null, customerId: null, roles: [] }; return r.fulfill({ status: 204 }) }
-    const aiRes = p.startsWith('/ai/') || p.includes('/assist') ? ai(p, m, url, body) : null
+    const tri = p.match(/^\/back-office\/orders\/(\d+)\/assist\/([a-z-]+)$/)
+      if (tri) { const o = orders.find(x => x.id === Number(tri[1])); return o ? json(r, triageMock(tri[2], o as never)) : json(r, { title: 'Not found' }, 404) }
+      const aiRes = p.startsWith('/ai/') ? ai(p, m, url, body) : null
     if (aiRes) return json(r, aiRes.json, aiRes.status ?? 200)
     if (p === '/categories') return json(r, cats)
     const sub = p.match(/^\/subcategories\/(\d+)\/products$/); if (sub) return json(r, Number(sub[1]) === 2 ? [bike] : [{ ...helmet, listPrice: price.listPrice }])

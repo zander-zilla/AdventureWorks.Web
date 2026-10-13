@@ -17,20 +17,30 @@ const key = (q: string) => q.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
 const assist = (feature: string, kind: string, text: string, facts: Record<string, unknown>) => ({ feature, kind, text, facts,
   cites: [...text.matchAll(/\[([a-z0-9_.]+)\]/g)].map(m => m[1]), blocked: null, error: null, inputTokens: 520, outputTokens: 60, questionsLeft: 18, tokensLeft: 38800, mode: 'mock' })
-const orderFacts = { 'order.number': 'SO75123', 'order.status': 'In process', 'order.status_age_days': 6, 'queue.median_age_days': 1, 'order.lines': 2, 'order.total_due': 3953.99,
-  'order.ship_method': 'CARGO TRANSPORT 5', 'order.can_ship': false, 'customer.prior_orders': 0, 'line1.product': 'HL Road Frame - Red, 62', 'line1.qty': 4, 'line1.stock': 1, 'line1.short': 3,
-  'line2.product': 'Sport-100 Helmet, Blue', 'line2.qty': 1, 'line2.stock': 220, 'line2.short': 0 }
-export const triageMock = (kind: string) => kind === 'explain'
-  ? assist('triage', 'triage-explain', 'Needs attention: line 1 HL Road Frame - Red, 62 has 1 in stock but needs 4 [line1.short]; it has been In process for 6 days vs a queue median of 1 days [order.status_age_days] [queue.median_age_days]; this is the customer\'s first order [customer.prior_orders].', orderFacts)
-  : kind === 'approve-note' ? assist('triage', 'triage-approve-note', 'Approved SO75123 [order.number]: all 2 lines in stock [order.can_ship], 3953.99 due [order.total_due], ships via CARGO TRANSPORT 5 [order.ship_method].', orderFacts)
-  : assist('triage', 'triage-backorder-note', 'Backordered SO75123 [order.number]: HL Road Frame - Red, 62 short by 3 (in stock 1, ordered 4) [line1.short]. Ship once stock arrives.', orderFacts)
+type MockOrder = { number: string; status: number; orderDate?: unknown; totalDue?: unknown; shipMethodName?: unknown; lines: { name?: unknown; quantity: number; productId: number }[] }
+const stockOf = (pid: number) => (pid === 749 ? 3 : 288)
+// facts built from the order shown (like TriageFacts on the server), so the text matches the drawer
+export function orderFacts(o: MockOrder): Record<string, unknown> {
+  const f: Record<string, unknown> = { 'order.number': o.number, 'order.status': ['', 'In process', 'Approved', 'Backordered'][o.status] ?? String(o.status), 'order.status_age_days': 0,
+    'queue.median_age_days': 0, 'order.lines': o.lines.length, 'order.total_due': o.totalDue, 'order.ship_method': o.shipMethodName, 'customer.prior_orders': 0 }
+  o.lines.forEach((l, i) => { const s = stockOf(l.productId); Object.assign(f, { [`line${i + 1}.product`]: l.name, [`line${i + 1}.qty`]: l.quantity, [`line${i + 1}.stock`]: s, [`line${i + 1}.short`]: Math.max(0, l.quantity - s) }) })
+  f['order.can_ship'] = o.lines.every((_, i) => f[`line${i + 1}.short`] === 0)
+  return f
+}
+export function triageMock(kind: string, o: MockOrder) {
+  const f = orderFacts(o); const short = o.lines.findIndex((_, i) => (f[`line${i + 1}.short`] as number) > 0); const n = short + 1
+  if (kind === 'explain') return assist('triage', 'triage-explain', short >= 0
+    ? `Needs attention: line ${n} ${f[`line${n}.product`]} has ${f[`line${n}.stock`]} in stock but needs ${f[`line${n}.qty`]} [line${n}.short]. This is the customer's first order [customer.prior_orders].`
+    : `Ready to approve: all ${f['order.lines']} lines are in stock [order.can_ship]; ${f['line1.product']} needs ${f['line1.qty']} with ${f['line1.stock']} on hand [line1.stock]. It has waited ${f['order.status_age_days']} days vs a queue median of ${f['queue.median_age_days']} [order.status_age_days] [queue.median_age_days]; first order for this customer [customer.prior_orders].`, f)
+  if (kind === 'approve-note') return assist('triage', 'triage-approve-note', `Approved ${o.number} [order.number]: all ${f['order.lines']} lines in stock [order.can_ship], ${f['order.total_due']} due [order.total_due], ships via ${f['order.ship_method']} [order.ship_method].`, f)
+  return assist('triage', 'triage-backorder-note', short >= 0 ? `Backordered ${o.number} [order.number]: ${f[`line${n}.product`]} short by ${f[`line${n}.short`]} [line${n}.short]. Ship once stock arrives.` : `Backordered ${o.number} [order.number] at the customer's request; all ${f['order.lines']} lines are in stock [order.can_ship].`, f)
+}
 
 export function aiMock() {
   let left = 20, tokens = 40000
   const status = () => ({ enabled: true, mode: 'mock', chatModel: 'amazon.nova-pro-v1:0', embeddingModel: 'amazon.titan-embed-text-v2:0', rowLimit: 200, timeoutSeconds: 15,
     questionsLeft: left, tokensLeft: tokens, warehouseConnected: true })
   return (p: string, m: string, url: URL, body: () => Record<string, unknown>): { status?: number; json: unknown } | null => {
-    const tri = p.match(/^\/back-office\/orders\/\d+\/assist\/([a-z-]+)$/); if (tri) return { json: triageMock(tri[1]) }
     if (p === '/ai/status') return { json: status() }
     if (p === '/ai/examples') return { json: examples }
     if (p === '/ai/search') return { json: { query: url.searchParams.get('q'), mode: 'mock', hits } }

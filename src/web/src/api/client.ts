@@ -44,6 +44,8 @@ export type AskResult = S['AskResult']
 export type SearchResult = S['SearchResult']
 export type SearchHit = S['SearchHit']
 export type AssistResult = S['AssistResult']
+export type SmartSuggestion = S['SmartSuggestion']
+export type DemandForecast = S['DemandForecast']
 export type Problem = { title: string; status: number; detail?: string }
 
 export class ApiError extends Error {
@@ -95,6 +97,9 @@ export const api = {
   changes: (limit = 50) => ok(http.GET('/api/v2/back-office/changes', { params: { query: { limit } } })),
   // C2-3 procurement
   suggestions: () => ok(http.GET('/api/v2/back-office/procurement/suggestions')),
+  smartSuggestions: () => ok(http.GET('/api/v2/back-office/procurement/smart-suggestions')),
+  explainReorder: (id: number) => ok(http.POST('/api/v2/back-office/procurement/smart-suggestions/{id}/explain', { params: { path: { id } } })),
+  poEmailDraft: (id: number) => ok(http.POST('/api/v2/back-office/procurement/orders/{id}/email-draft', { params: { path: { id } } })),
   vendors: () => ok(http.GET('/api/v2/back-office/procurement/vendors')),
   vendor: (id: number) => ok(http.GET('/api/v2/back-office/procurement/vendors/{id}', { params: { path: { id } } })),
   pos: (status: number) => ok(http.GET('/api/v2/back-office/procurement/purchase-orders', { params: { query: { status } } })),

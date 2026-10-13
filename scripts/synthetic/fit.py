@@ -115,6 +115,9 @@ def fit(conn):
     # --- stores, sales people, quotas ------------------------------------------------------------------------------
     st = rows(cur, f"""SELECT h.CustomerID, MAX(h.SalesPersonID) sp, MAX(h.TerritoryID) tid, MAX(h.BillToAddressID) bill, MAX(h.ShipToAddressID) ship, COUNT(*) n
                        FROM Sales.SalesOrderHeader h WHERE OnlineOrderFlag=0 AND {so} AND OrderDate >= '2013-06-01' GROUP BY h.CustomerID ORDER BY 1""")
+    rp = rows(cur, f"""SELECT h.CustomerID, MAX(h.TerritoryID) tid, MAX(h.BillToAddressID) addr FROM Sales.SalesOrderHeader h
+                       WHERE OnlineOrderFlag=1 AND {so} AND OrderDate >= %s GROUP BY h.CustomerID ORDER BY 1""", FIT_FROM)
+    P["returning_pool"] = [[x["CustomerID"], x["tid"], x["addr"]] for x in rp]
     P["stores"] = [[x["CustomerID"], x["sp"], x["tid"], x["bill"], x["ship"], x["n"]] for x in st]
     q = rows(cur, """SELECT q.BusinessEntityID id, q.SalesQuota sq FROM Sales.SalesPersonQuotaHistory q
                      WHERE QuotaDate = (SELECT MAX(QuotaDate) FROM Sales.SalesPersonQuotaHistory q2 WHERE q2.BusinessEntityID = q.BusinessEntityID) ORDER BY 1""")

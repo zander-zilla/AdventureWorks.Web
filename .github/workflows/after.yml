@@ -28,6 +28,8 @@ jobs:
         run: PYTHON=python scripts/design-validate.sh
       - name: Integration tests against DynamoDB Local
         run: cd src && AW_DDB_IT=1 dotnet test AdventureWorks.slnx -c Release --no-build
+      - name: C2-6 derived AI inputs (monthly demand + customers also bought) into DynamoDB Local
+        run: DDB_MULTI=1 python scripts/loader/derive_ai.py
       - name: After stack (chiseled non-root image) up
         run: SKIP_LOAD=1 PYTHON=python scripts/after-up.sh && test "$(docker inspect -f '{{.Config.User}}' aw-after-app-1)" = 1654
       - uses: actions/setup-node@v4

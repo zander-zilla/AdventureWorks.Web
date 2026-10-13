@@ -27,17 +27,17 @@ def v(cur, q):
 
 def test_generated_lines_in_facts(pgc, sql):
     for flag, fact in ((1, "fact_internet_sales"), (0, "fact_reseller_sales")):
-        want = v(sql, "SELECT COUNT(*) FROM Sales.SalesOrderDetail d JOIN Sales.SalesOrderHeader h ON h.SalesOrderID = d.SalesOrderID WHERE h.SalesOrderID >= 1000000 AND h.OnlineOrderFlag = %d" % flag)
+        want = v(sql, "SELECT COUNT(*) AS n FROM Sales.SalesOrderDetail d JOIN Sales.SalesOrderHeader h ON h.SalesOrderID = d.SalesOrderID WHERE h.SalesOrderID >= 1000000 AND h.OnlineOrderFlag = %d" % flag)
         got = v(pgc, "SELECT COUNT(*) FROM dw.%s WHERE CAST(SUBSTRING(sales_order_number FROM 3) AS integer) >= 1000000" % fact)
         assert want > 0 and got == want, fact
 
 
 def test_generated_dimensions(pgc, sql):
     assert v(pgc, "SELECT COUNT(*) FROM dw.dim_customer WHERE CAST(SUBSTRING(customer_alternate_key FROM 3) AS integer) >= 500000") == \
-        v(sql, "SELECT COUNT(*) FROM Sales.Customer WHERE CustomerID >= 500000")
+        v(sql, "SELECT COUNT(*) AS n FROM Sales.Customer WHERE CustomerID >= 500000")
     assert v(pgc, "SELECT COUNT(DISTINCT product_alternate_key) FROM dw.dim_product WHERE product_alternate_key LIKE 'SY-%'") == \
-        v(sql, "SELECT COUNT(*) FROM Production.Product WHERE ProductID >= 5000")
-    assert v(pgc, "SELECT COUNT(*) FROM dw.dim_promotion WHERE promotion_alternate_key >= 100") == v(sql, "SELECT COUNT(*) FROM Sales.SpecialOffer WHERE SpecialOfferID >= 100")
+        v(sql, "SELECT COUNT(*) AS n FROM Production.Product WHERE ProductID >= 5000")
+    assert v(pgc, "SELECT COUNT(*) FROM dw.dim_promotion WHERE promotion_alternate_key >= 100") == v(sql, "SELECT COUNT(*) AS n FROM Sales.SpecialOffer WHERE SpecialOfferID >= 100")
     assert v(pgc, "SELECT MAX(date_key) FROM dw.dim_date") >= 20141231
 
 

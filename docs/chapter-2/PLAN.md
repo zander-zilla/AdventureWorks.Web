@@ -28,7 +28,7 @@ patterns unused by the app). The story for the audience: *"migration was step on
 | C2-3 | Procurement workspace | Low stock → suggested PO → approve → receive (partial/reject) | L (6-8 d) |
 | C2-4 | Production floor | Open work orders, routing timeline, BOM explorer, where-used, scrap | M (5-6 d) |
 | C2-5 | *Optional* Bedrock AI layer | Semantic product search, natural-language Q&A over Redshift | M (5-7 d) |
-| C2-6 | AI everywhere (**planned**, for John's sign-off) | Order triage copilot, smart reorder with forecast + PO email draft, shopper assistant chat, replication watchdog | L (9-12 d) |
+| C2-6 | AI everywhere (plan confirmed by John, Oct 13, 2026) | Order triage copilot, smart reorder with forecast + PO email draft, shopper assistant chat, replication watchdog | L (9-12 d) |
 
 Total ≈ 26-34 working days without C2-5, 31-41 with it. Estimates are for one engineer plus agent help, incl. tests and docs.
 
@@ -433,7 +433,7 @@ app logs; the real-image e2e runs with the AI layer on in mock mode.
 
 ---
 
-## C2-6 AI everywhere (plan, for John's sign-off)
+## C2-6 AI everywhere (plan accepted: all 8 recommendations confirmed by John (Oct 13, 2026))
 
 John's scope (2026-10-13): four AI features on top of the C2-5 layer, in the screens people already use. **Everything sits behind
 `enable_ai`** (off = the screens look as they do today). Everything reuses the C2-5 parts: Bedrock Converse through the same
@@ -538,7 +538,7 @@ behind `enable_ai`. Effort S-M (2 d).
   also-bought, with real prices.
 - Replication lag spikes, and the watchdog explains it in plain English with the runbook step.
 
-### Decisions for John (C2-6, with recommendations)
+### Decisions for John (C2-6, with recommendations) – all 8 confirmed by John (Oct 13, 2026)
 | # | Decision | Recommendation |
 |---|---|---|
 | 1 | Build order | **Shared parts → triage → smart reorder → watchdog → shopper chat**: back-office value first; chat has the most guardrail work. |

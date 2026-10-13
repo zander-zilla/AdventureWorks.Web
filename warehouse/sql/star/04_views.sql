@@ -28,3 +28,21 @@ LEFT JOIN dw.dim_product_subcategory ps ON ps.product_subcategory_key = p.produc
 LEFT JOIN dw.dim_product_category pc ON pc.product_category_key = ps.product_category_key
 LEFT JOIN dw.dim_promotion pr ON pr.promotion_key = f.promotion_key
 LEFT JOIN dw.dim_reseller r ON r.reseller_key = f.reseller_key;
+
+-- C2-3 vendor performance (John's decision 5): the same definitions as the app's vendor page (ProcurementRepository.Performance):
+-- reject rate = rejected / received; fill rate = received / ordered; on time = share of shipped lines with on_time_flag = 1.
+-- spend = line totals of approved (2) and complete (4) POs; average lead = order -> ship days per PO.
+DROP VIEW IF EXISTS dw.v_vendor_performance;
+CREATE VIEW dw.v_vendor_performance AS
+SELECT v.vendor_key, v.vendor_name, v.preferred_vendor_flag, v.credit_rating,
+       COUNT(DISTINCT f.purchase_order_id) AS purchase_orders, COUNT(*) AS lines,
+       SUM(f.order_quantity) AS ordered_quantity, SUM(f.received_quantity) AS received_quantity, SUM(f.rejected_quantity) AS rejected_quantity,
+       SUM(CASE WHEN f.status IN (2, 4) THEN f.line_total ELSE 0 END) AS spend,
+       CASE WHEN SUM(f.received_quantity) = 0 THEN NULL ELSE CAST(SUM(f.rejected_quantity) AS double precision) / CAST(SUM(f.received_quantity) AS double precision) END AS reject_rate,
+       CASE WHEN SUM(f.order_quantity) = 0 THEN NULL ELSE CAST(SUM(f.received_quantity) AS double precision) / CAST(SUM(f.order_quantity) AS double precision) END AS fill_rate,
+       CASE WHEN COUNT(f.on_time_flag) = 0 THEN NULL ELSE CAST(SUM(f.on_time_flag) AS double precision) / CAST(COUNT(f.on_time_flag) AS double precision) END AS on_time_rate,
+       AVG(CAST(f.lead_time_days AS double precision)) AS avg_lead_time_days,
+       SUM(CASE WHEN f.source = 'ddb' THEN 1 ELSE 0 END) AS app_lines
+FROM dw.fact_purchase_order_line f
+JOIN dw.dim_vendor v ON v.vendor_key = f.vendor_key
+GROUP BY v.vendor_key, v.vendor_name, v.preferred_vendor_flag, v.credit_rating;

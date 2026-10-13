@@ -404,6 +404,182 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/back-office/procurement/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listReorderSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/vendors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listVendors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/vendors/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getVendor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/products/{id}/vendors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listProductVendors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/purchase-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listOpenPurchaseOrders"];
+        put?: never;
+        post: operations["createPurchaseOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/purchase-orders/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["purchaseOrderCounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/purchase-orders/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listMyPurchaseOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/purchase-orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPurchaseOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/purchase-orders/{id}/{op}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["transitionPurchaseOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/purchase-orders/{id}/receive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["receivePurchaseOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listLocations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -458,6 +634,13 @@ export interface components {
         CheckoutRequest: {
             /** Format: int32 */
             shipMethodId: null | number;
+        };
+        CreatePoRequest: {
+            /** Format: int32 */
+            vendorId: number;
+            /** Format: int32 */
+            shipMethodId: null | number;
+            lines: components["schemas"]["PoLineRequest"][];
         };
         FeedEntry: {
             id: string;
@@ -582,6 +765,57 @@ export interface components {
             items: components["schemas"]["Order"][];
             next: null | string;
         };
+        PoEvent: {
+            /** Format: date-time */
+            at: string;
+            action: string;
+            /** Format: int32 */
+            fromStatus: null | number;
+            /** Format: int32 */
+            toStatus: number;
+            actor: string;
+            note: null | string;
+        };
+        PoLine: {
+            /** Format: int32 */
+            detailId: number;
+            /** Format: int32 */
+            productId: number;
+            productName: null | string;
+            /** Format: int32 */
+            orderQty: number;
+            /** Format: double */
+            unitPrice: number;
+            /** Format: double */
+            lineTotal: number;
+            /** Format: double */
+            receivedQty: number;
+            /** Format: double */
+            rejectedQty: number;
+            /** Format: double */
+            stockedQty: number;
+            /** Format: date-time */
+            dueDate: null | string;
+        };
+        PoLineRequest: {
+            /** Format: int32 */
+            productId: number;
+            /** Format: int32 */
+            quantity: number;
+        };
+        PoPage: {
+            items: components["schemas"]["PurchaseOrderSummary"][];
+            next: null | string;
+        };
+        PoResult: {
+            order: components["schemas"]["PurchaseOrder"];
+            outcome: string;
+        };
+        PoTransitionRequest: {
+            /** Format: int64 */
+            version: number;
+            note: null | string;
+        };
         PricedLine: {
             /** Format: int32 */
             lineNo: number;
@@ -681,6 +915,63 @@ export interface components {
             listPrice: number;
             active: boolean;
         };
+        PurchaseOrder: {
+            /** Format: int32 */
+            id: number;
+            number: string;
+            /** Format: int32 */
+            vendorId: number;
+            vendorName: null | string;
+            /** Format: int32 */
+            employeeId: null | number;
+            employeeName: null | string;
+            /** Format: int32 */
+            status: number;
+            statusText: null | string;
+            /** Format: int32 */
+            revisionNumber: number;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            orderDate: string;
+            /** Format: date-time */
+            shipDate: null | string;
+            /** Format: int32 */
+            shipMethodId: null | number;
+            shipMethodName: null | string;
+            /** Format: double */
+            subTotal: number;
+            /** Format: double */
+            taxAmt: number;
+            /** Format: double */
+            freight: number;
+            /** Format: double */
+            totalDue: number;
+            source: string;
+            readOnly: boolean;
+            lines: null | components["schemas"]["PoLine"][];
+            events: null | components["schemas"]["PoEvent"][];
+            actions: null | string[];
+        };
+        PurchaseOrderSummary: {
+            /** Format: int32 */
+            id: number;
+            number: string;
+            /** Format: int32 */
+            vendorId: number;
+            vendorName: null | string;
+            /** Format: int32 */
+            status: number;
+            statusText: string;
+            /** Format: date-time */
+            orderDate: string;
+            /** Format: double */
+            totalDue: number;
+            /** Format: int32 */
+            employeeId: null | number;
+            employeeName: null | string;
+            source: string;
+        };
         QuantityRequest: {
             /** Format: int32 */
             quantity: number;
@@ -702,6 +993,42 @@ export interface components {
             /** Format: double */
             totalDue: number;
             offerDate: string;
+        };
+        ReceiveLineRequest: {
+            /** Format: int32 */
+            detailId: number;
+            /** Format: int32 */
+            receivedQty: number;
+            /** Format: int32 */
+            rejectedQty: number;
+            /** Format: int32 */
+            locationId: null | number;
+        };
+        ReceiveRequest: {
+            /** Format: int64 */
+            version: number;
+            lines: components["schemas"]["ReceiveLineRequest"][];
+        };
+        ReorderSuggestion: {
+            /** Format: int32 */
+            productId: number;
+            name: string;
+            productNumber: null | string;
+            /** Format: double */
+            stockQty: number;
+            /** Format: int32 */
+            reorderPoint: number;
+            /** Format: int32 */
+            safetyStockLevel: number;
+            /** Format: int32 */
+            onOrder: number;
+            /** Format: int32 */
+            need: number;
+            /** Format: int32 */
+            suggestedQty: number;
+            note: null | string;
+            vendor: null | components["schemas"]["VendorProductInfo"];
+            vendors: components["schemas"]["VendorProductInfo"][];
         };
         Review: {
             /** Format: int32 */
@@ -772,6 +1099,86 @@ export interface components {
             order: components["schemas"]["Order"];
             outcome: string;
             shortages: string[];
+        };
+        VendorAddressInfo: {
+            type: null | string;
+            line1: null | string;
+            city: null | string;
+            state: null | string;
+            postalCode: null | string;
+            country: null | string;
+        };
+        VendorContactInfo: {
+            name: null | string;
+            type: null | string;
+        };
+        VendorDetail: {
+            vendor: components["schemas"]["VendorSummary"];
+            addresses: components["schemas"]["VendorAddressInfo"][];
+            contacts: components["schemas"]["VendorContactInfo"][];
+            products: components["schemas"]["VendorProductInfo"][];
+            performance: components["schemas"]["VendorPerformance"];
+            orders: components["schemas"]["PurchaseOrderSummary"][];
+        };
+        VendorPerformance: {
+            /** Format: int32 */
+            orders: number;
+            /** Format: int32 */
+            lines: number;
+            /** Format: double */
+            ordered: number;
+            /** Format: double */
+            received: number;
+            /** Format: double */
+            rejected: number;
+            /** Format: double */
+            spend: number;
+            /** Format: double */
+            rejectRate: null | number;
+            /** Format: double */
+            fillRate: null | number;
+            /** Format: double */
+            onTimeRate: null | number;
+            /** Format: double */
+            avgLeadDays: null | number;
+        };
+        VendorProductInfo: {
+            /** Format: int32 */
+            vendorId: number;
+            vendorName: string;
+            /** Format: int32 */
+            productId: number;
+            productName: string;
+            productNumber: null | string;
+            /** Format: int32 */
+            averageLeadTime: number;
+            /** Format: double */
+            standardPrice: number;
+            /** Format: double */
+            lastReceiptCost: null | number;
+            /** Format: date-time */
+            lastReceiptDate: null | string;
+            /** Format: int32 */
+            minOrderQty: number;
+            /** Format: int32 */
+            maxOrderQty: number;
+            /** Format: int32 */
+            onOrderQty: number;
+            unitMeasureCode: null | string;
+            /** @default false */
+            preferred: boolean;
+            /** @default true */
+            active: boolean;
+        };
+        VendorSummary: {
+            /** Format: int32 */
+            id: number;
+            name: string;
+            accountNumber: null | string;
+            /** Format: int32 */
+            creditRating: number;
+            preferred: boolean;
+            active: boolean;
         };
     };
     responses: never;
@@ -1479,6 +1886,360 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listReorderSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReorderSuggestion"][];
+                };
+            };
+        };
+    };
+    listVendors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorSummary"][];
+                };
+            };
+        };
+    };
+    getVendor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listProductVendors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorProductInfo"][];
+                };
+            };
+        };
+    };
+    listOpenPurchaseOrders: {
+        parameters: {
+            query?: {
+                status?: number;
+                next?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoPage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    createPurchaseOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePoRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    purchaseOrderCounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusCount"][];
+                };
+            };
+        };
+    };
+    listMyPurchaseOrders: {
+        parameters: {
+            query?: {
+                next?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoPage"];
+                };
+            };
+        };
+    };
+    getPurchaseOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    transitionPurchaseOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                op: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    receivePurchaseOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiveRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listLocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockAt"][];
                 };
             };
         };

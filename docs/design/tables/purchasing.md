@@ -201,3 +201,15 @@ Partition `VENDOR#001492` (first 6 items):
 - Open POs use derived POSTATUS#<s> items (237 today) instead of a third GSI.
 - Vendor<->product many-to-many: edge items in the vendor partition + inverted GSI1 on product.
 
+## Chapter 2 (C2-3) additions written by the app
+No key changes; the procurement workspace uses PUR-01..07 as designed. App-only items (`src = ddb`, `src_lsn = "~app"`):
+
+| PK / SK | Type | Purpose |
+|---|---|---|
+| `COUNTER` / `PO` | `Counter` | next native PO id (starts at 100,000; `PO-DDB-<id>`) |
+| `PO#<id>` / `EVENT#<iso>#<seq>` | `PurchaseOrderEvent` | created / approved / rejected / received history (drawer timeline) |
+| `VENDOR#<id>` / `PRODUCT#<id>` | `VendorProduct` | `on_order_qty` maintained on create/receive; last receipt cost/date on receive |
+| PO header / lines | `PurchaseOrder` / `PurchaseOrderLine` | adds `ver` (optimistic concurrency), lines' received/rejected/stocked qty updated per receipt |
+
+The vendor list in the UI is a cached Scan of the `VENDOR` items (104); no new access pattern was added.
+

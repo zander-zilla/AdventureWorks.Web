@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { api, money, isStaff } from '../../api/client'
+import { api, money, isStaff, hasRole } from '../../api/client'
 import { useAuth } from '../../api/auth'
 import { useLoad } from '../../api/useLoad'
 import { Button, EmptyState } from '../../components'
@@ -22,7 +22,8 @@ export function ShopHome() {
         <div className="mt-6 flex gap-3">
           <Link to="/shop/products"><Button>Browse products</Button></Link>
           {me?.authenticated && !isStaff(me) && <Link to="/shop/cart"><Button variant="secondary">Your cart</Button></Link>}
-          {isStaff(me) && <Link to="/back-office/orders"><Button variant="secondary">Back office · orders</Button></Link>}
+          {hasRole(me, 'Fulfilment') && <Link to="/back-office/orders"><Button variant="secondary">Back office · orders</Button></Link>}
+          {(hasRole(me, 'Buyer') || hasRole(me, 'PurchasingManager')) && <Link to="/back-office/procurement"><Button variant="secondary">Back office · procurement</Button></Link>}
           {!me?.authenticated && <Link to="/login"><Button variant="secondary">Sign in</Button></Link>}
         </div>
       </section>

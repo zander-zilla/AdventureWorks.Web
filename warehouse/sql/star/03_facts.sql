@@ -130,3 +130,29 @@ LEFT JOIN dw.wrk_inv_moves m ON m.product_id = g.product_id AND m.d = g.d;
 DROP TABLE dw.wrk_sales_line;
 DROP TABLE dw.wrk_line_keys;
 DROP TABLE dw.wrk_inv_moves;
+-- C2-3 FactPurchaseOrderLine: one row per PO line (Purchasing.PurchaseOrderDetail + header), SQL-era and app POs.
+-- on_time_flag: 1 when the PO shipped (app: first receipt) on or before the line due date, 0 when later, NULL when not shipped.
+-- Product version effective at the order date, as for the sales facts; employee = current DimEmployee row of the buyer.
+DELETE FROM dw.fact_purchase_order_line;
+INSERT INTO dw.fact_purchase_order_line
+WITH pv AS (
+  SELECT l.purchase_order_id, l.purchase_order_detail_id, dp.product_key,
+         ROW_NUMBER() OVER (PARTITION BY l.purchase_order_id, l.purchase_order_detail_id
+                            ORDER BY CASE WHEN dp.start_date <= h.order_date THEN 0 ELSE 1 END, dp.start_date DESC) AS rn
+  FROM stg.purchase_order_line l JOIN stg.purchase_order h ON h.purchase_order_id = l.purchase_order_id
+  JOIN dw.dim_product dp ON dp.product_id = l.product_id)
+SELECT pv.product_key, h.vendor_id, emp.employee_key, CAST(TO_CHAR(h.order_date, 'YYYYMMDD') AS integer),
+       CAST(TO_CHAR(l.due_date, 'YYYYMMDD') AS integer), CAST(TO_CHAR(h.ship_date, 'YYYYMMDD') AS integer),
+       l.purchase_order_id, l.purchase_order_detail_id,
+       CASE WHEN l.purchase_order_id >= 100000 THEN 'PO-DDB-' || CAST(l.purchase_order_id AS varchar(12))
+            ELSE 'PO' || LPAD(CAST(l.purchase_order_id AS varchar(12)), 6, '0') END,
+       h.status, h.revision_number, l.order_qty, l.unit_price, l.line_total,
+       l.received_qty, l.rejected_qty, l.stocked_qty,
+       CASE WHEN h.ship_date IS NULL OR l.due_date IS NULL THEN NULL
+            WHEN CAST(h.ship_date AS date) <= CAST(l.due_date AS date) THEN 1 ELSE 0 END,
+       CASE WHEN h.ship_date IS NULL THEN NULL ELSE CAST(CAST(h.ship_date AS date) - CAST(h.order_date AS date) AS integer) END,
+       COALESCE(h.src, 'sql'), h.order_date, l.due_date, h.ship_date
+FROM stg.purchase_order_line l
+JOIN stg.purchase_order h ON h.purchase_order_id = l.purchase_order_id
+LEFT JOIN pv ON pv.purchase_order_id = l.purchase_order_id AND pv.purchase_order_detail_id = l.purchase_order_detail_id AND pv.rn = 1
+LEFT JOIN dw.dim_employee emp ON emp.business_entity_id = h.employee_id AND emp.status = 'Current';

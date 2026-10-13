@@ -60,5 +60,14 @@ so the `SameSite=Lax` auth cookie is not sent and sign-in only works in a new ta
 ## C2-2 update
 - The API client is now generated: `openapi/v2.json` (from the API tests) → `openapi-typescript` → `schema.d.ts`, called via
   `openapi-fetch` (`src/api/client.ts` is a thin wrapper). CI regenerates and fails on drift.
-- `/` redirects to the SPA (`/app/`); Razor remains at `/Shop` and `/classic` (`Ui:Root=razor` switches back).
+- `/` redirects to the SPA (`/app/`); Razor remained at `/Shop` and `/classic` until C2-3 (see below).
 - Back office screens use role policies (`Fulfilment`, `CatalogAdmin`) on the same cookie auth.
+
+## C2-3 update
+- **Razor removed** (John, after C2-2): `Controllers/`, `Views/` and `wwwroot/css` are deleted, MVC/antiforgery are no
+  longer registered, `/classic`, `/Shop`, `/Cart`, `/Account/*` and `/Products` return 404 and the cookie login path is
+  `/app/login`. The only Razor-era screen with a SPA replacement is the price edit; product/customer/category admin CRUD
+  is gone with it (Chapter 1 keeps them in tag `v1.0-migration` and the frozen showcase at `/c1/`).
+- New role policies `Procurement` (Buyer or PurchasingManager), `PurchasingManager` and `Staff` (any staff role; used by
+  the replication monitor and stock lookups). Staff principals carry an `employee_id` claim (HR employee) so PUR-06
+  "my POs" and the PO's `employee_id` come from the login.

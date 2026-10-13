@@ -345,3 +345,27 @@ def test_debezium_and_dms_images_normalise_guid_and_time_like_pymssql():
            "data": {"rowguid": "D54E0552-C226-4C22-AF3B-762CA854CDD3", "StartTime": "07:00:00.0000000", "Flag": "1", "AR_H_CHANGE_SEQ": "1"}}
     d = T.from_dms(rec, types).after
     assert d["rowguid"] == a["rowguid"] and d["StartTime"] == datetime.time(7, 0) and d["Flag"] is True
+
+
+def test_c2_3_app_written_purchasing_items_are_never_overwritten_by_sql_cdc():
+    """C2-3: the app writes vendor-product on-order/last-receipt and PO items with src_lsn '~app' (sorts after every SQL LSN),
+    so a later SQL-side change to the same row (before app / DMS) is skipped instead of clobbering the app's receipt. A row the
+    app never touched still replicates."""
+    rows, sink, tr = setup(seed=False)
+    sink.put("aw-catalog", {"PK": "PRODUCT#000422", "SK": "PRODUCT", "name": "Thin-Jam Lock Nut 9", "product_number": "LJ-1213", "src_lsn": lsn(1)}, lsn(1))
+    sink.put("aw-catalog", {"PK": "PRODUCT#000423", "SK": "PRODUCT", "name": "Thin-Jam Lock Nut 10", "product_number": "LJ-1220", "src_lsn": lsn(1)}, lsn(1))
+    sink.put("aw-purchasing", {"PK": "VENDOR#001492", "SK": "VENDOR", "name": "Australia Bike Retailer", "src_lsn": lsn(1)}, lsn(1))
+    app_item = {"PK": "VENDOR#001492", "SK": "PRODUCT#000422", "type": "VendorProduct", "on_order_qty": 0, "last_receipt_cost": 45.26,
+                "last_receipt_date": "2026-10-12T18:00:00", "src": "ddb", "src_lsn": "~app"}
+    sink.put("aw-purchasing", app_item, "~app")
+
+    def pv(pid):
+        return dict(ProductID=pid, BusinessEntityID=1492, AverageLeadTime=17, StandardPrice=decimal.Decimal("47.00"), LastReceiptCost=decimal.Decimal("49.35"),
+                    LastReceiptDate=datetime.datetime(2014, 8, 12), MinOrderQty=1, MaxOrderQty=5, OnOrderQty=3, UnitMeasureCode="CTN",
+                    ModifiedDate=datetime.datetime(2014, 8, 12))
+    tr.apply(T.Change("Purchasing.ProductVendor", "u", lsn(50), after=pv(422)))
+    kept = sink.raw("aw-purchasing", "VENDOR#001492", "PRODUCT#000422")
+    assert kept["src_lsn"] == "~app" and kept["last_receipt_date"] == "2026-10-12T18:00:00" and kept["on_order_qty"] == 0
+    tr.apply(T.Change("Purchasing.ProductVendor", "c", lsn(51), after=pv(423)))
+    fresh = sink.raw("aw-purchasing", "VENDOR#001492", "PRODUCT#000423")
+    assert fresh["src_lsn"] == lsn(51) and fresh["vendor_name"] == "Australia Bike Retailer" and fresh["product_name"] == "Thin-Jam Lock Nut 10"

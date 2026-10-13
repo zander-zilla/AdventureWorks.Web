@@ -17,6 +17,8 @@ services:
       # C2-2: fulfilment (stock, TransactionHistory) and pricing (tax, ship methods)
       DynamoDb__Endpoints__aw-inventory: http://localhost:8004
       DynamoDb__Endpoints__aw-reference: http://localhost:8006
+      # C2-3: procurement (vendors, purchase orders)
+      DynamoDb__Endpoints__aw-purchasing: http://localhost:8005
       # Phase 8: let the local showcase (scripts/showcase-up.sh, :8088) embed the app in its App tab.
       Showcase__FrameAncestors: "http://localhost:* http://127.0.0.1:*"
     read_only: true

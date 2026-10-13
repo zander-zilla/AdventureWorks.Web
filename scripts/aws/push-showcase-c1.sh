@@ -20,7 +20,7 @@ if [ -z "$DIR" ]; then
 fi
 test -f "$DIR/index.html" || { echo "no Chapter 1 build in $DIR"; exit 1; }
 python3 -c 'import json,sys; json.dump({"appUrl":sys.argv[1],"beforeUrl":sys.argv[2],"monitorApi":"","monitorMode":sys.argv[3]},open(sys.argv[4],"w"),indent=1)' \
-  "${APP_URL%/}/classic" "$BEFORE_URL" "$MODE" "$DIR/config.json"   # C2-2: / is the SPA; Chapter 1's App tab keeps the Razor shop
+  "${APP_URL%/}/app/" "$BEFORE_URL" "$MODE" "$DIR/config.json"   # C2-3: Razor shop and /classic removed; the frozen build is untouched, only its App tab URL now opens the SPA
 aws s3 sync "$DIR" "s3://$BUCKET/c1/" --delete --only-show-errors
 for f in status changes; do  # Chapter 1's own replay copies (used only when /api/* is not routed to the Lambda)
   [ -f "$DIR/api/$f" ] && aws s3 cp "$DIR/api/$f" "s3://$BUCKET/c1/api/$f" --content-type application/json --only-show-errors

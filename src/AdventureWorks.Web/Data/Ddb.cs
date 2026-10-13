@@ -18,7 +18,8 @@ public sealed class DynamoOptions
 /// <summary>Routes each domain table to its client (one per endpoint).</summary>
 public sealed class DynamoTables
 {
-    public const string Catalog = "aw-catalog", Customer = "aw-customer", Sales = "aw-sales", Inventory = "aw-inventory", Reference = "aw-reference";
+    public const string Catalog = "aw-catalog", Customer = "aw-customer", Sales = "aw-sales", Inventory = "aw-inventory", Reference = "aw-reference",
+        Purchasing = "aw-purchasing";
     private readonly DynamoOptions _o;
     private readonly Dictionary<string, IAmazonDynamoDB> _clients = new();
     private readonly Func<string?, IAmazonDynamoDB> _factory;
@@ -92,6 +93,16 @@ public static class Keys
     public static string Review(DateTime d, int id) => $"REVIEW#{Iso(d)}#{id:00000}";
     public static string Price(DateTime start) => $"PRICE#{Iso(start)}";
     public static string OrderEvent(DateTime d, int seq) => $"EVENT#{Iso(d)}#{seq:000}";
+    public static string Vendor(int id) => $"VENDOR#{id:000000}";
+    public static string Po(int id) => $"PO#{id:000000}";
+    public static string PoLine(int detailId) => $"LINE#{detailId:000000}";
+    public static string PoStatus(int status) => $"POSTATUS#{status}";
+    public static string PoIndexSk(DateTime orderDate, int id) => $"{Iso(orderDate)}#{id:000000}";
+    public static string Employee(int id) => $"EMPLOYEE#{id:000000}";
+    /// <summary>C2-3: DynamoDB-native purchase orders (and their lines) are numbered from 100,000 (SQL: 1..4,012 / 1..8,845)
+    /// and shown as PO-DDB-n, like the D5 rule for sales orders.</summary>
+    public const int NativePoIdStart = 100_000;
+    public static string PoNumber(int id) => id >= NativePoIdStart ? $"PO-DDB-{id}" : $"PO{id:000000}";
     public static string Feed(DateTime d) => "FEED#" + d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     /// <summary>C2-2 origin marker: app-owned items get src_lsn = AppLsn, which sorts after every SQL LSN ("0x..."), so the
     /// one-way SQL -> DynamoDB CDC (conditional on src_lsn &lt; position, ADR 0003) never overwrites an app write.</summary>

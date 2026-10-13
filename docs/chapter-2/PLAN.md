@@ -215,7 +215,7 @@ Redshift; change a price, show the history in `dim_product`; "the bug the proces
   per product via a conditional `REVIEWER#` marker item in the same transaction.
 - **CAT-07 fixed**: a price change writes the product and closes the open `PRICE#` item (end date = day before) and adds
   `PRICE#<today>` in one transaction; `PUT /back-office/products/{id}/price` (role `CatalogAdmin`) and the Razor admin
-  edit both use it. Warehouse test: `dim_product` gets a new SCD2 version.
+  edit both used it (Razor removed in C2-3). Warehouse test: `dim_product` gets a new SCD2 version.
 - **Generated API client**: `src/web/openapi/v2.json` (written by the API tests, `AW_OPENAPI_OUT`) →
   `openapi-typescript` → `src/api/schema.d.ts`, used through `openapi-fetch`. CI fails if either is stale.
 - **Shop home** redesigned in React; **`/` now redirects to `/app/`**. Razor stays reachable at `/Shop` and `/classic`
@@ -233,9 +233,9 @@ Redshift; change a price, show the history in `dim_product`; "the bug the proces
 | Optional new access pattern SAL-14 (by status per territory) | **Not added**; territory is a `FilterExpression` on SAL-05 (`territory_id` set at checkout) | A few hundred open orders per status; an extra GSI isn't worth the write cost. Revisit if the queue grows. |
 | Ship = one transaction | One transaction **per DynamoDB endpoint locally** (local runs one DynamoDB Local per table); one transaction on AWS | DynamoDB Local instances can't share a transaction. Order: inventory first (conditions), then sales. |
 | Offers by order date | Offers evaluated on a **demo pricing date** (`Pricing:OfferDate`, default 2014-05-01; `today` = real date) | The sample offers end in 2014; with today's date no discount would ever apply. |
-| — | **Reseller volume discounts apply to web shoppers** too | They are the offers with quantity bands; makes CAT-10 visible. Decision for John. |
+| — | **Reseller volume discounts apply to web shoppers** too | They are the offers with quantity bands; makes CAT-10 visible. Confirmed by John after C2-2. |
 | Golden tests against SQL Server | Unit tests on the pricing rules + warehouse allocation test | No SQL Server in the C2 CI path; parity is tax/freight allocation in Redshift. |
-| Razor kept in the tag only (decision 7) | Razor **still served** at `/Shop` and `/classic` | Requested for C2-2; remove at v2.0 if John agrees. |
+| Razor kept in the tag only (decision 7) | Razor still served at `/Shop` and `/classic` in C2-2 | **Superseded:** John asked to remove it now; removed in C2-3 (see *C2-3 as built*). |
 | — | Change-feed outbox + order event timeline items | Gives the replication monitor and My orders timeline without reading DynamoDB Streams. |
 
 ## C2-3 Procurement workspace
@@ -256,6 +256,62 @@ Risks: synthetic PO data is inconsistent (PR #15: statuses vs receipt quantities
 historical ones are shown read-only; role model creep (keep to 2 demo roles).
 Demo talking points: a whole domain (`aw-purchasing`) that had no UI goes live with zero schema change – "the Phase 3
 design anticipated it"; reorder → PO → receipt chain business people recognise.
+
+### John's decisions after C2-2 (recorded 2026-10-12)
+1. Special offers are priced as of **2014-05-01** (`Pricing:OfferDate`) – kept as the default.
+2. Volume discounts **also apply to web shoppers** – kept.
+3. **Remove the Razor shop now** – done in C2-3: `/classic`, `/Shop`, `/Cart`, `/Account/*`, `/Products` are gone
+   (404), links/tests/docs fixed; `/c1/` (frozen Chapter 1) is untouched and its *App* tab now opens `/app/`.
+4. A shipment (and now a receipt) is **one transaction per DynamoDB Local endpoint locally, one transaction on AWS** –
+   kept and documented (`DynamoTables.TransactAsync`).
+
+### C2-3 as built (PR #20)
+- **Screen** `/app/back-office/procurement` (roles `Buyer`, `PurchasingManager`), three tabs:
+  - *Reorder suggestions* (INV-02): products on the sparse `GSI1 = REORDER` index of `aw-inventory` (stock at or below
+    reorder point / safety stock), quantity = top up to `max(safety stock, reorder point)` − already on order, rounded into
+    the vendor's min/max order quantity. Best vendor per product (PUR-02: active, preferred first, then lowest
+    standard price, then shortest lead time). Grouped by vendor; the buyer edits quantities, picks a ship method and creates one PO per vendor.
+  - *Purchase orders*: Pending / Approved counts and lists (PUR-07 `POSTATUS#` markers), *My POs* (PUR-06, GSI2
+    `EMPLOYEE#`), PO drawer with lines, history timeline and actions. SQL-era POs (ids < 100,000) are read-only.
+  - *Vendors*: list, vendor drawer (PUR-01 contacts/addresses/products, PUR-05 PO history) with **vendor performance**
+    (on-time rate, reject rate, average lead time, spend) computed from the vendor's POs.
+- **State machine** (`PoStatus`): create → 1 Pending; approve 1→2 and reject 1→3 (role `PurchasingManager`); receive
+  (role `Buyer`) on 2 Approved, partial receipts allowed, rejected quantity recorded; the PO becomes 4 Complete when
+  every line is received + rejected in full. All writes conditioned on `ver` (409 on conflict), `Idempotency-Key`
+  accepted.
+- **Create** = one transaction: PO header (`PO-DDB-n`, ids from 100,000 via a `COUNTER/PO` item), lines, vendor-product
+  `on_order_qty` += qty, `POSTATUS#1` marker, a `PurchaseOrderEvent` and a change-feed item. Tax 8 % and freight 2.5 % of
+  subtotal (the ratios of the SQL-era data: tax on all 4,012 headers, freight on 4,000; verified by a warehouse test). Max 15 lines per PO.
+- **Receive** = one transaction (`ProcurementRepository.ReceivePlan`): header (status/ship date/revision), POSTATUS
+  marker move, each line's received/rejected qty (conditioned on the previous received qty), vendor-product
+  `on_order_qty` −= received and last receipt cost/date, `INV#<location>` upsert (INV-01), the product stock summary
+  incl. REORDER index maintenance, `TXN#` TransactionHistory type `P` (INV-03), the catalog stock copy, event, feed.
+  Locally split per endpoint like ship (decision 4).
+- **Demo staff**: `mikael0@adventure-works.com` (Mikael Sandberg, employee 251, Buyer) and `sheela0@adventure-works.com`
+  (Sheela Word, 250, Buyer + PurchasingManager), password `Demo!2026`; staff logins carry an `employee_id` claim.
+- **Razor removed** (decision 3 above); `/` → `/app/`, login at `/app/login`.
+- **CDC**: new app items carry `src_lsn = "~app"`; a CDC test checks a SQL change to a vendor product the app has written
+  is skipped while untouched rows still replicate.
+- **Redshift**: `dw.dim_vendor`, `dw.fact_purchase_order_line` (grain PO line; order/due/ship dates, on-time flag,
+  lead time days, received/rejected/stocked qty, line total, origin sql/ddb) and view `dw.v_vendor_performance`. Reconcile tests against
+  the OLTP evidence (8,845 lines, quantity sums, status mix, 104 vendors, lead-time distribution), tax/freight ratio,
+  and an app-created PO reaching the star.
+- **Showcase**: Back office lists Procurement and Vendors as *Live · C2-3*; chapter2.json updated.
+- **Tests**: unit (`C23Tests.cs`: suggestion maths, vendor choice, transitions, transaction plans, 100-item limit,
+  performance), integration on DynamoDB Local (suggest → create → approve → partial + final receipt), Playwright
+  `e2e/c2-3.spec.ts` (mocked and real image), SPA smoke tests in `tests/after` replacing the Razor ones.
+
+#### Changes from initial design (C2-3)
+| Plan | As built | Why |
+|---|---|---|
+| Separate low-stock dashboard + suggested PO | One *Reorder suggestions* tab grouped by vendor | Fewer clicks; the low-stock list is the suggestion list. |
+| Statuses Pending → Approved → Received/Rejected/Complete | AdventureWorks codes only: 1 Pending, 2 Approved, 3 Rejected, 4 Complete; "received" is partial receipts on an Approved PO | Keeps the SQL-era codes so Redshift reports both the same way. |
+| Route `/app/procurement` | `/app/back-office/procurement` | Same back-office shell and nav as fulfilment. |
+| Vendor list via existing patterns | **Scan** of the vendor items, cached 10 minutes (no PUR-08 added) | 104 vendors; no access pattern lists all vendors and a GSI is not worth it. |
+| Optional view `dw.vendor_performance` | `dw.v_vendor_performance` on new `dim_vendor` + `fact_purchase_order_line` | Decision 5; a fact table makes the reconcile tests possible. |
+| — | Approval by the creator allowed (Sheela can approve her own PO) | Two demo roles only; separation of duties is a decision for John. |
+| — | `PurchaseOrderEvent` items and a `COUNTER/PO` item in `aw-purchasing` | History timeline and id allocation without a SQL sequence. |
+| — | Razor UI removed | John's decision after C2-2. |
 
 ## C2-4 Production floor
 

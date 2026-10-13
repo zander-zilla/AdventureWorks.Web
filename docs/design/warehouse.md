@@ -92,6 +92,8 @@ line (`deleted=true`) drops out; static carry-over row counts; FactSurveyRespons
 | FactSalesQuota | `dw.fact_sales_quota` | 163 / 163 | |
 | FactCurrencyRate | `dw.fact_currency_rate` | 13,532 / 14,264 | currency + day |
 | FactProductInventory | `dw.fact_product_inventory` | 417,365 / 776,286 | product version + day |
+| — (not in AdventureWorksDW; added in C2-3) | `dw.dim_vendor` | 104 | = vendor BusinessEntityID |
+| — (not in AdventureWorksDW; added in C2-3) | `dw.fact_purchase_order_line` | 8,845 | PO id + line id |
 | FactFinance, DimAccount, DimOrganization, DimDepartmentGroup, DimScenario, FactCallCenter, FactSurveyResponse, FactAdditionalInternationalProductDescription, NewFactCurrencyRate, ProspectiveBuyer | `dw_static.*` (static, verbatim, snake_case columns) | equal (39,409 / 99 / 14 / 7 / 3 / 120 / 2,727 / 15,168 / 50 / 2,059) | DW keys |
 | localised names (category, subcategory, promotion, country, product) | `dw_static.loc_*` joined in by the build | 4 / 37 / 16 / 6 / 504 | business key |
 | vDMPrep, vTargetMail, … (data-mining views) | not rebuilt; `dw.v_sales` (both channels, denormalised) feeds QuickSight | | |
@@ -186,6 +188,7 @@ Notation: `entity.attr` = column of `stg.<entity>` (= the DynamoDB attribute of 
 | **fact_internet_sales_reason** | order_sales_reason ⨝ internet lines | (order number, line number, reason) |
 | **fact_sales_quota** | sales_quota; employee_key = current version | key = row_number |
 | **fact_currency_rate** | currency_rate (to-currency; last rate per day) | |
+| **fact_purchase_order_line** (C2-3) | purchase_order ⨝ purchase_order_line | grain PO line; product_key (version at order date), vendor_key (= vendor id), employee_key (current version), order/due/ship date keys, PO number, status, revision; order_qty, unit_price, line_total, received_qty, rejected_qty, stocked_qty; origin (`sql` / `ddb`); header tax/freight are not carried (the tax/freight ratio is checked by a test); `on_time_flag` = ship date ≤ line due date; `lead_time_days` = ship date − order date. `dw.v_vendor_performance` aggregates it per vendor (on-time rate, reject rate, avg lead time, spend) |
 | **fact_product_inventory** | inventory_transaction (P/W = in, S = out) per product and day; grid from first movement to the last movement date; balance = on-hand (product_inventory) − total net + running net | product_key = version at that day; unit_cost = version standard cost |
 
 ## Deploying on AWS (runbook — not executed)
@@ -223,6 +226,7 @@ The starting point was `dw-lineage.md` (phase 1), the phase-6 row of PLAN.md and
 | 10 | Data-mining views rebuilt if needed | Not rebuilt; `dw.v_sales` for QuickSight | QuickSight needs one wide sales view |
 | 11 | P3-2: AWS-managed KMS key on 5 tables | AWS-owned key on 5 tables; CMKs on aw-hr/aw-customer with a Redshift key-policy grant | Zero-ETL does not support AWS-managed keys — decision W-1 (accepted) |
 | 12 | – | Binary/image columns and some localised attribute columns not carried | Not in the replicated items / not needed for BI |
+| 14 | Vendor performance as an optional view (C2-3) | `dw.dim_vendor` + `dw.fact_purchase_order_line` + `dw.v_vendor_performance` | A fact table can be reconciled against the OLTP (tests `test_c2_3_*`) and also covers app-created `PO-DDB-…` orders |
 | 13 | – | `TRUNCATECOLUMNS` on `aw_zetl_catalog`, CI size pre-flight | Product documents are at 95 % of the 64 KB attribute limit |
 
 ## Decisions (accepted by John 2026-10-12, ADR 0007)

@@ -150,6 +150,21 @@ emails must come back "Blocked by the Bedrock guardrail". To turn AI off again, 
 - **Cost**: the same per-session budget as C2-5 (20 model calls / 40k tokens per day); the chat adds at most 10 Nova Lite
   turns per session. The PO e-mail is a draft only (no SES).
 
+## 5c. Synthetic data to the present (C2-7; `synthetic_data`, `synthetic_trickle`, both **off** by default)
+- **Load once**: set `synthetic_data = true` (the app then prices offers as of today instead of 2014-05-01), apply, then
+  `scripts/aws/run-tool.sh demo synthetic-load` (`--dry-run` prints the counts first; `--end YYYY-MM-DD` to stop earlier).
+  It inserts day batches into RDS SQL Server; DMS → Kinesis → Lambda carries them to DynamoDB (`syn = 1`), zero-ETL to Redshift.
+  Resumable: re-running continues after the last batch in `dbo.SyntheticBatch`.
+- **Daily trickle**: also set `synthetic_trickle = true` (needs `synthetic_data` and `enable_source`). EventBridge Scheduler
+  (`synthetic_trickle_schedule`, default `cron(30 2 * * ? *)` UTC) runs the tools task `synthetic-trickle`, which generates
+  every missing day up to yesterday (so a stopped environment catches up on the next run). Logs: the tools task log group.
+- **Volume (measured)**: ≈ 7.0 M source rows for 2014-07..2026-10, ≈ 0.5-0.7 M per year, ≈ 1 800-2 000 a day.
+- **Cost (estimate)**: one full load ≈ $10-20 (DynamoDB on-demand writes, Lambda/Kinesis burst, Redshift catch-up) and
+  ≈ 2-3 h; afterwards ≈ $3 / month storage while loaded. The trickle is one short Fargate task a day (cents per month).
+- **Removal**: there is no in-place delete (original rows are never modified, generated rows are marked by key ranges).
+  To go back to the original data, turn both switches off and tear down / re-apply the environment (§7). Locally:
+  `scripts/synthetic/restore-original.sh`.
+
 ## 6. Demo + smoke checks
 - `terraform -chdir=infra/live output after_url before_url`
 - Before app (`:8080`): log in as a demo customer, place an order → DMS → Kinesis → Lambda → `aw-sales` within seconds:

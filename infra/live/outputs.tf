@@ -19,6 +19,7 @@ output "redshift_integration_ids" { value = module.warehouse.integration_ids }
 output "dw_static_bucket" { value = module.warehouse.static_bucket }
 output "redshift_copy_role_arn" { value = module.warehouse.copy_role_arn }
 output "showcase_url" { value = var.enable_showcase ? module.showcase[0].url : null }
+output "showcase_chapter1_url" { value = var.enable_showcase ? module.showcase[0].chapter1_url : null }
 output "showcase_bucket" { value = var.enable_showcase ? module.showcase[0].bucket : null }
 output "showcase_distribution_id" { value = var.enable_showcase ? module.showcase[0].distribution_id : null }
 output "showcase_monitor_api" { value = local.monitor_api }

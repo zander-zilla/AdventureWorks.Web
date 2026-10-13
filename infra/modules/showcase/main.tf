@@ -74,6 +74,22 @@ locals {
   monitor_domain     = replace(trimsuffix(var.monitor_api_url, "/"), "https://", "")
 }
 
+# C2-1: long TTL for the frozen Chapter 1 (/c1/*): 30 days default, 1 year max.
+resource "aws_cloudfront_cache_policy" "frozen" {
+  name        = "${var.name}-showcase-frozen"
+  comment     = "Frozen Chapter 1 showcase (C2-1)"
+  default_ttl = 2592000
+  max_ttl     = 31536000
+  min_ttl     = 0
+  parameters_in_cache_key_and_forwarded_to_origin {
+    cookies_config { cookie_behavior = "none" }
+    headers_config { header_behavior = "none" }
+    query_strings_config { query_string_behavior = "none" }
+    enable_accept_encoding_gzip   = true
+    enable_accept_encoding_brotli = true
+  }
+}
+
 # Phase 8b (S-2): CloudFront signs requests to the AWS_IAM Function URL (origin access control for Lambda).
 resource "aws_cloudfront_origin_access_control" "monitor" {
   count                             = var.enable_monitor_api ? 1 : 0
@@ -81,6 +97,17 @@ resource "aws_cloudfront_origin_access_control" "monitor" {
   origin_access_control_origin_type = "lambda"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
+}
+
+# C2-1: Chapter 1 is frozen under /c1/ (same bucket + distribution). S3 (OAC, REST endpoint) has no index documents
+# below the root, so this viewer-request function maps directory URIs to index.html and the short chapter URLs
+# (/c1 -> /c1/, /c2[/] -> /#/c2/story; Chapter 2 is a hash-routed SPA at /).
+resource "aws_cloudfront_function" "paths" {
+  name    = "${var.name}-showcase-paths"
+  runtime = "cloudfront-js-2.0"
+  comment = "Showcase chapter paths (C2-1)"
+  publish = true
+  code    = file("${path.module}/paths.js")
 }
 
 resource "aws_cloudfront_distribution" "site" {
@@ -128,6 +155,36 @@ resource "aws_cloudfront_distribution" "site" {
     compress                   = true
     cache_policy_id            = local.caching_optimized
     response_headers_policy_id = local.security_headers
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.paths.arn
+    }
+  }
+  # C2-1 frozen Chapter 1: c1/config.json carries today's stack URLs (never cached); everything else under /c1/ is
+  # immutable (only showcase-freeze.yml / push-showcase-c1.sh write it, with an explicit /c1/* invalidation).
+  ordered_cache_behavior {
+    path_pattern               = "c1/config.json"
+    target_origin_id           = local.origin_id
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = local.caching_disabled
+    response_headers_policy_id = local.security_headers
+  }
+  ordered_cache_behavior {
+    path_pattern               = "c1/*"
+    target_origin_id           = local.origin_id
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = aws_cloudfront_cache_policy.frozen.id
+    response_headers_policy_id = local.security_headers
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.paths.arn
+    }
   }
   dynamic "ordered_cache_behavior" {
     for_each = var.enable_monitor_api ? ["api/*"] : []
@@ -206,5 +263,6 @@ resource "aws_lambda_permission" "monitor_invoke" {
 output "monitor_api" { value = var.enable_monitor_api }
 output "bucket" { value = aws_s3_bucket.site.bucket }
 output "distribution_id" { value = aws_cloudfront_distribution.site.id }
+output "chapter1_url" { value = "https://${aws_cloudfront_distribution.site.domain_name}/c1/" }
 output "url" { value = "https://${aws_cloudfront_distribution.site.domain_name}/" }
 output "origin" { value = "https://${aws_cloudfront_distribution.site.domain_name}" }

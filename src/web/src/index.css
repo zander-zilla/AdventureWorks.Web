@@ -7,7 +7,7 @@
 
 :root, [data-theme="dark"] {
   --aw-bg: #0f1420; --aw-panel: #171e2e; --aw-raised: #1e2740; --aw-ink: #e6ebf5; --aw-mute: #8a94a8; --aw-line: #263049;
-  --aw-accent: #6c7cff; --aw-accent-ink: #ffffff; --aw-accent2: #2dd4bf;
+  --aw-accent: #6c7cff; --aw-accent-ink: #0f1420; /* C2-1: WCAG AA on #6c7cff (5.2:1; white was 3.5:1, Lighthouse) */ --aw-accent2: #2dd4bf;
   --aw-ok: #22c55e; --aw-warn: #f59e0b; --aw-danger: #f87171; --aw-info: #60a5fa;
   --aw-font-display: "Inter", system-ui, sans-serif; --aw-radius: 8px;
   color-scheme: dark;

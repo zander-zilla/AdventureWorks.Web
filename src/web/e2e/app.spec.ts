@@ -79,3 +79,12 @@ test('sign in through /api/v2 (same-origin cookie)', async ({ page }) => {
   await page.getByLabel('Password').fill('Demo!2026'); await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByTestId('user')).toContainText('Donald')
 })
+
+test('Chapter switch: Chapter 1 goes to the showcase /c1/ (VITE_SHOWCASE_URL, local default :8088)', async ({ page }) => {
+  test.skip(real, 'needs the build-time showcase URL of the target environment')
+  await mock(page)
+  await page.route('http://localhost:8088/c1/', r => r.fulfill({ contentType: 'text/html', body: '<h1>Chapter 1 frozen</h1>' }))
+  await page.goto('./')
+  await page.getByRole('radio', { name: 'Chapter 1 · Migration' }).click()
+  await expect(page).toHaveURL('http://localhost:8088/c1/')
+})

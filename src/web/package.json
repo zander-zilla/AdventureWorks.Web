@@ -1,7 +1,7 @@
 {
   "name": "adventureworks-web",
   "private": true,
-  "version": "2.0.0-c2.0",
+  "version": "2.0.0-c2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "build:showcase": "tsc -b && vite build -c vite.showcase.config.ts",
+    "e2e:showcase": "playwright test -c playwright.showcase.config.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

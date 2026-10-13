@@ -1,0 +1,237 @@
+{
+ "_comment": "Source of truth for the Chapter 2 showcase (C2-1): phases, the pages each adds and the business processes they give a UI (coverage tile), plus the 'What changed' lists. status: done | building | planned. Update in each phase PR. candidate_phase maps business-processes.json chapter2_candidates ranks to the phase that builds them (unlisted = backlog).",
+ "phases": [
+  {
+   "id": "C2-0",
+   "name": "Design system and UX direction",
+   "status": "done",
+   "pr": 17,
+   "pages": [
+    {
+     "path": "/app/shop/products",
+     "name": "Product list (CAT-06)",
+     "processes": [
+      "o2c-internet",
+      "catalog"
+     ]
+    },
+    {
+     "path": "/app/design",
+     "name": "Component gallery",
+     "processes": []
+    }
+   ]
+  },
+  {
+   "id": "C2-1",
+   "name": "Redesigned showcase + chapter switch",
+   "status": "building",
+   "pages": []
+  },
+  {
+   "id": "C2-2",
+   "name": "Order fulfilment, real pricing, reviews, CAT-07 fix",
+   "status": "planned",
+   "pages": [
+    {
+     "path": "/app/back-office/orders",
+     "name": "Back office orders (SAL-05, SAL-06)",
+     "processes": [
+      "o2c-internet",
+      "o2c-reseller",
+      "inventory"
+     ]
+    },
+    {
+     "path": "/app/shop/checkout",
+     "name": "Checkout with offers, tax, freight (REF-02, REF-04)",
+     "processes": [
+      "o2c-internet",
+      "sales-management"
+     ]
+    },
+    {
+     "path": "/app/shop/products/:id#reviews",
+     "name": "Product reviews (CAT-11)",
+     "processes": [
+      "reviews-returns"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C2-3",
+   "name": "Procurement workspace",
+   "status": "planned",
+   "pages": [
+    {
+     "path": "/app/procurement",
+     "name": "Low stock → suggested PO → approve → receive (INV-02, PUR-02..07)",
+     "processes": [
+      "procure-to-pay",
+      "inventory"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C2-4",
+   "name": "Production floor",
+   "status": "planned",
+   "pages": [
+    {
+     "path": "/app/production",
+     "name": "Work orders, routing timeline, BOM explorer (INV-04..06)",
+     "processes": [
+      "plan-to-produce",
+      "inventory"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C2-5",
+   "name": "Optional Bedrock AI layer (Ask the data)",
+   "status": "planned",
+   "optional": true,
+   "pages": []
+  }
+ ],
+ "api_v2": [
+  {
+   "method": "GET",
+   "path": "/api/v2/me",
+   "phase": "C2-0"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/auth/login",
+   "phase": "C2-0"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/auth/logout",
+   "phase": "C2-0"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/products",
+   "pattern": "CAT-06",
+   "phase": "C2-0"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/products/{id}",
+   "pattern": "CAT-04",
+   "phase": "C2-0"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/categories",
+   "pattern": "CAT-01",
+   "phase": "C2-0"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/cart",
+   "phase": "C2-0"
+  }
+ ],
+ "access_patterns": [
+  {
+   "id": "SAL-05",
+   "use": "Back office orders by status",
+   "phase": "C2-2",
+   "new": false
+  },
+  {
+   "id": "SAL-06",
+   "use": "Approve / ship / cancel / backorder",
+   "phase": "C2-2",
+   "new": false
+  },
+  {
+   "id": "INV-03",
+   "use": "TransactionHistory on ship / receive / complete",
+   "phase": "C2-2",
+   "new": false
+  },
+  {
+   "id": "CAT-11",
+   "use": "Reviews on product detail",
+   "phase": "C2-2",
+   "new": false
+  },
+  {
+   "id": "SAL-14",
+   "use": "Orders by status for one customer / territory (only if needed)",
+   "phase": "C2-2",
+   "new": true
+  },
+  {
+   "id": "INV-02",
+   "use": "Low stock dashboard",
+   "phase": "C2-3",
+   "new": false
+  },
+  {
+   "id": "PUR-02..07",
+   "use": "Suggested PO, create, approve, receive",
+   "phase": "C2-3",
+   "new": false
+  },
+  {
+   "id": "INV-04..06",
+   "use": "BOM explorer, where-used, open work orders",
+   "phase": "C2-4",
+   "new": false
+  }
+ ],
+ "redshift_views": [
+  {
+   "name": "dw.vendor_performance",
+   "use": "On-time and reject rate tile",
+   "phase": "C2-3"
+  },
+  {
+   "name": "dw.production_scrap_on_time",
+   "use": "Scrap rate and on-time production tile",
+   "phase": "C2-4"
+  }
+ ],
+ "architecture_delta": [
+  {
+   "area": "Front end",
+   "before": "Razor MVC pages",
+   "after": "React 19 + Vite + Tailwind SPA under /app/ (same origin)"
+  },
+  {
+   "area": "API",
+   "before": "MVC controllers only",
+   "after": "/api/v2 minimal APIs + OpenAPI"
+  },
+  {
+   "area": "Design",
+   "before": "Bootstrap theme",
+   "after": "One token set, two themes (B · Ops console dark, A · Trail light)"
+  },
+  {
+   "area": "Showcase",
+   "before": "8-tab vanilla JS site",
+   "after": "Two chapters: Chapter 1 frozen at /c1/, Chapter 2 live at /"
+  },
+  {
+   "area": "Data model",
+   "before": "7 DynamoDB tables, 70 access patterns",
+   "after": "Unchanged; Chapter 2 lights up designed-but-unused patterns"
+  }
+ ],
+ "candidate_phase": {
+  "1": "C2-2",
+  "2": "C2-2",
+  "3": "C2-3",
+  "4": "C2-2",
+  "5": "C2-4",
+  "8": "C2-3"
+ }
+}

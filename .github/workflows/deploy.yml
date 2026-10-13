@@ -46,6 +46,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4 # C2-1: the showcase bundle (src/web) is built by push-showcase.sh
+        with:
+          node-version: 22
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -70,6 +73,8 @@ jobs:
         run: scripts/aws/push-images.sh "$ENVNAME" "${GITHUB_SHA::12}" -var "allowed_cidrs=$CIDRS"
       - name: Build + upload the showcase site (S3 + CloudFront, ADR 0009)
         if: inputs.action == 'apply' || inputs.action == 'app-only'
+        env:
+          GH_TOKEN: ${{ github.token }} # seeds /c1/ once from the v1.0-migration release asset
         run: scripts/aws/push-showcase.sh "$ENVNAME"
       - name: Outputs
         if: inputs.action == 'apply' || inputs.action == 'app-only'

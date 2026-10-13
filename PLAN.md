@@ -29,3 +29,5 @@ Chapter 2 is grounded in the business-process analysis in [docs/business-process
 | 2026-10-12 | 8. Tag `v2.0-extend` at the end of Chapter 2 (optional `v2.0-rcN` after C2-2). |
 | 2026-10-12 | 9. C2-3 (procurement) before C2-4 (production). |
 | 2026-10-12 | C2-0 as built: front end in `src/web` (not `web/`), SPA served by the app at `/app/`, framed-login fix via `SameSite=None; Secure` when framed over HTTPS; full list in ADR 0010 *Changes from initial design*. |
+| 2026-10-12 | John accepted the C2-0 recommendations: keep the hand-written `/api/v2` client until C2-2 (generate it from OpenAPI then); keep the dependency-free SVG charts until C2-4 (add a chart library there); wire the SPA's *Chapter 1* button to `/c1/` via `VITE_SHOWCASE_URL` in C2-1. |
+| 2026-10-12 | C2-1 as built (PR #18): Chapter 2 showcase is a second Vite entry in `src/web` (hash routes `#/c2/...`), Chapter 1 frozen under `/c1/` (release asset `showcase-v1.0-migration.zip`, `showcase-freeze.yml`), CloudFront `c1/*` behaviours + path function; see docs/chapter-2/PLAN.md *C2-1 as built*. |

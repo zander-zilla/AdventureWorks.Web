@@ -23,7 +23,7 @@ patterns unused by the app). The story for the audience: *"migration was step on
 | # | Phase | Outcome | Effort |
 |---|---|---|---|
 | C2-0 | Design system and UX direction | Chosen visual direction, React + Tailwind front end scaffold over the .NET 10 API, tokens/components, ADR 0010 | M (4-6 d) |
-| C2-1 | Redesigned showcase + chapter switch | New showcase in the design system; Chapter 1 frozen from `v1.0-migration`, Chapter 2 live | M (4-5 d) |
+| C2-1 | Redesigned showcase + chapter switch | New showcase in the design system; Chapter 1 frozen from `v1.0-migration`, Chapter 2 live (**built, PR #18**) | M (4-5 d) |
 | C2-2 | Order fulfilment + real pricing + reviews + CAT-07 fix | Back office closes the order loop; checkout uses real offers/tax/freight; reviews on PDP; price history written | L (7-9 d) |
 | C2-3 | Procurement workspace | Low stock → suggested PO → approve → receive (partial/reject) | L (6-8 d) |
 | C2-4 | Production floor | Open work orders, routing timeline, BOM explorer, where-used, scrap | M (5-6 d) |
@@ -115,6 +115,53 @@ Steps
 DynamoDB: none. Effort M. Risks: the tag's build script relies on paths that later move (mitigation: build from the tag's
 own checkout, never mixed); cache invalidation of `/c1/*` (versioned paths). Demo talking points: one URL, two chapters;
 "chapter 1 is literally the signed-off build".
+
+### C2-1 as built (PR #18)
+- **Chapter 2 showcase** = a second Vite entry in `src/web` (`showcase.html`, `src/showcase/*`, `npm run build:showcase`
+  → `dist-showcase/`), reusing the C2-0 components and tokens (style B dark by default, light toggle persists). Hash
+  routes: `#/c2/story`, `#/c2/processes[/<id>]`, `#/c2/back-office`, `#/c2/changes`, `#/c2/ask`.
+- **Data-driven**: `showcase/build.py` (now `build_site`) still produces `data/`: the Chapter 1 files plus
+  `business-processes.json` (PR #15), `chapter2.json` (new source of truth: phases, the pages each adds and the
+  processes they cover, `/api/v2`, access patterns, Redshift views, architecture delta) and `adrs.json` (parsed from
+  `docs/adr`). Update `docs/chapter-2/chapter2.json` in every phase PR; the coverage tile and *coming soon* marks follow.
+- **Views**: Story (3 slides, ←/→), Business processes (landscape table, coverage tile, gap/evidence charts, drawer with
+  steps/gaps/patterns, deep link per process), Back office (placeholder + link to `/app/`, planned screens), What changed
+  (`/api/v2`, access patterns, Redshift views, ADRs), Ask the data (placeholder). Everything from a later phase carries a
+  **Coming soon · C2-x** pill.
+- **Chapter 1 frozen at `/c1/`**: `showcase-v1.0-migration.zip` is attached to the `v1.0-migration` release (built from
+  the tag's own checkout; byte-identical to the local `/c1/` build). `.github/workflows/showcase-freeze.yml` (manual)
+  rebuilds the zip, re-attaches it, and with `environment` ≠ `none` publishes it via `scripts/aws/push-showcase-c1.sh`
+  (rewrites only `c1/config.json` with the current stack URLs). `push-showcase.sh` syncs `/` with `--exclude 'c1/*'` and
+  seeds `/c1/` from the release asset once if it is empty. Locally `build.py` builds `/c1/` from the in-repo
+  `showcase/site` (CI asserts it is unchanged since the tag). `#/c1/<tab>` deep links redirect to `/c1/#<tab>`.
+- **Terraform** (`modules/showcase`): CloudFront Function `paths` (viewer request: `/c1/` → `c1/index.html`, `/c1` → 301,
+  `/c2[/]` → `/#/c2/story`), behaviours `c1/config.json` (no cache) and `c1/*` (cache policy `frozen`, 30 d / 1 y), output
+  `showcase_chapter1_url`. `/api/*` unchanged, so Chapter 1's Live Replication still uses the monitor API.
+- **`VITE_SHOWCASE_URL`**: `docker/after/Dockerfile` build arg, set by `scripts/aws/push-images.sh` from output
+  `showcase_url`; the SPA's *Chapter 1* button goes to `<showcase>/c1/` (`src/showcaseUrl.ts`, local default `:8088`).
+- **Tests**: `src/web/e2e-showcase` (Playwright on the full static build: every view, coverage numbers computed
+  independently from the JSON, chapter switch to the frozen site with its 8 tabs, deep links, theme), SPA e2e for the
+  Chapter 1 link, Vitest for the URL helper, `tests/showcase/test_paths_function.py`, Terraform run
+  `showcase_chapter1_frozen_prefix`. The Chapter 1 pytest suite runs unchanged against the Chapter 1 build.
+- **Lighthouse** (`scripts/showcase-lighthouse.sh`, CI artifact `showcase-lighthouse`, desktop preset, local static server):
+
+  | Category | Before (Chapter 1, `/c1/`) | After (Chapter 2, `/`) |
+  |---|---|---|
+  | Performance | 100 | 100 |
+  | Accessibility | 96 | **100** (dark `accent-ink` contrast fix, below) |
+  | Best practices | 96 | **100** (favicon; Chapter 1's 404 on `/favicon.ico` stays, it is frozen) |
+  | SEO | 90 | 100 |
+
+#### Changes from initial design (C2-1)
+| Plan | As built | Why |
+|---|---|---|
+| New showcase "in React" (separate app implied) | Second Vite entry of `src/web` | Reuses components/tokens with no package split; one lockfile, one audit. |
+| Chapter 2 at `/` **and** `/c2/` | SPA at `/` with hash routes `#/c2/...`; `/c2` redirects there | Plain S3 has no SPA fallback; hash routes need none and keep CloudFront simple. |
+| Freeze workflow syncs to S3 | Workflow builds + attaches the zip with no AWS by default; publishing is an opt-in second job (OIDC) | Lets the frozen build exist (and be reviewed) without AWS; the zip was attached in this PR. |
+| — | CloudFront Function for directory index | S3 REST origin (OAC) has no index documents below `/`. |
+| Coverage tile "processes with UI: 2 → 6" | Computed: **5 → 9** of 10 | `business-processes.json` counts 5 processes with at least one Chapter 1 app page; C2-2…C2-4 pages add 4 (HR stays deferred, decision 6). |
+| Ask the data hidden if disabled | Shown with *Coming soon · C2-5* | John asked for later items to be visible and clearly marked. |
+| — | Dark `accent-ink` `#ffffff` → `#0f1420` | Lighthouse contrast: white on `#6c7cff` is 3.5:1 (AA needs 4.5). |
 
 ## C2-2 Order fulfilment back office + real checkout pricing + reviews + CAT-07 fix
 

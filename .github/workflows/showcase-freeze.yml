@@ -1,0 +1,68 @@
+name: showcase-freeze (Chapter 1 frozen build, manual)
+# C2-1: build the Chapter 1 showcase from the tag's own checkout (never mixed with master), attach it to the tag's
+# GitHub release as showcase-<tag>.zip, and optionally publish it to s3://<showcase bucket>/c1/ (OIDC, like deploy.yml).
+# Rebuilt only when dispatched; everything else treats /c1/ as immutable.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Chapter 1 tag to freeze
+        default: v1.0-migration
+      environment:
+        description: "Also publish to the showcase bucket /c1/ of this environment (none = build + release asset only, no AWS)"
+        type: choice
+        options: [none, demo, dev]
+        default: none
+permissions:
+  contents: write # upload the release asset
+  id-token: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          path: c1src
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build with the tag's own showcase/build.py (config.json values are injected at upload)
+        run: |
+          cd c1src && python showcase/build.py --out "$GITHUB_WORKSPACE/c1"
+          cd "$GITHUB_WORKSPACE/c1" && zip -qr "$GITHUB_WORKSPACE/showcase-${{ inputs.tag }}.zip" . && ls -la "$GITHUB_WORKSPACE"/*.zip
+      - name: Attach to the release (replaces an earlier asset of the same name)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" "showcase-${{ inputs.tag }}.zip" --clobber -R "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: showcase-${{ inputs.tag }}
+          path: c1/
+  publish:
+    if: inputs.environment != 'none'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 15
+    env:
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      C1_TAG: ${{ inputs.tag }}
+      C1_DIR: ${{ github.workspace }}/c1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: showcase-${{ inputs.tag }}
+          path: c1/
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.4
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - run: scripts/aws/tf.sh "${{ inputs.environment }}" init
+      - run: scripts/aws/push-showcase-c1.sh "${{ inputs.environment }}"

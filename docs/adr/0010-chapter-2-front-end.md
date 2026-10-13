@@ -49,4 +49,10 @@ so the `SameSite=Lax` auth cookie is not sent and sign-in only works in a new ta
 | Proof screen: shopper home + product list | **Product list** (`/app/shop/products`, CAT-06) + Chapter 2 home | Shop home redesign moves to C2-2 with the Razor cut-over. |
 | "SPA on the app origin fixes framed login" | Same origin fixes the SPA's API calls; framed login needs **`SameSite=None; Secure` when framed over HTTPS** (item 5) | Same-origin alone doesn't help inside a cross-site iframe. |
 | Terraform changes | Only output `spa_url` | The ALB already routes `/app/*` to the container. |
-| Lighthouse before/after | Not yet | Planned for the C2-1 showcase. |
+| Lighthouse before/after | Done in C2-1 (showcase `/c1/` vs `/`) | See docs/chapter-2/PLAN.md *C2-1 as built*. |
+
+## C2-1 follow-ups (John, 2026-10-12)
+- Hand-written client stays until C2-2 (generate from OpenAPI then); SVG charts stay until C2-4 (chart library there).
+- The SPA's chapter switch goes to `<showcase>/c1/` via build arg `VITE_SHOWCASE_URL` (Terraform `showcase_url`).
+- The showcase is a second Vite entry of `src/web` (same components/tokens). Dark `accent-ink` is now `#0f1420`
+  (white on the accent failed WCAG AA contrast).

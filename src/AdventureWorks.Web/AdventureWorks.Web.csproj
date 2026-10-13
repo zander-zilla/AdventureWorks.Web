@@ -23,5 +23,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Ai/eval.json" LogicalName="AdventureWorks.Web.Ai.eval.json" />
+    <EmbeddedResource Include="Ai/prompts/*.md" LogicalName="AdventureWorks.Web.Ai.prompts.%(Filename).md" />
+    <EmbeddedResource Include="Ai/watchdog/*.json" LogicalName="AdventureWorks.Web.Ai.watchdog.%(Filename).json" />
   </ItemGroup>
 </Project>

@@ -30,17 +30,20 @@ if (aiOptions.Enabled)
     builder.Services.AddSingleton<AiBudget>();
     builder.Services.AddSingleton<SemanticSearch>();
     builder.Services.AddSingleton<AskService>();
+    builder.Services.AddSingleton<AiAssist>();                  // C2-6 shared explain / draft service
     if (aiOptions.IsBedrock)
     {
         builder.Services.AddSingleton<Amazon.BedrockRuntime.IAmazonBedrockRuntime, Amazon.BedrockRuntime.AmazonBedrockRuntimeClient>(_ => new());
         builder.Services.AddSingleton<IEmbedder, TitanEmbedder>();
         builder.Services.AddSingleton<ISqlModel, BedrockSqlModel>();
+        builder.Services.AddSingleton<IAssistModel, BedrockAssistModel>();
         builder.Services.AddSingleton<IVectorStore>(_ => new S3VectorStore(new Amazon.S3Vectors.AmazonS3VectorsClient(), aiOptions));
     }
     else
     {
         builder.Services.AddSingleton<IEmbedder>(new HashEmbedder(aiOptions.Dimensions));
         builder.Services.AddSingleton<ISqlModel>(new MockSqlModel(AiText.LoadEval()));
+        builder.Services.AddSingleton<IAssistModel, MockAssistModel>();
         builder.Services.AddSingleton<IVectorStore, InMemoryVectorStore>();
     }
     if (!string.IsNullOrEmpty(aiOptions.RedshiftWorkgroup))

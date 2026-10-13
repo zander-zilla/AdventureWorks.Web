@@ -36,7 +36,30 @@ public sealed class AiOptions
     public int SessionQuestions { get; set; } = 20;             // per session per day
     public int SessionTokens { get; set; } = 40_000;
     public bool IsBedrock => Mode.Equals("bedrock", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>C2-6: per-feature model and guardrail (ask, triage, reorder, watchdog, shop). Unset values fall back to ChatModel /
+    /// GuardrailId / GuardrailVersion, so a separate shop guardrail can be added later without touching the others.</summary>
+    public Dictionary<string, AiFeatureOptions> Features { get; set; } = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["shop"] = new() { Model = "amazon.nova-lite-v1:0" },      // decision 2 (C2-6): Nova Lite for shopper chat
+    };
+    public int ShopTurns { get; set; } = 10;                     // decision 7 (C2-6): turns per session per day
+    public string? MonitorApiUrl { get; set; }                   // watchdog facts on AWS (monitor API); unset = recorded replay
+    public string? DlqUrl { get; set; }                          // watchdog read-only peek (<= 10 messages)
+    public AiFeature Feature(string name)
+    {
+        var f = Features.GetValueOrDefault(name) ?? new AiFeatureOptions();
+        return new AiFeature(name, f.Model ?? ChatModel, f.GuardrailId ?? GuardrailId, f.GuardrailVersion ?? (f.GuardrailId is null ? GuardrailVersion : "DRAFT"));
+    }
 }
+
+public sealed class AiFeatureOptions
+{
+    public string? Model { get; set; }
+    public string? GuardrailId { get; set; }
+    public string? GuardrailVersion { get; set; }
+}
+public sealed record AiFeature(string Name, string Model, string? GuardrailId, string GuardrailVersion);
 
 public sealed record AiStatus(bool Enabled, string Mode, string ChatModel, string EmbeddingModel, int RowLimit, int TimeoutSeconds, int QuestionsLeft, int TokensLeft, bool WarehouseConnected);
 public sealed record SearchHit(int ProductId, string Name, string? Category, string? Subcategory, string? Model, decimal ListPrice, double Score, double VectorScore, double KeywordScore);
@@ -220,14 +243,15 @@ public sealed class BedrockSqlModel(IAmazonBedrockRuntime bedrock, AiOptions o) 
 {
     public async Task<SqlAnswer> ToSqlAsync(string question, CancellationToken ct = default)
     {
+        var feature = o.Feature("ask");
         var req = new ConverseRequest
         {
-            ModelId = o.ChatModel,
+            ModelId = feature.Model,
             System = [new SystemContentBlock { Text = SemanticLayer.Prompt }],
             Messages = [new Message { Role = ConversationRole.User, Content = [new ContentBlock { Text = question }] }],
             InferenceConfig = new InferenceConfiguration { MaxTokens = 800, Temperature = 0 },
         };
-        if (!string.IsNullOrEmpty(o.GuardrailId)) req.GuardrailConfig = new GuardrailConfiguration { GuardrailIdentifier = o.GuardrailId, GuardrailVersion = o.GuardrailVersion };
+        if (!string.IsNullOrEmpty(feature.GuardrailId)) req.GuardrailConfig = new GuardrailConfiguration { GuardrailIdentifier = feature.GuardrailId, GuardrailVersion = feature.GuardrailVersion };
         var r = await bedrock.ConverseAsync(req, ct);
         int tin = r.Usage?.InputTokens ?? 0, tout = r.Usage?.OutputTokens ?? 0;
         if (r.StopReason == StopReason.Guardrail_intervened) return new SqlAnswer(null, "Blocked by the Bedrock guardrail.", tin, tout);
@@ -321,6 +345,9 @@ public sealed class AiBudget(AiOptions o, TimeProvider clock)
     (DateOnly, int, int) Current(string key) { var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime); var v = _s.GetValueOrDefault(key); return v.Day == today ? v : (today, 0, 0); }
     public (int QuestionsLeft, int TokensLeft) Left(string key) { var (_, q, t) = Current(key); return (Math.Max(0, o.SessionQuestions - q), Math.Max(0, o.SessionTokens - t)); }
     public bool TryStart(string key) { var (_, q, t) = Current(key); return q < o.SessionQuestions && t < o.SessionTokens; }
+    readonly ConcurrentDictionary<string, (DateOnly Day, int Turns)> _turns = new();
+    public int TurnsLeft(string key, string feature, int max) { var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime); var v = _turns.GetValueOrDefault(key + "|" + feature); return Math.Max(0, max - (v.Day == today ? v.Turns : 0)); }
+    public void Turn(string key, string feature) { var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime); _turns.AddOrUpdate(key + "|" + feature, _ => (today, 1), (_, v) => v.Day == today ? (today, v.Turns + 1) : (today, 1)); }
     public void Charge(string key, int tokens) => _s.AddOrUpdate(key, _ => { var (d, q, t) = Current(key); return (d, q + 1, t + tokens); }, (_, _) => { var (d, q, t) = Current(key); return (d, q + 1, t + tokens); });
 }
 

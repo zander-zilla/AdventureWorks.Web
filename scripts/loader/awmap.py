@@ -9,6 +9,48 @@ MAPPING_PATH = os.path.join(ROOT, "design", "mapping", "mapping.yaml")
 LOAD_LSN = "0x" + "0" * 20
 KEYS = ("PK", "SK", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK")
 
+# C2-7 marking: generated (synthetic) rows live in fixed key ranges far above the original AdventureWorks data
+# (docs/chapter-2/PLAN.md, C2-7). A row is synthetic when ANY listed column is >= its floor. Shared by the generator,
+# the bulk loader, the CDC transform (items get syn = 1), the reconcile scripts and the Chapter 1 filters.
+SYNTHETIC = {
+    "Sales.SalesOrderHeader": [("SalesOrderID", 1000000)],
+    "Sales.SalesOrderDetail": [("SalesOrderID", 1000000)],
+    "Sales.SalesOrderHeaderSalesReason": [("SalesOrderID", 1000000)],
+    "Sales.Customer": [("CustomerID", 500000)],
+    "Person.BusinessEntity": [("BusinessEntityID", 500000)],
+    "Person.Person": [("BusinessEntityID", 500000)],
+    "Person.EmailAddress": [("BusinessEntityID", 500000)],
+    "Person.PersonPhone": [("BusinessEntityID", 500000)],
+    "Person.BusinessEntityAddress": [("BusinessEntityID", 500000)],
+    "Person.Address": [("AddressID", 500000)],
+    "Production.WorkOrder": [("WorkOrderID", 500000)],
+    "Production.WorkOrderRouting": [("WorkOrderID", 500000)],
+    "Purchasing.PurchaseOrderHeader": [("PurchaseOrderID", 500000)],
+    "Purchasing.PurchaseOrderDetail": [("PurchaseOrderID", 500000)],
+    "Production.TransactionHistory": [("TransactionID", 10000000)],
+    "Production.ProductReview": [("ProductReviewID", 50000)],
+    "Production.Product": [("ProductID", 5000)],
+    "Production.ProductProductPhoto": [("ProductID", 5000)],
+    "Production.BillOfMaterials": [("BillOfMaterialsID", 50000)],
+    "Production.ProductListPriceHistory": [("ProductID", 5000), ("StartDate", "2014-07-01")],
+    "Production.ProductCostHistory": [("ProductID", 5000), ("StartDate", "2014-07-01")],
+    "Sales.SpecialOffer": [("SpecialOfferID", 100)],
+    "Sales.SpecialOfferProduct": [("SpecialOfferID", 100), ("ProductID", 5000)],
+    "Sales.SalesPersonQuotaHistory": [("QuotaDate", "2014-07-01")],
+}
+
+
+def is_synthetic(table_name, row):
+    for col, floor in SYNTHETIC.get(table_name, ()):
+        v = row.get(col)
+        if v is None:
+            continue
+        if isinstance(floor, str):
+            v = _iso(v)[:10] if isinstance(v, (datetime.date, datetime.datetime)) else str(v)[:10]
+        if v >= floor:
+            return True
+    return False
+
 
 def load_mapping(path=MAPPING_PATH):
     with open(path) as f:
@@ -22,7 +64,7 @@ def snake(name):
 
 
 # Meta attribute names; a SQL column that would collide (only Sales.SpecialOffer.Type) is stored as sql_<name>.
-RESERVED = {"type", "ver", "src", "src_table", "src_pk", "src_lsn", "updated_at", "deleted", "deleted_at", "ttl", "derived"}
+RESERVED = {"type", "ver", "src", "src_table", "src_pk", "src_lsn", "updated_at", "deleted", "deleted_at", "ttl", "derived", "syn"}
 
 
 def attr(name):
@@ -165,6 +207,8 @@ def items_for_row(table_name, src, row, pk_cols, lsn=LOAD_LSN, now=None):
                      "src_pk": src_pk(row, pk_cols), "src_lsn": lsn, "updated_at": now})
         if spec.get("derived"):
             item["derived"] = True
+        if is_synthetic(table_name, row):
+            item["syn"] = 1
         result.append((spec["table"], item))
     return result
 

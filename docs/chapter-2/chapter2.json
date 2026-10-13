@@ -202,6 +202,34 @@
     "Scrap explainer"
    ],
    "pr": 25
+  },
+  {
+   "id": "C2-7",
+   "name": "Synthetic data to the present (seeded generator, mid-2014 → Oct 2026, normal CDC load path behind a switch)",
+   "status": "planned",
+   "optional": true,
+   "pages": [],
+   "planned_screens": [
+    {
+     "path": "/app/back-office/procurement",
+     "name": "Forecasts and reorder history up to the current month (synthetic data on)",
+     "processes": [
+      "procure-to-pay",
+      "inventory"
+     ]
+    },
+    {
+     "path": "/app/shop",
+     "name": "Today's offers at checkout without the 2014 offer date (synthetic data on)",
+     "processes": [
+      "o2c-internet",
+      "catalog"
+     ]
+    }
+   ],
+   "backlog": [
+    "Daily trickle job (one more generated day each night)"
+   ]
   }
  ],
  "api_v2": [

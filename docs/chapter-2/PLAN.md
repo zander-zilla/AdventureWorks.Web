@@ -637,6 +637,116 @@ shopper's question as `query`. Model and guardrail are configurable per feature 
 | 7 | Shopper chat for anonymous visitors | **Yes, 10 turns per session**, keyed by the `aw_ai` cookie, on the shared daily budget. |
 | 8 | Backlog | **Review insights next (S-M), then scrap explainer (S)**; not in C2-6. |
 
+## C2-7 Synthetic data to the present (plan, docs only – decisions pending John)
+
+John's scope (2026-10-13): a **seeded, repeatable generator** that continues the AdventureWorks data from where it stops
+(orders end 2014-06-30, work orders 2014-07, POs 2014-09) up to the current date (Oct 2026), so the demo shows twelve years of
+history, today's dates, live offers and forecasts that run to the present. Nothing in the original data changes.
+
+### What the generator continues
+| Area | Continued from the 2011-2014 data | Source tables (SQL Server, the system of record) |
+|---|---|---|
+| Demand shape | Monthly seasonality per channel and category (fitted on 2012-07..2014-06), year-on-year growth (decision 2), day-of-week and holiday effects (decision 1) | – |
+| Customers | New individual customers each month (internet), with the 2014 mix of territory, age band, income, education; a small number of new stores (reseller); churn by last-order age | Person.*, Sales.Customer, Sales.Store, addresses, e-mail, phone, Sales.PersonCreditCard (masked card numbers, generated expiries) |
+| Web orders | Orders per customer, basket size and product mix by territory and category (fitted), ship method and freight rules as today, tax by state | Sales.SalesOrderHeader / Detail, SalesOrderHeaderSalesReason |
+| Reseller orders | Monthly cadence per store, larger baskets, sales person and quota continuity (SalesPersonQuotaHistory per quarter) | as above, Sales.SalesPersonQuotaHistory |
+| Reviews | A few per product per year, rating distribution from the existing reviews, short templated text (no model) | Production.ProductReview |
+| Prices and offers | Yearly list-price changes (+2-4 % on bikes, flat on accessories) with ListPriceHistory / CostHistory; new seasonal and volume offers each year with real start / end dates | Production.Product*, Sales.SpecialOffer, SpecialOfferProduct |
+| Knock-on activity | Shipments (ShipDate, tracking numbers, TransactionHistory S), purchase orders when stock falls below the reorder point (same rules as the app), receipts with the historical reject rate, work orders for made-in-house products with routings, scrap reasons at the historical rate | Sales.*, Purchasing.*, Production.WorkOrder / WorkOrderRouting / TransactionHistory / ProductInventory |
+| Product lifecycle | Models discontinued on a schedule (SellEndDate) and, if decision 4 is yes, a few new models per year cloned from existing ones (new colours / sizes / a new frame line) with BOMs and vendors | Production.Product, ProductModel, BillOfMaterials, Purchasing.ProductVendor |
+
+### How it works
+- **Generator**: `scripts/synthetic/generate.py` (Python, no new service). Input: a fitted profile (`scripts/synthetic/profile.json`,
+  built from the original data by `fit.py`: monthly seasonality, growth, basket and mix distributions, lead times, reject and scrap
+  rates) and a **seed**. Same seed + same profile + same end date = byte-identical output (CI checks a hash of a 3-month sample).
+- **Simulation, not sampling**: it steps day by day, keeping stock, open POs and work orders, so every order can be shipped,
+  backordered or cancelled with the same rules the app uses (stock per location, reorder point, vendor lead time and min / max).
+  Constraints are checked at the end (below).
+- **Marking**: every generated row is marked so the original data can always be told apart:
+  - SQL Server: generated keys start at fixed high ranges (orders from 100 000, customers from 100 000 …) *and* each row's
+    `rowguid` uses a fixed prefix; a table `dbo.SyntheticBatch` records seed, profile hash, date range and row counts.
+  - DynamoDB items carry `syn = 1` (from the CDC transform, by key range); Redshift `stg` / `dw` get a `synthetic` flag column.
+  - **Chapter 1 reconcile and evidence tests keep checking the original data exactly**: they filter `synthetic = false` / the key
+    ranges, and a new test proves the original counts and sums are unchanged after a synthetic load.
+- **Loading through the normal path**, behind a switch (`synthetic_data = off | on`, Terraform variable and `SYNTHETIC=1` locally):
+  generated rows are **inserted into SQL Server** in date order (monthly batches) → SQL Server CDC → DMS → Kinesis → CDC Lambda →
+  DynamoDB → zero-ETL → Redshift → `dw.sp_build_star()`. No side door into DynamoDB. Locally the Phase 3 loader can also bulk-load
+  the same rows (fast path for CI), and an after-load check compares both. `off` = the database stays the original sample;
+  removal = restore the original backup (documented; the batch table makes it auditable).
+- **Offer-date workaround**: with offers up to 2026 loaded, `Pricing:OfferDate` defaults to **today** when the synthetic data is
+  present (the app checks `SyntheticBatch` coverage), and the 2014-05-01 default stays only for the original-only database. Tests
+  that rely on 2014-05-01 pin the date explicitly.
+- **"Now"**: the generator ends at its run date; see decision 3 for rebasing at load time.
+
+### Realism constraints (checked by tests on the generated data)
+- No order before its customer exists, no shipment before the order, no line on a product outside its sell window, stock never
+  negative, PO receipts ≤ ordered, scrap ≤ produced, offers only inside their dates, prices only from ListPriceHistory.
+- Fitted shape kept: monthly seasonality correlation ≥ 0.8 with 2012-2014 per channel; growth within ±1 point of the setting;
+  category / territory mix within ±3 points; basket size and reject / scrap rates within ±10 % of the originals.
+- No real personal data: names from the existing name pools recombined, e-mails on `adventure-works.com`, phone numbers in the
+  reserved 555-01xx range, card numbers that fail the Luhn check.
+
+### Volume, cost and load time (estimates, to be confirmed by a measured dry run)
+| | Original (2011-05..2014-06) | Generated (2014-07..2026-10, 148 months, 5 % growth) |
+|---|---|---|
+| Sales orders / lines | 31 465 / 121 317 | ≈ 380 000 / ≈ 1.4 M |
+| Customers (new) | 19 820 | ≈ 150 000 (≈ 0.75 M person-related rows) |
+| Work orders / routings | 72 591 / 67 131 | ≈ 0.4 M / ≈ 0.37 M |
+| POs / lines | 4 012 / 8 845 | ≈ 16 000 / ≈ 36 000 |
+| Transaction history | 113 443 | ≈ 2 M |
+| **Source rows** | ≈ 0.76 M | **≈ 5-6 M** |
+| DynamoDB items | ≈ 0.82 M | ≈ 6-7 M more (≈ 6-8 GB) |
+
+- **AWS cost (us-east-1)**: one load ≈ 7 M DynamoDB on-demand writes (≈ 7-14 M write units, ≈ $5-10), Lambda + Kinesis for the
+  CDC burst ≈ $2-5, Redshift Serverless star rebuild and zero-ETL catch-up ≈ $1-3; storage afterwards ≈ $2-3 / month (DynamoDB
+  ≈ 8 GB, Redshift ≈ 3 GB, RDS ≈ 3 GB inside the current allocation). **Total ≈ $10-20 per load, + ≈ $3 / month** while loaded.
+- **Load time**: SQL Server inserts ≈ 15-30 min; DMS → Lambda apply at ≈ 1 000-2 000 changes / s (child lookups, conditional
+  writes) ≈ 1-2 h for ≈ 6 M changes, with the Lambda reserved concurrency raised for the load; zero-ETL lag minutes; star rebuild
+  ≈ 10-20 min. **≈ 2-3 h end to end on AWS**; the local CI fast path (bulk loader) ≈ 15 min for a 2-year slice.
+- CI never loads the full 12 years: it generates a 2-year slice (seeded) for the tests and runs the constraint checks on it.
+
+### Steps and effort
+1. Fit the profile from the original data + constraint test suite (2 d).
+2. Generator core: calendar, customers, orders, shipments, stock (3 d).
+3. Knock-on activity: POs and receipts, work orders, routings, scrap (2 d).
+4. Prices, offers, reviews, product lifecycle (1.5 d).
+5. Marking + Chapter 1 tests filter + "original unchanged" test (1 d).
+6. Loading switch: SQL inserts in monthly batches, Terraform / tools-task command `synthetic-load`, local `SYNTHETIC=1`, offer-date
+   switch, docs and the measured dry run (2 d).
+7. Showcase / demo updates, derived AI inputs refreshed (`derive-ai`), screenshots (0.5 d).
+**≈ 12 days.**
+
+### Risks
+- **Realism**: generated data can look fake (flat curves, odd baskets). Mitigated by fitting on the original data and the shape tests.
+- **CDC load burst**: millions of changes through DMS / Lambda; mitigated by monthly batches, raised concurrency for the load and
+  the DLQ + watchdog; a resumable loader keyed by batch.
+- **Chapter 1 regressions**: tests silently including generated rows; mitigated by marking and the "original unchanged" test.
+- **Cost surprise**: bounded by the estimate above and the switch; the load is a manual tools-task step, never automatic.
+- **Determinism**: library or Python version changes alter random streams; mitigated by a fixed RNG (numpy PCG64 with explicit
+  seeding per entity stream) and the sample-hash test.
+
+### Demo points
+- The dashboards and the forecast run to **this month**; the reorder forecast and seasonality are visible over 12 years.
+- Today's offers apply at checkout without the 2014 date trick.
+- "Customers also bought" and reviews reflect recent activity; new 2020s models appear next to the classic range.
+- One switch: the original sample (Chapter 1 evidence) or the continued data, both loaded through the same CDC pipeline.
+
+### Backlog (not in C2-7)
+- **Daily trickle job**: a scheduled task that generates one more day each night so the data stays current (John did not pick it).
+
+### Decisions for John (C2-7, with recommendations) – pending John's review
+| # | Decision | Recommendation |
+|---|---|---|
+| 1 | Real calendar holidays | **Yes**: US holidays (Thanksgiving / Black Friday, Christmas) and the main holidays of the other territories (UK, DE, FR, CA, AU) via the `holidays` package, with an effect size fitted on 2011-2014 where possible. More realistic charts at low cost. |
+| 2 | Growth rate | **5 % a year** on orders (fitted 2013 → 2014 growth is far higher and would explode over 12 years), with a dip in 2020 (−15 %) and a rebound in 2021 as an optional scenario flag, off by default. |
+| 3 | Rebase "now" at load time | **No rebase; generate up to the load date.** The generator is deterministic for a given end date; the load step generates up to today (end date stored in `SyntheticBatch`). Rebasing (shifting all dates) would change the original 2011-2014 data and break the Chapter 1 evidence. |
+| 4 | New products | **Yes, a few per year** (≈ 6-10 new models / colours, cloned BOMs and vendors) and discontinue old ones on a schedule, so the catalog has a lifecycle; no new categories. |
+| 5 | Load switch default | **Off** in `demo.tfvars` until John has seen a measured dry run; local and CI use a 2-year slice. |
+| 6 | Path | **SQL Server inserts → CDC → DMS → DynamoDB → zero-ETL** (the normal path) for AWS; the bulk loader only as the local / CI fast path. |
+| 7 | Daily trickle job | **Backlog only** (not picked by John). |
+
+---
+
 ## Cross-cutting
 - **API**: `/api/v2` minimal APIs, OpenAPI, generated TS client; problem+json errors; authorization policies per role.
 - **CDC and analytics**: every new write path keeps the Chapter 1 contracts (origin marker so CDC doesn't loop, zero-ETL

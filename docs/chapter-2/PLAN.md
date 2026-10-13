@@ -747,6 +747,44 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
 | 6 | Path | **SQL Server inserts → CDC → DMS → DynamoDB → zero-ETL** (the normal path) for AWS; the bulk loader only as the local / CI fast path. |
 | 7 | Daily trickle job | Recommended backlog only; **John changed it: build it as the last step of C2-7**, off by default (`synthetic_trickle = false`), EventBridge schedule → ECS tools task, previous day deterministic, catch-up of missed days, through the SQL source + CDC path. |
 
+### C2-7 as built (PR #28)
+- **Scripts** (`scripts/synthetic/`): `fit.py` (fits 2013-07..2014-06 → `profile.json`), `generate.py` (day-keyed, stateless
+  generator), `marking.py` (synthetic / original predicates), `load_sql.py` (bulk or trickle load into SQL Server),
+  `original_checksum.py`, `restore-original.sh`. Local one-shot: `scripts/synthetic-up.sh`; app with data: `SYNTHETIC=1 scripts/after-up.sh`.
+- **Generator**: every day is generated from `seed + stream + day` (numpy PCG64 / SeedSequence) with fixed per-day key slots,
+  so bulk = day-by-day trickle (tested). Orders are inserted with status 1 and shipped by an UPDATE 7 days later (or written
+  shipped when the batch end already covers that day); work orders and POs are written when they complete. Holidays (Black
+  Friday ×1.8, Cyber Monday ×1.5, Christmas ×0.4, other holidays ×0.8), 5 %/yr growth, `dip2020` flag off. Two releases a year
+  (1 Mar, 1 Sep) clone one model per size in a new colour (`SY-%05d`); yearly offers; price rises every 1 July.
+- **Marking**: key ranges (`awmap.SYNTHETIC`): customers / persons / addresses ≥ 500 000, orders ≥ 1 000 000, order lines
+  ≥ 10 M, WO / PO ≥ 500 000, transactions ≥ 10 M, products ≥ 5 000, offers ≥ 100, histories / quotas dated ≥ 2014-07-01.
+  DynamoDB items for generated rows carry `syn = 1`; warehouse uses `--original-only` views.
+- **SQL load**: one transaction per day batch under an applock, the four "summary" triggers disabled in-transaction, explicit
+  identities, reseed below the synthetic floors afterwards; every batch recorded in `dbo.SyntheticBatch` (resumable, refuses a
+  different seed or profile). Original rows are never updated (checksummed before / after).
+- **Switches**: `synthetic_data` (default false) sets `Pricing__OfferDate` = today, which removes the 2014 offer-date
+  workaround when generated data is loaded; `synthetic_trickle` (default false, requires `synthetic_data` and `enable_source`)
+  adds an EventBridge Scheduler schedule (`cron(30 2 * * ? *)`) that runs the ECS tools task `synthetic-trickle`: it generates
+  every missing day up to yesterday (catch-up) into SQL Server, and CDC carries it on like any other write.
+- **Tests**: `tests/synthetic/` (generator determinism + pinned hash, realism constraints, marking, SQL load: original
+  unchanged, counts, resumable, identities, constraints, trickle = bulk), warehouse test, CDC e2e (trickle days replicate with
+  `syn = 1`), reconcile all rows + original-only against `original-baseline.json`, 5 Terraform plan tests.
+- **Measured volume** (generator, 2014-07-01..2026-10-12, seed 2026): **7.0 M source rows** (orders 413 594, lines 1.41 M,
+  customers 228 481 (×7 person-related rows), work orders 479 732, POs 39 147, transactions 1.99 M, 113 new products), ≈ 0.46-0.67 M
+  rows per full year. 2-year local slice ≈ 0.92 M rows: generate ≈ 21 s, SQL load ≈ 5.5 min, DynamoDB bulk ≈ 14 min locally.
+
+#### Changes from initial design
+| Planned | As built | Why |
+|---|---|---|
+| Stateful stock simulation | Stateless day-keyed generator; `ProductInventory` not updated | Needed so the trickle produces exactly the bulk rows |
+| Retire old products on a schedule | Retirement only in generated demand; original rows untouched | Keeps Chapter 1 evidence exact (S-1) |
+| `synthetic` flag column in the warehouse | Filtered `dwo` views (`--original-only`) by key / date ranges | No schema change to the star |
+| App checks `SyntheticBatch` for the offer date | `synthetic_data` switch sets `Pricing__OfferDate` | The app does not read SQL Server |
+| TransactionHistory via triggers | Inserted explicitly with real dates, triggers disabled | Triggers would stamp load time |
+| Not mentioned | Not generated: CreditCard, CurrencyRate, new stores | Out of scope for the demo |
+| Trickle in backlog | Built (step 8), off by default | John's decision 7 |
+| CDC consumer HTTP/1.0 | HTTP/1.1 keep-alive + chunked bodies | Debezium bursts of a whole day stopped the engine |
+
 ---
 
 ## Cross-cutting

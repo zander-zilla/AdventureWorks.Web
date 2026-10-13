@@ -420,6 +420,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/back-office/replication/watchdog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWatchdog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/replication/watchdog/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["explainWatchdog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/back-office/procurement/suggestions": {
         parameters: {
             query?: never;
@@ -1111,6 +1143,14 @@ export interface components {
             /** Format: int32 */
             orders: number;
         };
+        DlqSample: {
+            table: string;
+            op: string;
+            error: string;
+            /** Format: int32 */
+            attempts: number;
+            position: null | string;
+        };
         FeedEntry: {
             id: string;
             /** Format: date-time */
@@ -1124,6 +1164,14 @@ export interface components {
             month: string;
             /** Format: double */
             qty: number;
+        };
+        LagMs: {
+            /** Format: double */
+            last: number;
+            /** Format: double */
+            p50: number;
+            /** Format: double */
+            max: number;
         };
         LineStock: {
             /** Format: int32 */
@@ -1787,6 +1835,42 @@ export interface components {
             creditRating: number;
             preferred: boolean;
             active: boolean;
+        };
+        WatchCause: {
+            key: string;
+            title: string;
+            severity: string;
+            nextStep: string;
+            runbook: string;
+        };
+        WatchChange: {
+            table: string;
+            op: string;
+            /** Format: double */
+            lag_ms: null | number;
+        };
+        WatchdogReport: {
+            snapshot: components["schemas"]["WatchSnapshot"];
+            cause: components["schemas"]["WatchCause"];
+            scenarios: string[];
+            replay: boolean;
+        };
+        WatchSnapshot: {
+            scenario: string;
+            status: components["schemas"]["WatchStatus"];
+            changes: components["schemas"]["WatchChange"][];
+            dlq_samples: components["schemas"]["DlqSample"][];
+        };
+        WatchStatus: {
+            paused: boolean;
+            /** Format: int32 */
+            queued: number;
+            /** Format: int64 */
+            applied_events: number;
+            /** Format: int32 */
+            dlq: null | number;
+            lag_ms: components["schemas"]["LagMs"];
+            source: null | string;
         };
         WorkOrderDetail: {
             order: components["schemas"]["WorkOrderSummary"];
@@ -2580,6 +2664,68 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getWatchdog: {
+        parameters: {
+            query?: {
+                scenario?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchdogReport"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    explainWatchdog: {
+        parameters: {
+            query?: {
+                scenario?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

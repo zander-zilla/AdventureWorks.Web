@@ -235,3 +235,34 @@ public sealed class ReorderTests
         Assert.Null(e.Error); Assert.Contains("Dear Sean Jacobson", e.Text); Assert.Contains("572.63", e.Text);
     }
 }
+
+/// <summary>C2-6 replication watchdog: recorded scenarios, rule-based causes, redaction, explanation through the mocked model.</summary>
+public sealed class WatchdogTests
+{
+    [Theory]
+    [InlineData("healthy", "healthy")]
+    [InlineData("lag-spike", "backlog")]
+    [InlineData("dlq", "dlq-orphans")]
+    [InlineData("paused", "paused")]
+    public async Task Scenarios_classify_and_explain(string scenario, string cause)
+    {
+        var s = await new ReplayWatchSource().GetAsync(scenario, default);
+        var c = WatchRules.Classify(s);
+        Assert.Equal(cause, c.Key);
+        var o = new AiOptions { Enabled = true };
+        var r = await new AiAssist(new MockAssistModel(), new AiBudget(o, TimeProvider.System), o, NullLogger<AiAssist>.Instance)
+            .RunAsync("watchdog", "watchdog-explain", WatchRules.Facts(s, c), "s", "u");
+        Assert.Null(r.Error); Assert.Contains(c.Title, r.Text); Assert.Contains("[cause.runbook]", r.Text);
+    }
+
+    [Fact]
+    public void Slow_apply_with_a_short_queue_and_redaction()
+    {
+        var s = new WatchSnapshot("x", new WatchStatus(false, 5, 1, 0, new LagMs(90_000, 1000, 95_000), "replay"), [], []);
+        Assert.Equal("slow-apply", WatchRules.Classify(s).Key);
+        Assert.Equal("bad row for {EMAIL} / {PHONE}", WatchRules.Redact("bad row for jo@example.com / +1 (425) 555-0101"));
+    }
+
+    [Fact]
+    public async Task Unknown_scenario_falls_back_to_healthy() => Assert.Equal("healthy", (await new ReplayWatchSource().GetAsync("../../etc", default)).Scenario);
+}

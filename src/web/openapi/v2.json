@@ -1021,6 +1021,84 @@
         }
       }
     },
+    "/api/v2/back-office/replication/watchdog": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "getWatchdog",
+        "parameters": [
+          {
+            "name": "scenario",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchdogReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/replication/watchdog/explain": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "explainWatchdog",
+        "parameters": [
+          {
+            "name": "scenario",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/back-office/procurement/suggestions": {
       "get": {
         "tags": [
@@ -3020,6 +3098,37 @@
           }
         }
       },
+      "DlqSample": {
+        "required": [
+          "table",
+          "op",
+          "error",
+          "attempts",
+          "position"
+        ],
+        "type": "object",
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "op": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "position": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "FeedEntry": {
         "required": [
           "id",
@@ -3066,6 +3175,28 @@
             "type": "string"
           },
           "qty": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "LagMs": {
+        "required": [
+          "last",
+          "p50",
+          "max"
+        ],
+        "type": "object",
+        "properties": {
+          "last": {
+            "type": "number",
+            "format": "double"
+          },
+          "p50": {
+            "type": "number",
+            "format": "double"
+          },
+          "max": {
             "type": "number",
             "format": "double"
           }
@@ -5353,6 +5484,151 @@
           },
           "active": {
             "type": "boolean"
+          }
+        }
+      },
+      "WatchCause": {
+        "required": [
+          "key",
+          "title",
+          "severity",
+          "nextStep",
+          "runbook"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "nextStep": {
+            "type": "string"
+          },
+          "runbook": {
+            "type": "string"
+          }
+        }
+      },
+      "WatchChange": {
+        "required": [
+          "table",
+          "op",
+          "lag_ms"
+        ],
+        "type": "object",
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "op": {
+            "type": "string"
+          },
+          "lag_ms": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "WatchdogReport": {
+        "required": [
+          "snapshot",
+          "cause",
+          "scenarios",
+          "replay"
+        ],
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/WatchSnapshot"
+          },
+          "cause": {
+            "$ref": "#/components/schemas/WatchCause"
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "replay": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WatchSnapshot": {
+        "required": [
+          "scenario",
+          "status",
+          "changes",
+          "dlq_samples"
+        ],
+        "type": "object",
+        "properties": {
+          "scenario": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WatchStatus"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WatchChange"
+            }
+          },
+          "dlq_samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DlqSample"
+            }
+          }
+        }
+      },
+      "WatchStatus": {
+        "required": [
+          "paused",
+          "queued",
+          "applied_events",
+          "dlq",
+          "lag_ms",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "paused": {
+            "type": "boolean"
+          },
+          "queued": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "applied_events": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dlq": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "lag_ms": {
+            "$ref": "#/components/schemas/LagMs"
+          },
+          "source": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

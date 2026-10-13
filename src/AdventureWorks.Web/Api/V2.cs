@@ -236,6 +236,19 @@ public static class V2
             return Results.Ok(new ProductDetail(p, [], await c.GetPriceHistoryAsync(id)));
         })).RequireAuthorization(CatalogAdminPolicy).WithName("setListPrice").Produces<ProductDetail>().ProducesProblem(409);
 
+        // C2-6 replication watchdog (enable_ai): rules classify the cause from the monitor status, the model explains it with the runbook link.
+        bo.MapGet("/replication/watchdog", async (string? scenario, AiOptions o, [FromServices] IWatchSource w, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            var s = await w.GetAsync(scenario, ct);
+            return Results.Ok(new WatchdogReport(s, WatchRules.Classify(s), w.Replay ? [.. ReplayWatchSource.Scenarios] : [], w.Replay));
+        }).RequireAuthorization(StaffPolicy).WithName("getWatchdog").Produces<WatchdogReport>().ProducesProblem(404);
+        bo.MapPost("/replication/watchdog/explain", async (string? scenario, AiOptions o, [FromServices] IWatchSource w, [FromServices] AiAssist a, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            var s = await w.GetAsync(scenario, ct);
+            return Results.Ok(await a.RunAsync("watchdog", "watchdog-explain", WatchRules.Facts(s, WatchRules.Classify(s)), AiSession(h), Actor(u), ct: ct));
+        }).RequireAuthorization(StaffPolicy).WithName("explainWatchdog").Produces<AssistResult>().ProducesProblem(404);
         // ------------------------------------------------------------ back office: procurement (C2-3: PUR-01..07, INV-01/02/03)
         var pr = bo.MapGroup("/procurement");
         pr.MapGet("/suggestions", async (ProcurementRepository p) => Results.Ok(await p.SuggestionsAsync()))

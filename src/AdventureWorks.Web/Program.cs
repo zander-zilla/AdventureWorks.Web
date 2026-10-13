@@ -33,7 +33,9 @@ if (aiOptions.Enabled)
     builder.Services.AddSingleton<AiAssist>();
     builder.Services.AddSingleton<TriageFacts>();
     builder.Services.AddSingleton<DemandRepository>();
-    builder.Services.AddSingleton<ReorderFacts>();                  // C2-6 shared explain / draft service
+    builder.Services.AddSingleton<ReorderFacts>();
+    if (string.IsNullOrWhiteSpace(aiOptions.MonitorApiUrl)) builder.Services.AddSingleton<IWatchSource, ReplayWatchSource>();
+    else builder.Services.AddHttpClient<IWatchSource, MonitorWatchSource>(c => c.Timeout = TimeSpan.FromSeconds(5));                  // C2-6 shared explain / draft service
     if (aiOptions.IsBedrock)
     {
         builder.Services.AddSingleton<Amazon.BedrockRuntime.IAmazonBedrockRuntime, Amazon.BedrockRuntime.AmazonBedrockRuntimeClient>(_ => new());

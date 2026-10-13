@@ -13,7 +13,7 @@ export type Phase = { id: string; name: string; status: 'done' | 'building' | 'p
 export type Chapter2 = {
   phases: Phase[]
   api_v2: { method: string; path: string; pattern?: string; phase: string }[]
-  access_patterns: { id: string; use: string; phase: string; new: boolean }[]
+  access_patterns: { id: string; use: string; phase: string; new: boolean; status?: string }[]
   redshift_views: { name: string; use: string; phase: string }[]
   candidate_phase: Record<string, string>
   architecture_delta: { area: string; before: string; after: string }[]

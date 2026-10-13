@@ -25,17 +25,18 @@
   {
    "id": "C2-1",
    "name": "Redesigned showcase + chapter switch",
-   "status": "building",
-   "pages": []
+   "status": "done",
+   "pages": [],
+   "pr": 18
   },
   {
    "id": "C2-2",
    "name": "Order fulfilment, real pricing, reviews, CAT-07 fix",
-   "status": "planned",
+   "status": "done",
    "pages": [
     {
      "path": "/app/back-office/orders",
-     "name": "Back office orders (SAL-05, SAL-06)",
+     "name": "Back office orders: queue, approve, ship, cancel, backorder (SAL-05, SAL-06, INV-01, INV-03)",
      "processes": [
       "o2c-internet",
       "o2c-reseller",
@@ -43,21 +44,37 @@
      ]
     },
     {
-     "path": "/app/shop/checkout",
-     "name": "Checkout with offers, tax, freight (REF-02, REF-04)",
+     "path": "/app/back-office/replication",
+     "name": "Replication monitor (change feed of app writes)",
+     "processes": []
+    },
+    {
+     "path": "/app/shop/cart",
+     "name": "Checkout with offers, tax, freight (CAT-10, REF-02, REF-04)",
      "processes": [
       "o2c-internet",
       "sales-management"
      ]
     },
     {
-     "path": "/app/shop/products/:id#reviews",
-     "name": "Product reviews (CAT-11)",
+     "path": "/app/shop/products/:id",
+     "name": "Product page with reviews (CAT-11) and price edit with history (CAT-07)",
      "processes": [
       "reviews-returns"
      ]
+    },
+    {
+     "path": "/app/",
+     "name": "Redesigned shop home (now the site root)",
+     "processes": []
+    },
+    {
+     "path": "/app/shop/orders",
+     "name": "My orders with status timeline",
+     "processes": []
     }
-   ]
+   ],
+   "pr": 19
   },
   {
    "id": "C2-3",
@@ -135,6 +152,122 @@
    "method": "GET",
    "path": "/api/v2/cart",
    "phase": "C2-0"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/products/{id}/detail",
+   "phase": "C2-2",
+   "pattern": "CAT-04"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/subcategories/{id}/products",
+   "phase": "C2-2",
+   "pattern": "CAT-02"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/products/{id}/reviews",
+   "phase": "C2-2",
+   "pattern": "CAT-11"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/products/{id}/reviews",
+   "phase": "C2-2",
+   "pattern": "CAT-11"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/cart/items",
+   "phase": "C2-2"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v2/cart/items/{productId}",
+   "phase": "C2-2"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v2/cart/items/{productId}",
+   "phase": "C2-2"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/ship-methods",
+   "phase": "C2-2",
+   "pattern": "REF-04"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/checkout/quote",
+   "phase": "C2-2",
+   "pattern": "CAT-10"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/checkout",
+   "phase": "C2-2",
+   "pattern": "SAL-03"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/orders",
+   "phase": "C2-2",
+   "pattern": "SAL-02"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/orders/{id}",
+   "phase": "C2-2",
+   "pattern": "SAL-01"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/orders",
+   "phase": "C2-2",
+   "pattern": "SAL-05"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/orders/counts",
+   "phase": "C2-2",
+   "pattern": "SAL-05"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/orders/{id}",
+   "phase": "C2-2",
+   "pattern": "SAL-01"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/orders/{id}/{op}",
+   "phase": "C2-2",
+   "pattern": "SAL-06"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/orders/bulk-approve",
+   "phase": "C2-2",
+   "pattern": "SAL-06"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/changes",
+   "phase": "C2-2"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/products/{id}/stock",
+   "phase": "C2-2",
+   "pattern": "INV-01"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v2/back-office/products/{id}/price",
+   "phase": "C2-2",
+   "pattern": "CAT-07"
   }
  ],
  "access_patterns": [
@@ -142,31 +275,36 @@
    "id": "SAL-05",
    "use": "Back office orders by status",
    "phase": "C2-2",
-   "new": false
+   "new": false,
+   "status": "live"
   },
   {
    "id": "SAL-06",
    "use": "Approve / ship / cancel / backorder",
    "phase": "C2-2",
-   "new": false
+   "new": false,
+   "status": "live"
   },
   {
    "id": "INV-03",
    "use": "TransactionHistory on ship / receive / complete",
    "phase": "C2-2",
-   "new": false
+   "new": false,
+   "status": "live"
   },
   {
    "id": "CAT-11",
    "use": "Reviews on product detail",
    "phase": "C2-2",
-   "new": false
+   "new": false,
+   "status": "live"
   },
   {
    "id": "SAL-14",
-   "use": "Orders by status for one customer / territory (only if needed)",
+   "use": "Not added: territory filter on SAL-05 (GSI2) is enough at demo volume; see PLAN C2-2",
    "phase": "C2-2",
-   "new": true
+   "new": true,
+   "status": "not-needed"
   },
   {
    "id": "INV-02",
@@ -185,6 +323,20 @@
    "use": "BOM explorer, where-used, open work orders",
    "phase": "C2-4",
    "new": false
+  },
+  {
+   "id": "CAT-07",
+   "use": "Price edit writes ListPriceHistory (SCD2) - fix",
+   "phase": "C2-2",
+   "new": false,
+   "status": "live"
+  },
+  {
+   "id": "CAT-10",
+   "use": "Special offers incl. volume discounts at checkout",
+   "phase": "C2-2",
+   "new": false,
+   "status": "live"
   }
  ],
  "redshift_views": [
@@ -224,6 +376,21 @@
    "area": "Data model",
    "before": "7 DynamoDB tables, 70 access patterns",
    "after": "Unchanged; Chapter 2 lights up designed-but-unused patterns"
+  },
+  {
+   "area": "Site root",
+   "before": "/ = Razor shop",
+   "after": "/ = React shop (/app/); Razor stays at /Shop and /classic"
+  },
+  {
+   "area": "Writes",
+   "before": "Cart and checkout only",
+   "after": "Fulfilment transactions (order + stock + TransactionHistory) with an app change feed; Redshift picks them up via zero-ETL"
+  },
+  {
+   "area": "API client",
+   "before": "Hand-written fetch",
+   "after": "Generated from OpenAPI (openapi-typescript + openapi-fetch), checked in CI"
   }
  ],
  "candidate_phase": {

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """C2-6 derived AI inputs, written after the Phase 3 load (src='derived', never replicated back to SQL):
-  aw-inventory  DEMAND#<pid> / M#yyyy-MM   ProductDemandMonth  monthly units + orders per product (smart reorder forecast, INV-07)
+  aw-inventory  DEMAND#<pid> / M#yyyy-MM   ProductDemandMonth  monthly units per product: sales order lines + level-1 work-order
+                                                              consumption of components (smart reorder forecast, INV-07)
   aw-catalog    ALSO#<pid>   / RANK#nn     AlsoBought          top co-purchased products (customers also bought, CAT-12)
 Dedicated partitions, so the product partitions (and their parsers) are untouched. Idempotent: re-running overwrites.
 Usage: python scripts/loader/derive_ai.py [--top 6]   (DDB_ENDPOINT=aws on AWS, see docs/aws-setup.md)"""
@@ -12,6 +13,12 @@ import ddb, sqlsrc
 DEMAND_SQL = """SELECT d.ProductID AS pid, CONVERT(char(7), h.OrderDate, 126) AS month, SUM(d.OrderQty) AS qty, COUNT(DISTINCT h.SalesOrderID) AS orders
 FROM Sales.SalesOrderDetail d JOIN Sales.SalesOrderHeader h ON h.SalesOrderID = d.SalesOrderID
 GROUP BY d.ProductID, CONVERT(char(7), h.OrderDate, 126)"""
+# Components sell through work orders, not sales orders: level-1 BOM consumption by work-order start month
+# (the C2-4 consumption rule), so purchased parts on the reorder page have a demand history too.
+WO_SQL = """SELECT b.ComponentID AS pid, CONVERT(char(7), w.StartDate, 126) AS month, SUM(w.OrderQty * b.PerAssemblyQty) AS qty, COUNT(DISTINCT w.WorkOrderID) AS orders
+FROM Production.WorkOrder w JOIN Production.BillOfMaterials b ON b.ProductAssemblyID = w.ProductID
+ AND w.StartDate >= b.StartDate AND (b.EndDate IS NULL OR w.StartDate < b.EndDate)
+GROUP BY b.ComponentID, CONVERT(char(7), w.StartDate, 126)"""
 ALSO_SQL = """WITH pairs AS (
   SELECT a.ProductID AS pid, b.ProductID AS other, COUNT(DISTINCT a.SalesOrderID) AS orders
   FROM Sales.SalesOrderDetail a JOIN Sales.SalesOrderDetail b ON b.SalesOrderID = a.SalesOrderID AND b.ProductID <> a.ProductID
@@ -19,6 +26,14 @@ ALSO_SQL = """WITH pairs AS (
 ranked AS (SELECT p.*, ROW_NUMBER() OVER (PARTITION BY p.pid ORDER BY p.orders DESC, p.other) AS rnk FROM pairs p)
 SELECT r.pid, r.other, r.orders, r.rnk, pr.Name AS other_name, pr.ProductNumber AS other_number, pr.ListPrice AS other_price
 FROM ranked r JOIN Production.Product pr ON pr.ProductID = r.other WHERE r.rnk <= %d"""
+
+def merge(*sets):
+    """Sales demand + work-order consumption per (product, month)."""
+    acc = {}
+    for rows in sets:
+        for r in rows:
+            k = (r["pid"], r["month"]); q, o = acc.get(k, (0, 0)); acc[k] = (q + float(r["qty"]), o + int(r["orders"]))
+    return [{"pid": p, "month": m, "qty": round(q), "orders": o} for (p, m), (q, o) in sorted(acc.items())]
 
 def demand_items(rows):
     for r in rows:
@@ -41,7 +56,8 @@ def write(table, items):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--top", type=int, default=6); a = ap.parse_args()
     conn = sqlsrc.connect(); cur = conn.cursor()
-    cur.execute(DEMAND_SQL); demand = cur.fetchall()
+    cur.execute(DEMAND_SQL); sales = cur.fetchall()
+    cur.execute(WO_SQL); demand = merge(sales, cur.fetchall())
     cur.execute(ALSO_SQL % a.top); also = cur.fetchall(); conn.close()
     out = {"aw-inventory ProductDemandMonth": write("aw-inventory", demand_items(demand)), "aw-catalog AlsoBought": write("aw-catalog", also_items(also))}
     print(json.dumps(out))

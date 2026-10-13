@@ -539,7 +539,7 @@ behind `enable_ai`. Effort S-M (2 d).
   **Explain**) and **Use forecast quantities**; the C2-3 rule stays the default. The PO drawer drafts the vendor e-mail
   (vendor contact from PUR-01, need-by from the line due dates) for **Copy** or **Open in mail app** – nothing is sent.
 - **Data for reorder and also-bought**: `scripts/loader/derive_ai.py` (after the Phase 3 load; `derive-ai` command of the tools
-  task on AWS; a CI step in after.yml) writes `DEMAND#<pid> / M#yyyy-MM` (aw-inventory, `ProductDemandMonth`) and
+  task on AWS; a CI step in after.yml) writes `DEMAND#<pid> / M#yyyy-MM` (aw-inventory, `ProductDemandMonth`: sales order lines plus level-1 work-order consumption of components, because purchased parts never appear on sales orders) and
   `ALSO#<pid> / RANK#nn` (aw-catalog, `AlsoBought`, top 6) with `src = derived`. Warehouse views `dw.v_product_demand_monthly`
   and `dw.v_product_affinity`; warehouse-e2e checks the demand view against the facts and backtests the forecast
   (`test_c2_6_demand_view_and_forecast_backtest`, WAPE in the job summary).
@@ -565,7 +565,7 @@ behind `enable_ai`. Effort S-M (2 d).
 |---|---|---|
 | Transition note field (SAL-06) already exists | Added `note` to the order transition request (max 500), stored on the order event | The order transition had no note; needed for the drafted notes. |
 | Forecast items `FORECAST#month` on the product partition, written nightly | Monthly **history** in `DEMAND#<pid>` partitions (derived loader); forecast computed on request in .NET | Dedicated partitions leave the product partition and its parsers untouched; the forecast is cheap (≤ 60 months) and always uses the current formula. |
-| Demand from `dw.v_sales` (Redshift) | From SQL Server order lines at load time (`derive_ai.py`); same series as `dw.v_product_demand_monthly` | The app reads DynamoDB only; no Redshift call on the reorder page. App orders after the load are not in the history (re-run `derive-ai` to refresh). |
+| Demand from `dw.v_sales` (Redshift) | From SQL Server at load time (`derive_ai.py`): sales order lines **plus level-1 work-order consumption** (the C2-4 rule); the sales part is the same series as `dw.v_product_demand_monthly` | The app reads DynamoDB only; no Redshift call on the reorder page. Every product on the reorder page is a purchased component that sells only through work orders, so sales alone gave them no history (found in the first real-image run). App orders after the load are not in the history (re-run `derive-ai` to refresh). |
 | Suggested qty = max(rule, forecast) | Rule and forecast shown side by side; **Use forecast quantities** applies the forecast | The buyer chooses; the rule stays the default so nothing changes without a click. |
 | Backtest gate: MAPE must beat the reorder rule | WAPE of the forecast vs the 12-month mean baseline, one step ahead over the last 12 months, published in the job summary; the gate is a sanity bound | The reorder rule is a stock level, not a demand forecast, so it cannot be backtested as one; MAPE is undefined for zero months. |
 | Also-bought: `ALSO#rank` on the product, lift ≥ 1.2, top 10 | `ALSO#<pid> / RANK#nn`, top 6 by orders together | Same reason as DEMAND#; plain co-purchase counts are easier to explain on screen. |

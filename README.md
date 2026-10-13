@@ -20,6 +20,8 @@ pip install playwright && python -m playwright install chromium && pytest tests/
 ```
 
 - Demo logins are the same 5 customers as the before app (for example `catherine0@adventure-works.com`), password `Demo!2026`.
+- `/` opens the Chapter 2 React shop (`/app/`); the Razor shop is at `/Shop` (or `/classic`).
+- Back office demo staff: `fulfilment@adventure-works.com` (orders) and `ops@adventure-works.com` (orders + price edits), password `Demo!2026`.
 - Orders placed here are `SO-DDB-…`. They live only in DynamoDB and flow to Redshift through zero-ETL.
 - The image is chiseled and runs as non-root (UID 1654).
 

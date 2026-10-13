@@ -210,7 +210,7 @@ public static partial class LocalGuardrail
         if (Pii().IsMatch(q)) return "Blocked by the guardrail: the question contains personal data (email, phone or card number).";
         return null;
     }
-    [GeneratedRegex(@"\b(password|passwords|credit card|card number|social security|ssn|salary|salaries|pay rate|home address|phone number|email address|ignore (all|previous|the) instructions|system prompt)\b")]
+    [GeneratedRegex(@"\b(password|passwords|credit card|card number|social security|ssn|salary|salaries|pay rate|home address(es)?|phone numbers?|email address(es)?|emails?|ignore (all|previous|the) instructions|system prompt)\b")]
     private static partial Regex Topics();
     [GeneratedRegex(@"[\w.+-]+@[\w-]+\.[\w.]+|\b(?:\d[ -]?){13,16}\b|\b\d{3}[-. ]\d{3}[-. ]\d{4}\b")]
     private static partial Regex Pii();

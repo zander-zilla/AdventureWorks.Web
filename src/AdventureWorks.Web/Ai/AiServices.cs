@@ -41,7 +41,7 @@ public sealed class AiOptions
     /// GuardrailId / GuardrailVersion, so a separate shop guardrail can be added later without touching the others.</summary>
     public Dictionary<string, AiFeatureOptions> Features { get; set; } = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["shop"] = new() { Model = "amazon.nova-lite-v1:0" },      // decision 2 (C2-6): Nova Lite for shopper chat
+        ["shop"] = new() { Model = "amazon.nova-lite-v1:0", Grounding = true },  // C2-6: Nova Lite; own shop guardrail with grounding (John, 2026-10-13)
     };
     public int ShopTurns { get; set; } = 10;                     // decision 7 (C2-6): turns per session per day
     public string? MonitorApiUrl { get; set; }                   // watchdog facts on AWS (monitor API); unset = recorded replay
@@ -49,7 +49,7 @@ public sealed class AiOptions
     public AiFeature Feature(string name)
     {
         var f = Features.GetValueOrDefault(name) ?? new AiFeatureOptions();
-        return new AiFeature(name, f.Model ?? ChatModel, f.GuardrailId ?? GuardrailId, f.GuardrailVersion ?? (f.GuardrailId is null ? GuardrailVersion : "DRAFT"));
+        return new AiFeature(name, f.Model ?? ChatModel, f.GuardrailId ?? GuardrailId, f.GuardrailVersion ?? (f.GuardrailId is null ? GuardrailVersion : "DRAFT"), f.Grounding);
     }
 }
 
@@ -58,8 +58,11 @@ public sealed class AiFeatureOptions
     public string? Model { get; set; }
     public string? GuardrailId { get; set; }
     public string? GuardrailVersion { get; set; }
+    /// <summary>Send the facts as the guardrail's grounding source and the user text as the query (contextual grounding check).</summary>
+    public bool Grounding { get; set; }
+    public List<string> BlockedWords { get; set; } = [];         // mock stand-in for the guardrail's custom word list
 }
-public sealed record AiFeature(string Name, string Model, string? GuardrailId, string GuardrailVersion);
+public sealed record AiFeature(string Name, string Model, string? GuardrailId, string GuardrailVersion, bool Grounding = false);
 
 public sealed record AiStatus(bool Enabled, string Mode, string ChatModel, string EmbeddingModel, int RowLimit, int TimeoutSeconds, int QuestionsLeft, int TokensLeft, bool WarehouseConnected);
 public sealed record SearchHit(int ProductId, string Name, string? Category, string? Subcategory, string? Model, decimal ListPrice, double Score, double VectorScore, double KeywordScore);

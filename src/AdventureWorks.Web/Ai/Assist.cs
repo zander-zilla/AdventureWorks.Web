@@ -113,31 +113,77 @@ public sealed class BedrockAssistModel(IAmazonBedrockRuntime bedrock) : IAssistM
 {
     public async Task<AssistAnswer> CompleteAsync(AssistRequest r, CancellationToken ct = default)
     {
+        var res = await bedrock.ConverseAsync(Build(r), ct);
+        int tin = res.Usage?.InputTokens ?? 0, tout = res.Usage?.OutputTokens ?? 0;
+        if (res.StopReason == StopReason.Guardrail_intervened) return new AssistAnswer(null, tin, tout, "Blocked by the Bedrock guardrail.");
+        return new AssistAnswer(string.Concat(res.Output?.Message?.Content?.Select(c => c.Text) ?? []), tin, tout, null);
+    }
+
+    public static ConverseRequest Build(AssistRequest r)
+    {
         var req = new ConverseRequest
         {
             ModelId = r.Feature.Model,
             System = [new SystemContentBlock { Text = AssistPrompts.For(r.Kind) }],
-            Messages = [new Message { Role = ConversationRole.User, Content = [new ContentBlock { Text = $"FACTS:\n{AssistPrompts.Json(r.Facts)}\n\n{r.UserText ?? "Answer now."}" }] }],
+            Messages = [new Message { Role = ConversationRole.User, Content = r.Feature.Grounding && !string.IsNullOrEmpty(r.Feature.GuardrailId)
+                // Contextual grounding: the guardrail checks the answer against the product facts (grounding_source) and the shopper's question (query).
+                ? [new ContentBlock { Text = "FACTS:" },
+                   new ContentBlock { GuardContent = new GuardrailConverseContentBlock { Text = new GuardrailConverseTextBlock { Text = AssistPrompts.Json(r.Facts), Qualifiers = [GuardrailConverseContentQualifier.Grounding_source] } } },
+                   new ContentBlock { GuardContent = new GuardrailConverseContentBlock { Text = new GuardrailConverseTextBlock { Text = r.UserText ?? "", Qualifiers = [GuardrailConverseContentQualifier.Query] } } }]
+                : [new ContentBlock { Text = $"FACTS:\n{AssistPrompts.Json(r.Facts)}\n\n{r.UserText ?? "Answer now."}" }] }],
             InferenceConfig = new InferenceConfiguration { MaxTokens = 500, Temperature = 0.2f },
         };
         if (!string.IsNullOrEmpty(r.Feature.GuardrailId))
             req.GuardrailConfig = new GuardrailConfiguration { GuardrailIdentifier = r.Feature.GuardrailId, GuardrailVersion = r.Feature.GuardrailVersion };
-        var res = await bedrock.ConverseAsync(req, ct);
-        int tin = res.Usage?.InputTokens ?? 0, tout = res.Usage?.OutputTokens ?? 0;
-        if (res.StopReason == StopReason.Guardrail_intervened) return new AssistAnswer(null, tin, tout, "Blocked by the Bedrock guardrail.");
-        return new AssistAnswer(string.Concat(res.Output?.Message?.Content?.Select(c => c.Text) ?? []), tin, tout, null);
+        return req;
     }
 }
 
 /// <summary>Mocked model (CI / local): deterministic templates built from the facts only, so the output checks and citations are
 /// exercised exactly as with Bedrock.</summary>
-public sealed class MockAssistModel : IAssistModel
+public sealed class MockAssistModel(AiOptions? o = null) : IAssistModel
 {
     public Task<AssistAnswer> CompleteAsync(AssistRequest r, CancellationToken ct = default)
     {
         var tin = 400 + AssistPrompts.Json(r.Facts).Length / 4;
-        if (r.UserText is { } u && LocalGuardrail.Check(u) is { } why) return Task.FromResult(new AssistAnswer(null, tin, 0, why));
+        if (r.UserText is { } u)
+        {
+            var why = r.Feature.Name == "shop" ? ShopGuardrail.Check(u, o?.Features.GetValueOrDefault("shop")?.BlockedWords) : LocalGuardrail.Check(u);
+            if (why is not null) return Task.FromResult(new AssistAnswer(null, tin, 0, why));
+        }
         var text = MockTemplates.Render(r.Kind, r.Facts);
         return Task.FromResult(new AssistAnswer(text, tin, text.Length / 4, null));
     }
+}
+
+/// <summary>Local stand-in for the shop guardrail (infra/modules/ai aws_bedrock_guardrail.shop) used by the mocked model: content
+/// filters (a small word list), prompt attacks, profanity + the custom word list, the three denied topics, and the blocked PII
+/// types. Anonymised types (e-mail, phone, address, name) are masked in the question instead of blocking it.</summary>
+public static partial class ShopGuardrail
+{
+    public const string Blocked = "Sorry, I can only help with Adventure Works products.";
+    public static string? Check(string q, IEnumerable<string>? customWords = null)
+    {
+        var l = q.ToLowerInvariant();
+        if (Attack().IsMatch(l)) return Blocked + " (prompt attack)";
+        if (Content().IsMatch(l)) return Blocked + " (content filter)";
+        if (customWords?.Any(w => w.Length > 0 && l.Contains(w.ToLowerInvariant())) == true) return Blocked + " (word filter)";
+        if (OffTopic().IsMatch(l)) return Blocked + " (off-topic: politics, medical, legal or financial advice)";
+        if (Promise().IsMatch(l)) return Blocked + " (no price, discount or delivery promises; the cart shows current prices and delivery options)";
+        if (OtherOrders().IsMatch(l)) return Blocked + " (other customers' orders)";
+        if (Card().IsMatch(q) || Password().IsMatch(l)) return Blocked + " (card numbers and passwords are blocked)";
+        return null;
+    }
+    /// <summary>ANONYMIZE types: e-mail and phone are masked before the text reaches the model or the logs.</summary>
+    public static string Anonymize(string q) => Phone().Replace(Email().Replace(q, "{EMAIL}"), "{PHONE}");
+
+    [GeneratedRegex(@"ignore (all |the )?(previous|above|prior) instructions|system prompt|you are now|jailbreak|developer mode")] private static partial Regex Attack();
+    [GeneratedRegex(@"\b(idiot|stupid|hate you|kill|damn|shit|fuck|sexy|nude)\b")] private static partial Regex Content();
+    [GeneratedRegex(@"\b(politic|election|vote for|president|diagnos|medical|medicine|symptom|lawyer|legal advice|sue\b|lawsuit|invest|stock market|crypto|financial advice|tax advice)")] private static partial Regex OffTopic();
+    [GeneratedRegex(@"\b(guarantee|promise|price match|discount code|coupon|cheaper (price|deal)|deliver(ed|y)? by|arrive by|free shipping)\b")] private static partial Regex Promise();
+    [GeneratedRegex(@"\b(other customer|someone else'?s order|another customer|whose order|order (of|for) (mr|mrs|ms)\b|orders? placed by)")] private static partial Regex OtherOrders();
+    [GeneratedRegex(@"\b(?:\d[ -]?){13,16}\b")] private static partial Regex Card();
+    [GeneratedRegex(@"\bpassword")] private static partial Regex Password();
+    [GeneratedRegex(@"[\w.+-]+@[\w-]+\.[\w.]+")] private static partial Regex Email();
+    [GeneratedRegex(@"\+?\d[\d ().-]{7,}\d")] private static partial Regex Phone();
 }

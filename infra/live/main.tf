@@ -79,6 +79,7 @@ module "ai" {
   source             = "../modules/ai"
   name               = local.name
   redshift_workgroup = module.warehouse.workgroup
+  competitor_words   = var.ai_competitor_words
 }
 
 # Phase 8 showcase (ADR 0009): static site on S3 + CloudFront; content via scripts/aws/push-showcase.sh.

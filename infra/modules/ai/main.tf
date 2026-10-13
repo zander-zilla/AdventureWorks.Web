@@ -27,6 +27,16 @@ variable "dimensions" {
   type    = number
   default = 512
 }
+variable "shop_model_id" {
+  description = "C2-6 shopper chat model (decision 2: Nova Lite)."
+  type        = string
+  default     = "amazon.nova-lite-v1:0"
+}
+variable "competitor_words" {
+  description = "C2-6 shop guardrail: custom blocked words (e.g. competitor names). Empty by default."
+  type        = list(string)
+  default     = []
+}
 variable "session_questions" {
   description = "Ask-the-data budget: questions per session per day."
   type        = number
@@ -110,6 +120,90 @@ resource "aws_bedrock_guardrail_version" "ask" {
   description   = "managed by terraform"
 }
 
+# C2-6 shop guardrail (John, 2026-10-13): the public shopper chat only; ask-the-data keeps aws_bedrock_guardrail.ask.
+resource "aws_bedrock_guardrail" "shop" {
+  name                      = "${var.name}-shop-assistant"
+  description               = "Public shopper chat: content filters, prompt attacks, profanity + custom words, denied topics, PII, grounding."
+  blocked_input_messaging   = "Sorry, I can only help with Adventure Works products."
+  blocked_outputs_messaging = "Sorry, I can't answer that. Please ask about our bikes, components, clothing or accessories."
+
+  content_policy_config {
+    dynamic "filters_config" {
+      for_each = ["HATE", "INSULTS", "SEXUAL", "VIOLENCE", "MISCONDUCT"]
+      content {
+        type            = filters_config.value
+        input_strength  = "HIGH"
+        output_strength = "HIGH"
+      }
+    }
+    filters_config {
+      type            = "PROMPT_ATTACK"
+      input_strength  = "HIGH"
+      output_strength = "NONE"
+    }
+  }
+
+  word_policy_config {
+    managed_word_lists_config {
+      type = "PROFANITY"
+    }
+    dynamic "words_config" {
+      for_each = var.competitor_words
+      content {
+        text = words_config.value
+      }
+    }
+  }
+
+  topic_policy_config {
+    topics_config {
+      name       = "off-topic-advice"
+      type       = "DENY"
+      definition = "Politics, or medical, legal or financial advice: anything not about Adventure Works products."
+      examples   = ["Who should I vote for?", "Is this knee pain serious?", "Should I buy shares?"]
+    }
+    topics_config {
+      name       = "price-discount-delivery-promises"
+      type       = "DENY"
+      definition = "Promising or negotiating prices, discounts, coupons, price matches or delivery dates."
+      examples   = ["Can you guarantee delivery by Friday?", "Give me a discount code", "Will you match a cheaper price?"]
+    }
+    topics_config {
+      name       = "other-customers-orders"
+      type       = "DENY"
+      definition = "Questions about orders, purchases or details of other customers."
+      examples   = ["What did Jon Yang order?", "Show me someone else's order"]
+    }
+  }
+
+  sensitive_information_policy_config {
+    dynamic "pii_entities_config" {
+      for_each = { EMAIL = "ANONYMIZE", PHONE = "ANONYMIZE", ADDRESS = "ANONYMIZE", NAME = "ANONYMIZE", CREDIT_DEBIT_CARD_NUMBER = "BLOCK", PASSWORD = "BLOCK" }
+      content {
+        type   = pii_entities_config.key
+        action = pii_entities_config.value
+      }
+    }
+  }
+
+  # Answers must be grounded on the product facts the server retrieved (sent as grounding_source) and relevant to the question.
+  contextual_grounding_policy_config {
+    filters_config {
+      type      = "GROUNDING"
+      threshold = 0.7
+    }
+    filters_config {
+      type      = "RELEVANCE"
+      threshold = 0.7
+    }
+  }
+}
+
+resource "aws_bedrock_guardrail_version" "shop" {
+  guardrail_arn = aws_bedrock_guardrail.shop.guardrail_arn
+  description   = "managed by terraform"
+}
+
 # Password set by an admin together with 50_ai_reader.sql (username ai_reader); the Data API reads it.
 resource "aws_secretsmanager_secret" "ai_reader" {
   name                    = "${var.name}/redshift/ai_reader"
@@ -132,6 +226,9 @@ output "environment" {
     { name = "Ai__RedshiftDatabase", value = var.redshift_database },
     { name = "Ai__RedshiftSecretArn", value = aws_secretsmanager_secret.ai_reader.arn },
     { name = "Ai__SessionQuestions", value = tostring(var.session_questions) },
+    { name = "Ai__Features__shop__Model", value = var.shop_model_id },
+    { name = "Ai__Features__shop__GuardrailId", value = aws_bedrock_guardrail.shop.guardrail_id },
+    { name = "Ai__Features__shop__GuardrailVersion", value = aws_bedrock_guardrail_version.shop.version },
     { name = "Ai__SessionTokens", value = tostring(var.session_tokens) },
   ]
 }
@@ -141,8 +238,9 @@ output "policy_json" {
     Version = "2012-10-17"
     Statement = [
       { Effect = "Allow", Action = ["bedrock:InvokeModel"],
-      Resource = ["${local.arn}:bedrock:${local.region}::foundation-model/${var.embedding_model_id}", "${local.arn}:bedrock:${local.region}::foundation-model/${var.chat_model_id}"] },
-      { Effect = "Allow", Action = ["bedrock:ApplyGuardrail"], Resource = [aws_bedrock_guardrail.ask.guardrail_arn] },
+        Resource = ["${local.arn}:bedrock:${local.region}::foundation-model/${var.embedding_model_id}", "${local.arn}:bedrock:${local.region}::foundation-model/${var.chat_model_id}",
+      "${local.arn}:bedrock:${local.region}::foundation-model/${var.shop_model_id}"] },
+      { Effect = "Allow", Action = ["bedrock:ApplyGuardrail"], Resource = [aws_bedrock_guardrail.ask.guardrail_arn, aws_bedrock_guardrail.shop.guardrail_arn] },
       { Effect = "Allow", Action = ["s3vectors:PutVectors", "s3vectors:QueryVectors", "s3vectors:GetVectors"], Resource = [aws_s3vectors_index.products.index_arn] },
       { Effect = "Allow", Action = ["redshift-data:ExecuteStatement"],
       Resource = ["${local.arn}:redshift-serverless:${local.region}:${data.aws_caller_identity.me.account_id}:workgroup/*"] },
@@ -155,3 +253,4 @@ output "policy_json" {
 output "guardrail_id" { value = aws_bedrock_guardrail.ask.guardrail_id }
 output "vector_bucket" { value = aws_s3vectors_vector_bucket.v.vector_bucket_name }
 output "ai_reader_secret_arn" { value = aws_secretsmanager_secret.ai_reader.arn }
+output "shop_guardrail_id" { value = aws_bedrock_guardrail.shop.guardrail_id }

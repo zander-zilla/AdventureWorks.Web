@@ -44,7 +44,7 @@ if (aiOptions.Enabled)
     {
         builder.Services.AddSingleton<IEmbedder>(new HashEmbedder(aiOptions.Dimensions));
         builder.Services.AddSingleton<ISqlModel>(new MockSqlModel(AiText.LoadEval()));
-        builder.Services.AddSingleton<IAssistModel, MockAssistModel>();
+        builder.Services.AddSingleton<IAssistModel>(new MockAssistModel(aiOptions));
         builder.Services.AddSingleton<IVectorStore, InMemoryVectorStore>();
     }
     if (!string.IsNullOrEmpty(aiOptions.RedshiftWorkgroup))

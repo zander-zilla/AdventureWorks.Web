@@ -65,6 +65,53 @@ run "ai_layer_on" {
   }
 }
 
+# C2-6 shop guardrail (John, 2026-10-13): separate from ask-the-data, all six settings.
+run "ai_shop_guardrail" {
+  command = plan
+  module {
+    source = "../modules/ai"
+  }
+  variables {
+    name               = "aw-ci"
+    redshift_workgroup = "aw-ci"
+    competitor_words   = ["RivalBikes"]
+  }
+  assert {
+    condition     = aws_bedrock_guardrail.shop.name == "aw-ci-shop-assistant" && aws_bedrock_guardrail.ask.name == "aw-ci-ask-the-data"
+    error_message = "two guardrails: shop and ask-the-data"
+  }
+  assert {
+    condition = alltrue([for f in aws_bedrock_guardrail.shop.content_policy_config[0].filters_config :
+    f.type == "PROMPT_ATTACK" ? (f.input_strength == "HIGH" && f.output_strength == "NONE") : (f.input_strength == "HIGH" && f.output_strength == "HIGH")])
+    error_message = "content filters HIGH in and out; prompt attack HIGH on input"
+  }
+  assert {
+    condition     = toset([for f in aws_bedrock_guardrail.shop.content_policy_config[0].filters_config : f.type]) == toset(["HATE", "INSULTS", "SEXUAL", "VIOLENCE", "MISCONDUCT", "PROMPT_ATTACK"])
+    error_message = "five content filters plus prompt attack"
+  }
+  assert {
+    condition     = aws_bedrock_guardrail.shop.word_policy_config[0].managed_word_lists_config[0].type == "PROFANITY" && length(aws_bedrock_guardrail.shop.word_policy_config[0].words_config) == 1
+    error_message = "managed profanity list plus the custom word list"
+  }
+  assert {
+    condition     = length(aws_bedrock_guardrail.shop.topic_policy_config[0].topics_config) == 3
+    error_message = "three denied topics"
+  }
+  assert {
+    condition = { for p in aws_bedrock_guardrail.shop.sensitive_information_policy_config[0].pii_entities_config : p.type => p.action } == {
+    EMAIL = "ANONYMIZE", PHONE = "ANONYMIZE", ADDRESS = "ANONYMIZE", NAME = "ANONYMIZE", CREDIT_DEBIT_CARD_NUMBER = "BLOCK", PASSWORD = "BLOCK" }
+    error_message = "PII: anonymize e-mail, phone, address, name; block cards and passwords"
+  }
+  assert {
+    condition     = { for f in aws_bedrock_guardrail.shop.contextual_grounding_policy_config[0].filters_config : f.type => f.threshold } == { GROUNDING = 0.7, RELEVANCE = 0.7 }
+    error_message = "contextual grounding 0.7 / relevance 0.7"
+  }
+  assert {
+    condition     = length([for e in output.environment : e if e.name == "Ai__Features__shop__Model" && e.value == "amazon.nova-lite-v1:0"]) == 1
+    error_message = "shop chat on Nova Lite"
+  }
+}
+
 run "dynamodb_encryption_per_table" {
   command = plan
   module {

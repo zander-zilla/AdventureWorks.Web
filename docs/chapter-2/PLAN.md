@@ -516,6 +516,16 @@ Steps
 DynamoDB: none (facts from CloudWatch/SQS). IAM: read-only SQS peek and CloudWatch `GetMetricData` on the CDC resources,
 behind `enable_ai`. Effort S-M (2 d).
 
+
+#### Shop guardrail (confirmed by John (Oct 13, 2026))
+The public shopper chat gets its own `aws_bedrock_guardrail.shop` (created only with `enable_ai`); ask-the-data and the back-office
+features keep the existing guardrail. Settings: 1. content filters HATE, INSULTS, SEXUAL, VIOLENCE, MISCONDUCT at HIGH on input and
+output; 2. PROMPT_ATTACK at HIGH on input; 3. the managed PROFANITY list plus a custom word list (`ai_competitor_words`, empty by
+default); 4. denied topics: off-topic requests (politics, medical, legal, financial advice), price / discount / delivery promises,
+other customers' orders; 5. PII: ANONYMIZE e-mail, phone, address and name, BLOCK card numbers and passwords; 6. contextual grounding
+check with grounding and relevance thresholds 0.7: the server sends the retrieved product facts as `grounding_source` and the
+shopper's question as `query`. Model and guardrail are configurable per feature (`Ai:Features:<feature>`).
+
 ### Backlog (not in C2-6 scope)
 - **Review insights**: pros and cons and negative trends per product from ProductReview (CAT-11), as a summary on the product page and a trend tile.
 - **Scrap explainer**: why scrap rose in a month, from `dw.v_production_scrap_on_time` plus work-order reasons (C2-4).

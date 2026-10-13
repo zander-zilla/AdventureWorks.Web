@@ -637,7 +637,7 @@ shopper's question as `query`. Model and guardrail are configurable per feature 
 | 7 | Shopper chat for anonymous visitors | **Yes, 10 turns per session**, keyed by the `aw_ai` cookie, on the shared daily budget. |
 | 8 | Backlog | **Review insights next (S-M), then scrap explainer (S)**; not in C2-6. |
 
-## C2-7 Synthetic data to the present (plan, docs only – decisions pending John)
+## C2-7 Synthetic data to the present (plan; decisions *confirmed by John (Oct 13, 2026)*)
 
 John's scope (2026-10-13): a **seeded, repeatable generator** that continues the AdventureWorks data from where it stops
 (orders end 2014-06-30, work orders 2014-07, POs 2014-09) up to the current date (Oct 2026), so the demo shows twelve years of
@@ -714,7 +714,7 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
 6. Loading switch: SQL inserts in monthly batches, Terraform / tools-task command `synthetic-load`, local `SYNTHETIC=1`, offer-date
    switch, docs and the measured dry run (2 d).
 7. Showcase / demo updates, derived AI inputs refreshed (`derive-ai`), screenshots (0.5 d).
-**≈ 12 days.**
+**≈ 13 days.**
 
 ### Risks
 - **Realism**: generated data can look fake (flat curves, odd baskets). Mitigated by fitting on the original data and the shape tests.
@@ -731,10 +731,12 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
 - "Customers also bought" and reviews reflect recent activity; new 2020s models appear next to the classic range.
 - One switch: the original sample (Chapter 1 evidence) or the continued data, both loaded through the same CDC pipeline.
 
-### Backlog (not in C2-7)
-- **Daily trickle job**: a scheduled task that generates one more day each night so the data stays current (John did not pick it).
+8. **Daily trickle job (last step, John's change)**: an EventBridge schedule starts the tools ECS task (`synthetic-trickle`) once a
+   day; it generates the previous day(s) deterministically (same seed, day-keyed streams) up to yesterday, catching up any missed
+   days from the `SyntheticBatch` end date, and inserts through the SQL source → CDC path. Terraform switch `synthetic_trickle`
+   (default false, needs `synthetic_data`). Tests (idempotent catch-up, plan tests) and docs (1 d).
 
-### Decisions for John (C2-7, with recommendations) – pending John's review
+### Decisions C2-7 – *confirmed by John (Oct 13, 2026)* (1–6 as recommended, 7 changed by John)
 | # | Decision | Recommendation |
 |---|---|---|
 | 1 | Real calendar holidays | **Yes**: US holidays (Thanksgiving / Black Friday, Christmas) and the main holidays of the other territories (UK, DE, FR, CA, AU) via the `holidays` package, with an effect size fitted on 2011-2014 where possible. More realistic charts at low cost. |
@@ -743,7 +745,7 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
 | 4 | New products | **Yes, a few per year** (≈ 6-10 new models / colours, cloned BOMs and vendors) and discontinue old ones on a schedule, so the catalog has a lifecycle; no new categories. |
 | 5 | Load switch default | **Off** in `demo.tfvars` until John has seen a measured dry run; local and CI use a 2-year slice. |
 | 6 | Path | **SQL Server inserts → CDC → DMS → DynamoDB → zero-ETL** (the normal path) for AWS; the bulk loader only as the local / CI fast path. |
-| 7 | Daily trickle job | **Backlog only** (not picked by John). |
+| 7 | Daily trickle job | Recommended backlog only; **John changed it: build it as the last step of C2-7**, off by default (`synthetic_trickle = false`), EventBridge schedule → ECS tools task, previous day deterministic, catch-up of missed days, through the SQL source + CDC path. |
 
 ---
 

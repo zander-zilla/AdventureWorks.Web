@@ -38,7 +38,7 @@ def test_generated_dimensions(pgc, sql):
     assert v(pgc, "SELECT COUNT(DISTINCT product_alternate_key) FROM dw.dim_product WHERE product_alternate_key LIKE 'SY-%'") == \
         v(sql, "SELECT COUNT(*) FROM Production.Product WHERE ProductID >= 5000")
     assert v(pgc, "SELECT COUNT(*) FROM dw.dim_promotion WHERE promotion_alternate_key >= 100") == v(sql, "SELECT COUNT(*) FROM Sales.SpecialOffer WHERE SpecialOfferID >= 100")
-    assert v(pgc, "SELECT MAX(date_key) FROM dw.dim_date") >= 20161231
+    assert v(pgc, "SELECT MAX(date_key) FROM dw.dim_date") >= 20141231
 
 
 def test_history_is_continuous_by_month(pgc):
@@ -46,4 +46,4 @@ def test_history_is_continuous_by_month(pgc):
     months = [r[0] for r in pgc.fetchall()]
     ym = [(m // 100) * 12 + m % 100 for m in months]
     assert all(b - a == 1 for a, b in zip(ym, ym[1:])), "a month without web sales"
-    assert months[-1] >= 201606
+    assert months[-1] >= 201412

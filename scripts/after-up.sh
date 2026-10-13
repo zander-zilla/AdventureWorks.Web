@@ -11,11 +11,11 @@ if ! docker ps --format '{{.Names}}' | grep -q '^aw-before-sqlserver-1$'; then
   for i in $(seq 1 60); do [ "$(docker inspect -f '{{.State.Health.Status}}' aw-before-sqlserver-1)" = healthy ] && break; sleep 5; done
   docker exec aw-before-sqlserver-1 /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -b -i /sql/01-restore.sql
 fi
-# C2-7: SYNTHETIC=1 adds the generated 2-year slice (2014-07..2016-06, override with SYNTHETIC_END) to SQL Server first;
+# C2-7: SYNTHETIC=1 adds the generated 6-month slice (2014-07..2014-12, override with SYNTHETIC_END) to SQL Server first;
 # the loader then carries original + generated rows (the local fast path; on AWS they go through CDC).
 if [ "${SYNTHETIC:-0}" = 1 ]; then
-  $PY scripts/synthetic/load_sql.py --end "${SYNTHETIC_END:-2016-06-30}"
-  export AW_OFFER_DATE="${SYNTHETIC_END:-2016-06-30}"   # offers as of the generated data's "now" (AWS full load: today)
+  $PY scripts/synthetic/load_sql.py --end "${SYNTHETIC_END:-2014-12-31}"
+  export AW_OFFER_DATE="${SYNTHETIC_END:-2014-12-31}"   # offers as of the generated data's "now" (AWS full load: today)
 fi
 if [ "${SKIP_LOAD:-0}" != 1 ]; then
   scripts/ddb-local-up.sh

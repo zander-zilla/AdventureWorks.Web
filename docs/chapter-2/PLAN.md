@@ -702,8 +702,8 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
   ≈ 8 GB, Redshift ≈ 3 GB, RDS ≈ 3 GB inside the current allocation). **Total ≈ $10-20 per load, + ≈ $3 / month** while loaded.
 - **Load time**: SQL Server inserts ≈ 15-30 min; DMS → Lambda apply at ≈ 1 000-2 000 changes / s (child lookups, conditional
   writes) ≈ 1-2 h for ≈ 6 M changes, with the Lambda reserved concurrency raised for the load; zero-ETL lag minutes; star rebuild
-  ≈ 10-20 min. **≈ 2-3 h end to end on AWS**; the local CI fast path (bulk loader) ≈ 15 min for a 2-year slice.
-- CI never loads the full 12 years: it generates a 2-year slice (seeded) for the tests and runs the constraint checks on it.
+  ≈ 10-20 min. **≈ 2-3 h end to end on AWS**; the local CI fast path (bulk loader) ≈ 5 min for the 6-month slice.
+- CI never loads the full 12 years: it loads a 6-month slice (2014-07..2014-12, `SYNTHETIC_END`; *confirmed by John (Oct 13, 2026)*) into SQL Server / DynamoDB / the warehouse; the pure-Python generator tests still use 2 years and runs the constraint checks on it.
 
 ### Steps and effort
 1. Fit the profile from the original data + constraint test suite (2 d).
@@ -743,7 +743,7 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
 | 2 | Growth rate | **5 % a year** on orders (fitted 2013 → 2014 growth is far higher and would explode over 12 years), with a dip in 2020 (−15 %) and a rebound in 2021 as an optional scenario flag, off by default. |
 | 3 | Rebase "now" at load time | **No rebase; generate up to the load date.** The generator is deterministic for a given end date; the load step generates up to today (end date stored in `SyntheticBatch`). Rebasing (shifting all dates) would change the original 2011-2014 data and break the Chapter 1 evidence. |
 | 4 | New products | **Yes, a few per year** (≈ 6-10 new models / colours, cloned BOMs and vendors) and discontinue old ones on a schedule, so the catalog has a lifecycle; no new categories. |
-| 5 | Load switch default | **Off** in `demo.tfvars` until John has seen a measured dry run; local and CI use a 2-year slice. |
+| 5 | Load switch default | **Off** in `demo.tfvars` until John has seen a measured dry run; local and CI use a 2-year slice. *Changed by John (Oct 13, 2026): CI / local slice 6 months, configurable via `SYNTHETIC_END`; the full AWS load to today is unchanged.* |
 | 6 | Path | **SQL Server inserts → CDC → DMS → DynamoDB → zero-ETL** (the normal path) for AWS; the bulk loader only as the local / CI fast path. |
 | 7 | Daily trickle job | Recommended backlog only; **John changed it: build it as the last step of C2-7**, off by default (`synthetic_trickle = false`), EventBridge schedule → ECS tools task, previous day deterministic, catch-up of missed days, through the SQL source + CDC path. |
 
@@ -771,7 +771,7 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
   `syn = 1`), reconcile all rows + original-only against `original-baseline.json`, 5 Terraform plan tests.
 - **Measured volume** (generator, 2014-07-01..2026-10-12, seed 2026): **7.0 M source rows** (orders 413 594, lines 1.41 M,
   customers 228 481 (×7 person-related rows), work orders 479 732, POs 39 147, transactions 1.99 M, 113 new products), ≈ 0.46-0.67 M
-  rows per full year. 2-year local slice ≈ 0.92 M rows: generate ≈ 21 s, SQL load ≈ 5.5 min, DynamoDB bulk ≈ 14 min locally.
+  rows per full year. 6-month CI / local slice (2014-07..12) ≈ 0.20 M rows (the 2-year slice, ≈ 0.92 M rows and ≈ 1.77 M DynamoDB items, ran a 16 GB runner out of memory: DynamoDB Local in-memory JVMs grew past 3 GB each).
 
 #### Changes from initial design
 | Planned | As built | Why |
@@ -782,6 +782,7 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
 | App checks `SyntheticBatch` for the offer date | `synthetic_data` switch sets `Pricing__OfferDate` | The app does not read SQL Server |
 | TransactionHistory via triggers | Inserted explicitly with real dates, triggers disabled | Triggers would stamp load time |
 | Not mentioned | Not generated: CreditCard, CurrencyRate, new stores | Out of scope for the demo |
+| CI / local slice 2 years | 6 months (`SYNTHETIC_END`, default 2014-12-31); generator unit tests keep 2 years | 2 years did not fit a 16 GB runner; *confirmed by John (Oct 13, 2026)* |
 | Trickle in backlog | Built (step 8), off by default | John's decision 7 |
 | CDC consumer HTTP/1.0 | HTTP/1.1 keep-alive + chunked bodies | Debezium bursts of a whole day stopped the engine |
 

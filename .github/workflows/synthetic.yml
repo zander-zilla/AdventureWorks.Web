@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-design.txt
-      - name: Generator - pinned sample hash, trickle == bulk, marking, realism constraints, fitted shape (2-year slice)
+      - name: Generator - pinned sample hash, trickle == bulk, marking, realism constraints, fitted shape (2-year in-memory slice)
         run: python -m pytest -q -p no:cacheprovider tests/synthetic/test_generator.py tests/synthetic/test_marking.py tests/cdc/test_transform.py
   synthetic-e2e:
     runs-on: ubuntu-latest
@@ -35,13 +35,13 @@ jobs:
         with:
           node-version: 22
       - run: pip install -r requirements-design.txt
-      - name: 2-year slice into SQL Server, DB tests, DynamoDB Local, reconcile (all rows + original-only vs the Chapter 1 baseline)
+      - name: 6-month slice (2014-07..12, SYNTHETIC_END) into SQL Server, DB tests, DynamoDB Local, reconcile (all rows + original-only vs the Chapter 1 baseline)
         run: PYTHON=python scripts/synthetic-up.sh
       - name: Real app image over the generated slice (offers as of the slice end), C2-7 screens + screenshots
         run: |
-          AW_OFFER_DATE=2016-06-30 SKIP_LOAD=1 PYTHON=python scripts/after-up.sh
+          AW_OFFER_DATE=2014-12-31 SKIP_LOAD=1 PYTHON=python scripts/after-up.sh
           cd src/web && npm ci --no-audit --no-fund && npx playwright install --with-deps chromium
-          AW_E2E_BASE=http://localhost:5090/app/ AW_SYNTHETIC_END=2016-06-30 AW_SCREENSHOTS=$GITHUB_WORKSPACE/synthetic-shots npx playwright test e2e/c2-7.spec.ts --reporter=line
+          AW_E2E_BASE=http://localhost:5090/app/ AW_SYNTHETIC_END=2014-12-31 AW_SCREENSHOTS=$GITHUB_WORKSPACE/synthetic-shots npx playwright test e2e/c2-7.spec.ts --reporter=line
       - name: App logs
         if: failure()
         run: docker logs aw-after-app-1 2>&1 | tail -80 || true

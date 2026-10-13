@@ -8,7 +8,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "synthetic")); sys.path.insert(0, os.path.join(ROOT, "scripts", "loader"))
 pytestmark = pytest.mark.skipif(os.environ.get("AW_SYN_IT") != "1", reason="needs SQL Server with the generated slice (scripts/synthetic-up.sh)")
 
-END = dt.date.fromisoformat(os.environ.get("SYNTHETIC_END", "2016-06-30"))
+END = dt.date.fromisoformat(os.environ.get("SYNTHETIC_END", "2014-12-31"))
 
 
 @pytest.fixture(scope="module")

@@ -153,6 +153,48 @@
     }
    ],
    "pr": 22
+  },
+  {
+   "id": "C2-6",
+   "name": "AI everywhere (triage copilot, smart reorder, shopper assistant, replication watchdog)",
+   "status": "planned",
+   "optional": true,
+   "pages": [],
+   "planned_screens": [
+    {
+     "path": "/app/back-office/orders",
+     "name": "Order triage copilot: explain risk / stuck, draft approve or backorder note (enable_ai)",
+     "processes": [
+      "o2c-internet",
+      "o2c-reseller"
+     ]
+    },
+    {
+     "path": "/app/back-office/procurement",
+     "name": "Smart reorder: demand forecast in suggestions, draft vendor PO email (enable_ai)",
+     "processes": [
+      "procure-to-pay",
+      "inventory"
+     ]
+    },
+    {
+     "path": "/app/shop",
+     "name": "Shopper assistant chat: semantic search + customers also bought (enable_ai)",
+     "processes": [
+      "o2c-internet",
+      "catalog"
+     ]
+    },
+    {
+     "path": "/app/back-office/replication",
+     "name": "Replication watchdog: plain-English CDC lag and dead-letter explanations (enable_ai)",
+     "processes": []
+    }
+   ],
+   "backlog": [
+    "Review insights (pros/cons, negative trends)",
+    "Scrap explainer"
+   ]
   }
  ],
  "api_v2": [
@@ -559,6 +601,20 @@
    "phase": "C2-3",
    "new": true,
    "status": "not-needed"
+  },
+  {
+   "id": "INV-07",
+   "use": "Demand forecast by product and month (PRODUCT#id / FORECAST#yyyy-MM), feeds reorder suggestions",
+   "phase": "C2-6",
+   "status": "planned",
+   "new": true
+  },
+  {
+   "id": "CAT-12",
+   "use": "Customers also bought by product (PRODUCT#id / ALSO#rank), loaded nightly from dw.v_product_affinity",
+   "phase": "C2-6",
+   "status": "planned",
+   "new": true
   }
  ],
  "redshift_views": [
@@ -573,6 +629,18 @@
    "use": "Scrap rate and on-time production by due month (fact_work_order, fact_work_order_routing)",
    "phase": "C2-4",
    "status": "live"
+  },
+  {
+   "name": "dw.v_product_demand_monthly",
+   "use": "Monthly units per product for the C2-6 forecast and backtest",
+   "phase": "C2-6",
+   "status": "planned"
+  },
+  {
+   "name": "dw.v_product_affinity",
+   "use": "Co-purchase pairs (same order, lift) for customers also bought",
+   "phase": "C2-6",
+   "status": "planned"
   }
  ],
  "architecture_delta": [

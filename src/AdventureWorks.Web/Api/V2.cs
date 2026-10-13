@@ -115,6 +115,9 @@ public static class V2
         g.MapGet("/categories", async (CatalogRepository c) => Results.Ok(await c.GetCategoryTreeAsync())).WithName("listCategories").Produces<List<Category>>();
         g.MapGet("/subcategories/{id:int}/products", async (int id, CatalogRepository c) => Results.Ok(await c.GetProductsBySubcategoryAsync(id)))
             .WithName("listSubcategoryProducts").Produces<List<Product>>();
+        // C2-6 customers also bought (CAT-12): derived co-purchase ranks, shown on the product page whether or not the AI layer is on.
+        g.MapGet("/products/{id:int}/also-bought", async (int id, [FromServices] AlsoBoughtRepository a) => Results.Ok(await a.ListAsync(id)))
+            .WithName("listAlsoBought").Produces<List<AlsoBought>>();
         g.MapGet("/products/{id:int}/reviews", async (int id, CatalogRepository c) => Results.Ok(await c.GetReviewsAsync(id)))
             .WithName("listReviews").Produces<List<CatalogRepository.Review>>();
         g.MapPost("/products/{id:int}/reviews", (int id, ReviewRequest body, ClaimsPrincipal u, CatalogRepository c, FulfilmentRepository f, TimeProvider clock) => Guard(async () =>
@@ -358,6 +361,13 @@ public static class V2
             if (string.IsNullOrWhiteSpace(q) || q.Length > 200) return Results.Problem(title: "q must be 1 to 200 characters.", statusCode: 400);
             return Results.Ok(await sp.GetRequiredService<SemanticSearch>().SearchAsync(q.Trim(), Math.Clamp(top ?? 10, 1, 30), o.Mode, ct));
         }).WithName("semanticSearch").Produces<SearchResult>().ProducesProblem(400).ProducesProblem(404);
+        // C2-6 shopper chat (enable_ai): anonymous or signed in, shop guardrail, tools picked by the server, 10 turns a day.
+        ai.MapPost("/chat", async (ChatRequest body, AiOptions o, [FromServices] ShopChat chat, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            if (string.IsNullOrWhiteSpace(body.Message)) return Results.Problem(title: "message must not be empty.", statusCode: 400);
+            return Results.Ok(await chat.ChatAsync(AiSession(h), u.Identity?.IsAuthenticated == true ? Actor(u) : "anonymous", body, ct));
+        }).WithName("shopChat").Produces<ChatResponse>().ProducesProblem(400).ProducesProblem(404);
         ai.MapGet("/examples", (AiOptions o) => o.Enabled ? Results.Ok(AiText.LoadEval().Select(e => e.Question).ToList()) : AiOff())
             .RequireAuthorization(StaffPolicy).WithName("askExamples").Produces<List<string>>().ProducesProblem(404);
         ai.MapPost("/ask", async (AskRequest body, AiOptions o, IServiceProvider sp, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>

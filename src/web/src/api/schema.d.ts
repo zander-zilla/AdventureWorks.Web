@@ -132,6 +132,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/products/{id}/also-bought": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAlsoBought"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/products/{id}/reviews": {
         parameters: {
             query?: never;
@@ -900,6 +916,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/ai/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["shopChat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/ai/examples": {
         parameters: {
             query?: never;
@@ -966,6 +998,16 @@ export interface components {
             /** Format: int32 */
             tokensLeft: number;
             warehouseConnected: boolean;
+        };
+        AlsoBought: {
+            /** Format: int32 */
+            productId: number;
+            name: string;
+            productNumber: null | string;
+            /** Format: double */
+            listPrice: number;
+            /** Format: int32 */
+            orders: number;
         };
         AskRequest: {
             question: string;
@@ -1085,6 +1127,27 @@ export interface components {
             id: number;
             name: string;
             subcategories: components["schemas"]["Subcategory"][];
+        };
+        ChatCard: {
+            /** Format: int32 */
+            productId: number;
+            name: string;
+            /** Format: double */
+            listPrice: number;
+            category: null | string;
+            source: string;
+        };
+        ChatRequest: {
+            message: string;
+            /** Format: int32 */
+            productId?: null | number;
+        };
+        ChatResponse: {
+            answer: components["schemas"]["AssistResult"];
+            cards: components["schemas"]["ChatCard"][];
+            tools: string[];
+            /** Format: int32 */
+            turnsLeft: number;
         };
         CheckoutRequest: {
             /** Format: int32 */
@@ -2121,6 +2184,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Product"][];
+                };
+            };
+        };
+    };
+    listAlsoBought: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlsoBought"][];
                 };
             };
         };
@@ -3629,6 +3714,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    shopChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatResponse"];
                 };
             };
             /** @description Bad Request */

@@ -245,6 +245,40 @@
         }
       }
     },
+    "/api/v2/products/{id}/also-bought": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "listAlsoBought",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AlsoBought"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/products/{id}/reviews": {
       "get": {
         "tags": [
@@ -2334,6 +2368,56 @@
         }
       }
     },
+    "/api/v2/ai/chat": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "shopChat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/ai/examples": {
       "get": {
         "tags": [
@@ -2474,6 +2558,39 @@
           },
           "warehouseConnected": {
             "type": "boolean"
+          }
+        }
+      },
+      "AlsoBought": {
+        "required": [
+          "productId",
+          "name",
+          "productNumber",
+          "listPrice",
+          "orders"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "productNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "listPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "orders": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -2909,6 +3026,86 @@
             "items": {
               "$ref": "#/components/schemas/Subcategory"
             }
+          }
+        }
+      },
+      "ChatCard": {
+        "required": [
+          "productId",
+          "name",
+          "listPrice",
+          "category",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "listPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "category": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
+      "ChatRequest": {
+        "required": [
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "productId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ChatResponse": {
+        "required": [
+          "answer",
+          "cards",
+          "tools",
+          "turnsLeft"
+        ],
+        "type": "object",
+        "properties": {
+          "answer": {
+            "$ref": "#/components/schemas/AssistResult"
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatCard"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "turnsLeft": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

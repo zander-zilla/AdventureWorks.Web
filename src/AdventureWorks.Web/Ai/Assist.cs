@@ -180,8 +180,8 @@ public static partial class ShopGuardrail
     [GeneratedRegex(@"ignore (all |the )?(previous|above|prior) instructions|system prompt|you are now|jailbreak|developer mode")] private static partial Regex Attack();
     [GeneratedRegex(@"\b(idiot|stupid|hate you|kill|damn|shit|fuck|sexy|nude)\b")] private static partial Regex Content();
     [GeneratedRegex(@"\b(politic|election|vote for|president|diagnos|medical|medicine|symptom|lawyer|legal advice|sue\b|lawsuit|invest|stock market|crypto|financial advice|tax advice)")] private static partial Regex OffTopic();
-    [GeneratedRegex(@"\b(guarantee|promise|price match|discount code|coupon|cheaper (price|deal)|deliver(ed|y)? by|arrive by|free shipping)\b")] private static partial Regex Promise();
-    [GeneratedRegex(@"\b(other customer|someone else'?s order|another customer|whose order|order (of|for) (mr|mrs|ms)\b|orders? placed by)")] private static partial Regex OtherOrders();
+    [GeneratedRegex(@"\b(guarantee|promise|price match|discounts?|discount code|coupon|\d+ ?% off|cheaper (price|deal)|deliver(ed|y)? by|arrive by|free shipping)\b")] private static partial Regex Promise();
+    [GeneratedRegex(@"\b(other customer|someone else'?s order|another customer|whose order|order (of|for) (mr|mrs|ms)\b|orders? placed by|orders? (of|for|from) (\{email\}|\S+@))")] private static partial Regex OtherOrders();
     [GeneratedRegex(@"\b(?:\d[ -]?){13,16}\b")] private static partial Regex Card();
     [GeneratedRegex(@"\bpassword")] private static partial Regex Password();
     [GeneratedRegex(@"[\w.+-]+@[\w-]+\.[\w.]+")] private static partial Regex Email();

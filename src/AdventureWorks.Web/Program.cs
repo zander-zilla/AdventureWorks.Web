@@ -34,6 +34,8 @@ if (aiOptions.Enabled)
     builder.Services.AddSingleton<TriageFacts>();
     builder.Services.AddSingleton<DemandRepository>();
     builder.Services.AddSingleton<ReorderFacts>();
+    builder.Services.AddSingleton<AlsoBoughtRepository>();
+    builder.Services.AddSingleton<ShopChat>();
     if (string.IsNullOrWhiteSpace(aiOptions.MonitorApiUrl)) builder.Services.AddSingleton<IWatchSource, ReplayWatchSource>();
     else builder.Services.AddHttpClient<IWatchSource, MonitorWatchSource>(c => c.Timeout = TimeSpan.FromSeconds(5));                  // C2-6 shared explain / draft service
     if (aiOptions.IsBedrock)

@@ -1,0 +1,33 @@
+{
+ "scenario": "lag-spike",
+ "status": {
+  "paused": false,
+  "queued": 4820,
+  "applied_events": 18240,
+  "dlq": 0,
+  "lag_ms": {
+   "last": 186000,
+   "p50": 1150,
+   "max": 192000
+  },
+  "source": "replay"
+ },
+ "changes": [
+  {
+   "table": "Sales.SalesOrderDetail",
+   "op": "insert",
+   "lag_ms": 186000
+  },
+  {
+   "table": "Sales.SalesOrderDetail",
+   "op": "insert",
+   "lag_ms": 184500
+  },
+  {
+   "table": "Sales.SalesOrderHeader",
+   "op": "update",
+   "lag_ms": 181200
+  }
+ ],
+ "dlq_samples": []
+}

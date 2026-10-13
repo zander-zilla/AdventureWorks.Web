@@ -43,6 +43,12 @@ export type AiStatus = S['AiStatus']
 export type AskResult = S['AskResult']
 export type SearchResult = S['SearchResult']
 export type SearchHit = S['SearchHit']
+export type AssistResult = S['AssistResult']
+export type SmartSuggestion = S['SmartSuggestion']
+export type WatchdogReport = S['WatchdogReport']
+export type ChatResponse = S['ChatResponse']
+export type AlsoBought = S['AlsoBought']
+export type DemandForecast = S['DemandForecast']
 export type Problem = { title: string; status: number; detail?: string }
 
 export class ApiError extends Error {
@@ -84,15 +90,19 @@ export const api = {
   queue: (status: number, territoryId?: number) => ok(http.GET('/api/v2/back-office/orders', { params: { query: { status, territoryId } } })),
   queueCounts: () => ok(http.GET('/api/v2/back-office/orders/counts')),
   boOrder: (id: number) => ok(http.GET('/api/v2/back-office/orders/{id}', { params: { path: { id } } })),
-  transition: (id: number, op: 'approve' | 'reject' | 'backorder' | 'ship' | 'cancel', version: number, ship?: { shipMethodId: number; trackingNumber: string }) =>
+  triageAssist: (id: number, kind: 'explain' | 'approve-note' | 'backorder-note') => ok(http.POST('/api/v2/back-office/orders/{id}/assist/{kind}', { params: { path: { id, kind } } })),
+  transition: (id: number, op: 'approve' | 'reject' | 'backorder' | 'ship' | 'cancel', version: number, ship?: { shipMethodId: number; trackingNumber: string }, note?: string) =>
     ok(http.POST('/api/v2/back-office/orders/{id}/{op}', {
       params: { path: { id, op } }, headers: idem(),
-      body: { version, shipMethodId: ship?.shipMethodId ?? null, trackingNumber: ship?.trackingNumber ?? null },
+      body: { version, shipMethodId: ship?.shipMethodId ?? null, trackingNumber: ship?.trackingNumber ?? null, note: note || null },
     })),
   bulkApprove: (orders: { id: number; version: number }[]) => ok(http.POST('/api/v2/back-office/orders/bulk-approve', { body: { orders } })),
   changes: (limit = 50) => ok(http.GET('/api/v2/back-office/changes', { params: { query: { limit } } })),
   // C2-3 procurement
   suggestions: () => ok(http.GET('/api/v2/back-office/procurement/suggestions')),
+  smartSuggestions: () => ok(http.GET('/api/v2/back-office/procurement/smart-suggestions')),
+  explainReorder: (id: number) => ok(http.POST('/api/v2/back-office/procurement/smart-suggestions/{id}/explain', { params: { path: { id } } })),
+  poEmailDraft: (id: number) => ok(http.POST('/api/v2/back-office/procurement/orders/{id}/email-draft', { params: { path: { id } } })),
   vendors: () => ok(http.GET('/api/v2/back-office/procurement/vendors')),
   vendor: (id: number) => ok(http.GET('/api/v2/back-office/procurement/vendors/{id}', { params: { path: { id } } })),
   pos: (status: number) => ok(http.GET('/api/v2/back-office/procurement/purchase-orders', { params: { query: { status } } })),
@@ -124,6 +134,10 @@ export const api = {
   kpis: (from: string, to: string) => ok(http.GET('/api/v2/back-office/production/kpis', { params: { query: { from, to } } })),
   scrapReasons: () => ok(http.GET('/api/v2/back-office/production/scrap-reasons')),
   aiStatus: () => ok(http.GET('/api/v2/ai/status')),
+  shopChat: (message: string, productId?: number) => ok(http.POST('/api/v2/ai/chat', { body: { message, productId: productId ?? null } })),
+  alsoBought: (id: number) => ok(http.GET('/api/v2/products/{id}/also-bought', { params: { path: { id } } })),
+  watchdog: (scenario?: string) => ok(http.GET('/api/v2/back-office/replication/watchdog', { params: { query: { scenario } } })),
+  explainWatchdog: (scenario?: string) => ok(http.POST('/api/v2/back-office/replication/watchdog/explain', { params: { query: { scenario } } })),
   semanticSearch: (q: string, top = 12) => ok(http.GET('/api/v2/ai/search', { params: { query: { q, top } } })),
   askExamples: () => ok(http.GET('/api/v2/ai/examples')),
   ask: (question: string) => ok(http.POST('/api/v2/ai/ask', { body: { question } })),

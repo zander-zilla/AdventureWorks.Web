@@ -30,17 +30,27 @@ if (aiOptions.Enabled)
     builder.Services.AddSingleton<AiBudget>();
     builder.Services.AddSingleton<SemanticSearch>();
     builder.Services.AddSingleton<AskService>();
+    builder.Services.AddSingleton<AiAssist>();
+    builder.Services.AddSingleton<TriageFacts>();
+    builder.Services.AddSingleton<DemandRepository>();
+    builder.Services.AddSingleton<ReorderFacts>();
+    builder.Services.AddSingleton<AlsoBoughtRepository>();
+    builder.Services.AddSingleton<ShopChat>();
+    if (string.IsNullOrWhiteSpace(aiOptions.MonitorApiUrl)) builder.Services.AddSingleton<IWatchSource, ReplayWatchSource>();
+    else builder.Services.AddHttpClient<IWatchSource, MonitorWatchSource>(c => c.Timeout = TimeSpan.FromSeconds(5));                  // C2-6 shared explain / draft service
     if (aiOptions.IsBedrock)
     {
         builder.Services.AddSingleton<Amazon.BedrockRuntime.IAmazonBedrockRuntime, Amazon.BedrockRuntime.AmazonBedrockRuntimeClient>(_ => new());
         builder.Services.AddSingleton<IEmbedder, TitanEmbedder>();
         builder.Services.AddSingleton<ISqlModel, BedrockSqlModel>();
+        builder.Services.AddSingleton<IAssistModel, BedrockAssistModel>();
         builder.Services.AddSingleton<IVectorStore>(_ => new S3VectorStore(new Amazon.S3Vectors.AmazonS3VectorsClient(), aiOptions));
     }
     else
     {
         builder.Services.AddSingleton<IEmbedder>(new HashEmbedder(aiOptions.Dimensions));
         builder.Services.AddSingleton<ISqlModel>(new MockSqlModel(AiText.LoadEval()));
+        builder.Services.AddSingleton<IAssistModel>(new MockAssistModel(aiOptions));
         builder.Services.AddSingleton<IVectorStore, InMemoryVectorStore>();
     }
     if (!string.IsNullOrEmpty(aiOptions.RedshiftWorkgroup))

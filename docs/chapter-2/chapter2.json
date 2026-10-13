@@ -157,13 +157,12 @@
   {
    "id": "C2-6",
    "name": "AI everywhere (triage copilot, smart reorder, shopper assistant, replication watchdog)",
-   "status": "planned",
+   "status": "done",
    "optional": true,
-   "pages": [],
-   "planned_screens": [
+   "pages": [
     {
      "path": "/app/back-office/orders",
-     "name": "Order triage copilot: explain risk / stuck, draft approve or backorder note (enable_ai)",
+     "name": "Order triage copilot: explain with cited facts, draft the approve / backorder note (enable_ai)",
      "processes": [
       "o2c-internet",
       "o2c-reseller"
@@ -171,30 +170,38 @@
     },
     {
      "path": "/app/back-office/procurement",
-     "name": "Smart reorder: demand forecast in suggestions, draft vendor PO email (enable_ai)",
+     "name": "Smart reorder: forecast column + chart, use forecast quantities, vendor PO e-mail draft (enable_ai)",
      "processes": [
       "procure-to-pay",
       "inventory"
      ]
     },
     {
+     "path": "/app/back-office/replication",
+     "name": "Replication watchdog: rule-based cause + plain-English explanation with the runbook (enable_ai)",
+     "processes": []
+    },
+    {
      "path": "/app/shop",
-     "name": "Shopper assistant chat: semantic search + customers also bought (enable_ai)",
+     "name": "Shopper assistant chat: semantic search + customers also bought, shop guardrail (enable_ai)",
      "processes": [
       "o2c-internet",
       "catalog"
      ]
     },
     {
-     "path": "/app/back-office/replication",
-     "name": "Replication watchdog: plain-English CDC lag and dead-letter explanations (enable_ai)",
-     "processes": []
+     "path": "/app/shop/products/:id",
+     "name": "Customers also bought on the product page (always on, CAT-12)",
+     "processes": [
+      "catalog"
+     ]
     }
    ],
    "backlog": [
     "Review insights (pros/cons, negative trends)",
     "Scrap explainer"
-   ]
+   ],
+   "pr": 25
   }
  ],
  "api_v2": [
@@ -515,6 +522,51 @@
    "method": "POST",
    "path": "/api/v2/ai/reindex",
    "phase": "C2-5"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/orders/{id}/assist/{kind}",
+   "phase": "C2-6"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/smart-suggestions",
+   "phase": "C2-6"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/procurement/products/{id}/forecast",
+   "phase": "C2-6"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/procurement/smart-suggestions/{id}/explain",
+   "phase": "C2-6"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/procurement/orders/{id}/email-draft",
+   "phase": "C2-6"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/back-office/replication/watchdog",
+   "phase": "C2-6"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/back-office/replication/watchdog/explain",
+   "phase": "C2-6"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v2/ai/chat",
+   "phase": "C2-6"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v2/products/{id}/also-bought",
+   "phase": "C2-6"
   }
  ],
  "access_patterns": [
@@ -604,16 +656,16 @@
   },
   {
    "id": "INV-07",
-   "use": "Demand forecast by product and month (PRODUCT#id / FORECAST#yyyy-MM), feeds reorder suggestions",
+   "use": "Monthly demand by product (DEMAND#pid / M#yyyy-MM, derived loader), feeds the smart reorder forecast",
    "phase": "C2-6",
-   "status": "planned",
+   "status": "done",
    "new": true
   },
   {
    "id": "CAT-12",
-   "use": "Customers also bought by product (PRODUCT#id / ALSO#rank), loaded nightly from dw.v_product_affinity",
+   "use": "Customers also bought by product (ALSO#pid / RANK#nn, derived loader), product page + shopper chat",
    "phase": "C2-6",
-   "status": "planned",
+   "status": "done",
    "new": true
   }
  ],
@@ -634,13 +686,13 @@
    "name": "dw.v_product_demand_monthly",
    "use": "Monthly units per product for the C2-6 forecast and backtest",
    "phase": "C2-6",
-   "status": "planned"
+   "status": "done"
   },
   {
    "name": "dw.v_product_affinity",
-   "use": "Co-purchase pairs (same order, lift) for customers also bought",
+   "use": "Co-purchase pairs (orders containing both products) for customers also bought",
    "phase": "C2-6",
-   "status": "planned"
+   "status": "done"
   }
  ],
  "architecture_delta": [

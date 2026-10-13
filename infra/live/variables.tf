@@ -168,3 +168,9 @@ variable "enable_ai" {
   type        = bool
   default     = false
 }
+
+variable "ai_competitor_words" {
+  description = "C2-6 shop guardrail custom word list (competitor names etc.). Empty by default."
+  type        = list(string)
+  default     = []
+}

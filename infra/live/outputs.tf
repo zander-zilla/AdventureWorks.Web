@@ -27,3 +27,4 @@ output "cdc_monitor_table" { value = var.enable_source ? module.cdc[0].monitor_t
 # C2-5 (enable_ai): post-deploy steps in docs/aws-setup.md section 5b.
 output "ai_reader_secret_arn" { value = var.enable_ai ? module.ai[0].ai_reader_secret_arn : null }
 output "ai_guardrail_id" { value = var.enable_ai ? module.ai[0].guardrail_id : null }
+output "ai_shop_guardrail_id" { value = var.enable_ai ? module.ai[0].shop_guardrail_id : null }

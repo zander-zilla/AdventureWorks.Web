@@ -26,6 +26,28 @@ const low = [
   { productId: 994, name: 'LL Bottom Bracket', stockQty: 0, reorderPoint: 375, safetyStockLevel: 500, vendors: [] },
 ]
 
+// C2-6 smart reorder stand-in: 24 months of seasonal history per product, forecast = 0.5·last year·growth + 0.5·3-month mean.
+const history = (pid: number) => Array.from({ length: 24 }, (_, i) => {
+  const d = new Date(Date.UTC(2012, 6 + i, 1)); return { month: d.toISOString().slice(0, 7), qty: Math.round((pid % 7 + 4) * 10 * (1 + 0.35 * Math.sin((i + pid) / 1.9)) * (1 + i / 30)), orders: 10 + (i % 5) } })
+function forecastOf(pid: number, lead: number) {
+  const h = history(pid); const y = h.map(x => x.qty); const n = y.length
+  const last3 = y.slice(n - 3).reduce((a, b) => a + b, 0); const same3 = y.slice(n - 15, n - 12).reduce((a, b) => a + b, 0)
+  const g = Math.min(2, Math.max(0.5, last3 / same3)); const step = (w: number[]) => 0.5 * w[w.length - 12] * g + 0.5 * (w.slice(-3).reduce((a, b) => a + b, 0) / 3)
+  const monthly = +step(y).toFixed(1); const w = [...y]; const next = [1, 2, 3].map(k => { const f = +step(w).toFixed(1); w.push(f); const d = new Date(Date.UTC(2014, 5 + k, 1)); return { month: d.toISOString().slice(0, 7), qty: f } })
+  return { productId: pid, history: h, next, monthly, baseline: +(y.slice(-12).reduce((a, b) => a + b, 0) / 12).toFixed(1), growth: +g.toFixed(2), last3, same3LastYear: same3,
+    leadTimeDays: lead, leadTimeDemand: +(monthly * lead / 30).toFixed(1), method: 'seasonal naive with trend (0.5·last year·growth + 0.5·3-month mean)' }
+}
+type Sug = { productId: number; stockQty: number; safetyStockLevel: number; onOrder: number; suggestedQty: number; note: string | null; vendor: { averageLeadTime: number; minOrderQty: number; maxOrderQty: number } | null }
+function smartOf<T extends Sug>(rule: T) {
+  const f = forecastOf(rule.productId, rule.vendor?.averageLeadTime ?? 30)
+  const need = Math.max(0, Math.ceil(rule.safetyStockLevel + f.leadTimeDemand - rule.stockQty - rule.onOrder))
+  const smartQty = rule.vendor ? Math.min(Math.max(need, need ? rule.vendor.minOrderQty : 0), rule.vendor.maxOrderQty) : 0
+  const reason = !rule.vendor ? (rule.note ?? 'No active vendor') : smartQty > rule.suggestedQty ? 'Forecast demand is above the reorder rule' : smartQty < rule.suggestedQty ? 'Forecast demand is below the reorder rule' : 'Forecast agrees with the reorder rule'
+  return { rule, forecast: f, smartQty, reason }
+}
+const assistOf = (feature: string, kind: string, text: string, facts: Record<string, unknown>) => ({ feature, kind, text, facts,
+  cites: [...text.matchAll(/\[([a-z0-9_.]+)\]/g)].map(m => m[1]), blocked: null, error: null, inputTokens: 610, outputTokens: 90, questionsLeft: 17, tokensLeft: 38000, mode: 'mock' })
+
 export function procurementMock() {
   const pos: Po[] = [
     { id: 4007, number: 'PO004007', vendorId: 1492, vendorName: 'Australia Bike Retailer', employeeId: 251, employeeName: 'Mikael Sandberg', status: 1, statusText: 'Pending', revisionNumber: 4,
@@ -51,6 +73,20 @@ export function procurementMock() {
     const q = p.replace('/back-office/procurement', '')
     const url = new URL(r.request().url())
     if (q === '/suggestions') return json(low.filter(l => stock[l.productId] < l.reorderPoint).map(suggestion))
+    if (q === '/smart-suggestions') return json(low.filter(l => stock[l.productId] < l.reorderPoint).map(l => smartOf(suggestion(l))))
+    const ex = q.match(/^\/smart-suggestions\/(\d+)\/explain$/)
+    if (ex) { const l = low.find(x => x.productId === Number(ex[1])); if (!l) return problem(404, 'Not found'); const s = smartOf(suggestion(l))
+      const facts = { 'suggested.qty': s.smartQty, 'rule.qty': s.rule.suggestedQty, 'forecast.lead_time_days': s.forecast.leadTimeDays, 'forecast.lead_time_demand': s.forecast.leadTimeDemand,
+        'history.last3': s.forecast.last3, 'history.same3_last_year': s.forecast.same3LastYear }
+      return json(assistOf('reorder', 'reorder-explain', `Suggest ${s.smartQty} [suggested.qty]: forecast demand over the ${s.forecast.leadTimeDays}-day lead time is ${Math.round(s.forecast.leadTimeDemand)} [forecast.lead_time_demand] against the reorder rule's ${s.rule.suggestedQty} [rule.qty]. The last 3 months sold ${s.forecast.last3} units vs ${s.forecast.same3LastYear} a year earlier [history.last3] [history.same3_last_year].`, facts)) }
+    const em = q.match(/^\/orders\/(\d+)\/email-draft$/)
+    if (em) { const po = pos.find(x => x.id === Number(em[1])); if (!po) return problem(404, 'Not found')
+      const facts: Record<string, unknown> = { 'po.number': po.number, 'vendor.name': po.vendorName, 'vendor.contact': 'Paula Moberly', 'po.need_by': po.lines[0]?.dueDate.slice(0, 10), 'po.total': +po.totalDue.toFixed(2), 'buyer.name': po.employeeName }
+      po.lines.forEach((l, i) => Object.assign(facts, { [`line${i + 1}.product`]: l.productName, [`line${i + 1}.qty`]: l.orderQty, [`line${i + 1}.unit_price`]: l.unitPrice }))
+      const text = `Subject: Purchase order ${po.number} [po.number]\n\nDear Paula Moberly [vendor.contact],\n\nplease confirm our purchase order ${po.number} to ${po.vendorName} [vendor.name]:\n` +
+        po.lines.map((l, i) => `- ${l.orderQty} x ${l.productName} at ${l.unitPrice.toFixed(2)} [line${i + 1}.qty]\n`).join('') +
+        `\nRequested delivery by ${facts['po.need_by']} [po.need_by]. Order total ${po.totalDue.toFixed(2)} [po.total].\n\nKind regards,\n${po.employeeName} [buyer.name]\nAdventure Works Cycles, purchasing`
+      return json(assistOf('reorder', 'po-email', text, facts)) }
     if (q === '/vendors') return json(vendors)
     if (q === '/locations') return json([[1, 'Tool Crib'], [6, 'Miscellaneous Storage'], [7, 'Finished Goods Storage'], [50, 'Subassembly']].map(([id, n]) => ({ locationId: id, name: n, quantity: 0 })))
     const vd = q.match(/^\/vendors\/(\d+)$/)

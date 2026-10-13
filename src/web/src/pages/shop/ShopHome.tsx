@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import { ShopChat } from '../ai/ShopChat'
 import { api, money, isStaff, hasRole } from '../../api/client'
 import { useAuth } from '../../api/auth'
 import { useLoad } from '../../api/useLoad'
@@ -15,6 +16,7 @@ export function ShopHome() {
   const shelf = useLoad(() => Promise.all(shelves.map(s => api.subcategoryProducts(s.id))))
   return (
     <div className="flex flex-col gap-8">
+      <ShopChat />
       <section className="relative overflow-hidden rounded-aw border border-line bg-panel px-8 py-10" aria-label="Welcome">
         <p className="text-xs tracking-widest text-accent2 uppercase">AdventureWorks Cycles</p>
         <h1 className="mt-2 max-w-2xl font-display text-4xl font-bold">Ride further. Ship faster.</h1>

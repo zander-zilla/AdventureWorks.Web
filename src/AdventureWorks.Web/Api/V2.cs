@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using AdventureWorks.Web.Ai;
 using AdventureWorks.Web.Data;
@@ -14,7 +15,7 @@ public sealed record CartItemRequest(int ProductId, int Quantity);
 public sealed record QuantityRequest(int Quantity);
 public sealed record CheckoutRequest(int? ShipMethodId);
 public sealed record ReviewRequest(int Rating, string Comments);
-public sealed record TransitionRequest(long Version, int? ShipMethodId, string? TrackingNumber);
+public sealed record TransitionRequest(long Version, int? ShipMethodId, string? TrackingNumber, string? Note = null);
 public sealed record BulkItem(long Id, long Version);
 public sealed record BulkRequest(List<BulkItem> Orders);
 public sealed record BulkResult(long Id, bool Ok, string Message);
@@ -114,6 +115,9 @@ public static class V2
         g.MapGet("/categories", async (CatalogRepository c) => Results.Ok(await c.GetCategoryTreeAsync())).WithName("listCategories").Produces<List<Category>>();
         g.MapGet("/subcategories/{id:int}/products", async (int id, CatalogRepository c) => Results.Ok(await c.GetProductsBySubcategoryAsync(id)))
             .WithName("listSubcategoryProducts").Produces<List<Product>>();
+        // C2-6 customers also bought (CAT-12): derived co-purchase ranks, shown on the product page whether or not the AI layer is on.
+        g.MapGet("/products/{id:int}/also-bought", async (int id, [FromServices] AlsoBoughtRepository a) => Results.Ok(await a.ListAsync(id)))
+            .WithName("listAlsoBought").Produces<List<AlsoBought>>();
         g.MapGet("/products/{id:int}/reviews", async (int id, CatalogRepository c) => Results.Ok(await c.GetReviewsAsync(id)))
             .WithName("listReviews").Produces<List<CatalogRepository.Review>>();
         g.MapPost("/products/{id:int}/reviews", (int id, ReviewRequest body, ClaimsPrincipal u, CatalogRepository c, FulfilmentRepository f, TimeProvider clock) => Guard(async () =>
@@ -194,8 +198,18 @@ public static class V2
             (long id, string op, TransitionRequest body, ClaimsPrincipal u, HttpContext http, FulfilmentRepository f) => Guard(async () =>
             {
                 var ship = op == "ship" ? new ShipRequest(body.ShipMethodId ?? 0, body.TrackingNumber ?? "") : null;
-                return Results.Ok(await f.ApplyAsync(id, op, body.Version, Actor(u), ship, Token(http)));
+                if (body.Note is { Length: > 500 }) return Results.Problem(title: "A note holds at most 500 characters.", statusCode: 400);
+                return Results.Ok(await f.ApplyAsync(id, op, body.Version, Actor(u), ship, Token(http), body.Note));
             })).RequireAuthorization(FulfilmentPolicy).WithName("transitionOrder").Produces<TransitionResult>().ProducesProblem(400).ProducesProblem(409);
+        // C2-6 order triage copilot (enable_ai): explain risk / stuck, draft the approve or backorder note (the clerk edits and submits).
+        bo.MapPost("/orders/{id:long}/assist/{kind}", async (long id, string kind, AiOptions o, IServiceProvider sp, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            if (!TriageFacts.Kinds.Contains(kind)) return Results.Problem(title: "kind must be explain, approve-note or backorder-note.", statusCode: 400);
+            var facts = await sp.GetRequiredService<TriageFacts>().BuildAsync(id);
+            if (facts is null) return Results.NotFound();
+            return Results.Ok(await sp.GetRequiredService<AiAssist>().RunAsync("triage", "triage-" + kind, facts, AiSession(h), Actor(u), ct: ct));
+        }).RequireAuthorization(FulfilmentPolicy).WithName("triageAssist").Produces<AssistResult>().ProducesProblem(400).ProducesProblem(404);
         bo.MapPost("/orders/bulk-approve", async (BulkRequest body, ClaimsPrincipal u, FulfilmentRepository f) =>
         {
             var results = new List<BulkResult>();
@@ -225,10 +239,41 @@ public static class V2
             return Results.Ok(new ProductDetail(p, [], await c.GetPriceHistoryAsync(id)));
         })).RequireAuthorization(CatalogAdminPolicy).WithName("setListPrice").Produces<ProductDetail>().ProducesProblem(409);
 
+        // C2-6 replication watchdog (enable_ai): rules classify the cause from the monitor status, the model explains it with the runbook link.
+        bo.MapGet("/replication/watchdog", async (string? scenario, AiOptions o, [FromServices] IWatchSource w, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            var s = await w.GetAsync(scenario, ct);
+            return Results.Ok(new WatchdogReport(s, WatchRules.Classify(s), w.Replay ? [.. ReplayWatchSource.Scenarios] : [], w.Replay));
+        }).RequireAuthorization(StaffPolicy).WithName("getWatchdog").Produces<WatchdogReport>().ProducesProblem(404);
+        bo.MapPost("/replication/watchdog/explain", async (string? scenario, AiOptions o, [FromServices] IWatchSource w, [FromServices] AiAssist a, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            var s = await w.GetAsync(scenario, ct);
+            return Results.Ok(await a.RunAsync("watchdog", "watchdog-explain", WatchRules.Facts(s, WatchRules.Classify(s)), AiSession(h), Actor(u), ct: ct));
+        }).RequireAuthorization(StaffPolicy).WithName("explainWatchdog").Produces<AssistResult>().ProducesProblem(404);
         // ------------------------------------------------------------ back office: procurement (C2-3: PUR-01..07, INV-01/02/03)
         var pr = bo.MapGroup("/procurement");
         pr.MapGet("/suggestions", async (ProcurementRepository p) => Results.Ok(await p.SuggestionsAsync()))
             .RequireAuthorization(ProcurementPolicy).WithName("listReorderSuggestions").Produces<List<ReorderSuggestion>>();
+        // C2-6 smart reorder (enable_ai): forecast-backed quantities next to the C2-3 rule (unchanged), explain, PO e-mail draft (copy / mailto only).
+        pr.MapGet("/smart-suggestions", async (AiOptions o, [FromServices] ReorderFacts r) => o.Enabled ? Results.Ok(await r.SmartAsync()) : AiOff())
+            .RequireAuthorization(ProcurementPolicy).WithName("listSmartSuggestions").Produces<List<SmartSuggestion>>().ProducesProblem(404);
+        pr.MapGet("/products/{id:int}/forecast", async (int id, int? leadTimeDays, AiOptions o, [FromServices] ReorderFacts r) =>
+                o.Enabled ? Results.Ok(await r.ForecastAsync(id, Math.Clamp(leadTimeDays ?? 30, 1, 365))) : AiOff())
+            .RequireAuthorization(ProcurementPolicy).WithName("getDemandForecast").Produces<DemandForecast>().ProducesProblem(404);
+        pr.MapPost("/smart-suggestions/{id:int}/explain", async (int id, AiOptions o, [FromServices] ReorderFacts r, [FromServices] AiAssist a, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            if (await r.ExplainAsync(id) is not { } facts) return Results.NotFound();
+            return Results.Ok(await a.RunAsync("reorder", "reorder-explain", facts, AiSession(h), Actor(u), ct: ct));
+        }).RequireAuthorization(ProcurementPolicy).WithName("explainReorder").Produces<AssistResult>().ProducesProblem(404);
+        pr.MapPost("/orders/{id:int}/email-draft", async (int id, AiOptions o, [FromServices] ReorderFacts r, [FromServices] AiAssist a, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            if (await r.PoEmailAsync(id, Staff(u).Name) is not { } facts) return Results.NotFound();
+            return Results.Ok(await a.RunAsync("reorder", "po-email", facts, AiSession(h), Actor(u), ct: ct));
+        }).RequireAuthorization(ProcurementPolicy).WithName("draftPoEmail").Produces<AssistResult>().ProducesProblem(404);
         pr.MapGet("/vendors", async (ProcurementRepository p) => Results.Ok(await p.ListVendorsAsync()))
             .RequireAuthorization(ProcurementPolicy).WithName("listVendors").Produces<List<VendorSummary>>();
         pr.MapGet("/vendors/{id:int}", async (int id, ProcurementRepository p) =>
@@ -316,6 +361,13 @@ public static class V2
             if (string.IsNullOrWhiteSpace(q) || q.Length > 200) return Results.Problem(title: "q must be 1 to 200 characters.", statusCode: 400);
             return Results.Ok(await sp.GetRequiredService<SemanticSearch>().SearchAsync(q.Trim(), Math.Clamp(top ?? 10, 1, 30), o.Mode, ct));
         }).WithName("semanticSearch").Produces<SearchResult>().ProducesProblem(400).ProducesProblem(404);
+        // C2-6 shopper chat (enable_ai): anonymous or signed in, shop guardrail, tools picked by the server, 10 turns a day.
+        ai.MapPost("/chat", async (ChatRequest body, AiOptions o, [FromServices] ShopChat chat, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!o.Enabled) return AiOff();
+            if (string.IsNullOrWhiteSpace(body.Message)) return Results.Problem(title: "message must not be empty.", statusCode: 400);
+            return Results.Ok(await chat.ChatAsync(AiSession(h), u.Identity?.IsAuthenticated == true ? Actor(u) : "anonymous", body, ct));
+        }).WithName("shopChat").Produces<ChatResponse>().ProducesProblem(400).ProducesProblem(404);
         ai.MapGet("/examples", (AiOptions o) => o.Enabled ? Results.Ok(AiText.LoadEval().Select(e => e.Question).ToList()) : AiOff())
             .RequireAuthorization(StaffPolicy).WithName("askExamples").Produces<List<string>>().ProducesProblem(404);
         ai.MapPost("/ask", async (AskRequest body, AiOptions o, IServiceProvider sp, HttpContext h, ClaimsPrincipal u, CancellationToken ct) =>

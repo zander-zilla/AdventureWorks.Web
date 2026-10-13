@@ -245,6 +245,40 @@
         }
       }
     },
+    "/api/v2/products/{id}/also-bought": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "listAlsoBought",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AlsoBought"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/products/{id}/reviews": {
       "get": {
         "tags": [
@@ -814,6 +848,65 @@
         }
       }
     },
+    "/api/v2/back-office/orders/{id}/assist/{kind}": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "triageAssist",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/back-office/orders/bulk-approve": {
       "post": {
         "tags": [
@@ -962,6 +1055,84 @@
         }
       }
     },
+    "/api/v2/back-office/replication/watchdog": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "getWatchdog",
+        "parameters": [
+          {
+            "name": "scenario",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchdogReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/replication/watchdog/explain": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "explainWatchdog",
+        "parameters": [
+          {
+            "name": "scenario",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/back-office/procurement/suggestions": {
       "get": {
         "tags": [
@@ -978,6 +1149,170 @@
                   "items": {
                     "$ref": "#/components/schemas/ReorderSuggestion"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/procurement/smart-suggestions": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "listSmartSuggestions",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SmartSuggestion"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/procurement/products/{id}/forecast": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "getDemandForecast",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "leadTimeDays",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemandForecast"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/procurement/smart-suggestions/{id}/explain": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "explainReorder",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/back-office/procurement/orders/{id}/email-draft": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "draftPoEmail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2033,6 +2368,56 @@
         }
       }
     },
+    "/api/v2/ai/chat": {
+      "post": {
+        "tags": [
+          "v2"
+        ],
+        "operationId": "shopChat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/ai/examples": {
       "get": {
         "tags": [
@@ -2176,6 +2561,39 @@
           }
         }
       },
+      "AlsoBought": {
+        "required": [
+          "productId",
+          "name",
+          "productNumber",
+          "listPrice",
+          "orders"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "productNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "listPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "orders": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "AskRequest": {
         "required": [
           "question"
@@ -2292,6 +2710,77 @@
             "format": "int32"
           },
           "name": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistResult": {
+        "required": [
+          "feature",
+          "kind",
+          "text",
+          "cites",
+          "facts",
+          "blocked",
+          "error",
+          "inputTokens",
+          "outputTokens",
+          "questionsLeft",
+          "tokensLeft",
+          "mode"
+        ],
+        "type": "object",
+        "properties": {
+          "feature": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "facts": {
+            "type": "object"
+          },
+          "blocked": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "inputTokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outputTokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "questionsLeft": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tokensLeft": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "mode": {
             "type": "string"
           }
         }
@@ -2540,6 +3029,86 @@
           }
         }
       },
+      "ChatCard": {
+        "required": [
+          "productId",
+          "name",
+          "listPrice",
+          "category",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "listPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "category": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
+      "ChatRequest": {
+        "required": [
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "productId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ChatResponse": {
+        "required": [
+          "answer",
+          "cards",
+          "tools",
+          "turnsLeft"
+        ],
+        "type": "object",
+        "properties": {
+          "answer": {
+            "$ref": "#/components/schemas/AssistResult"
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatCard"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "turnsLeft": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "CheckoutRequest": {
         "required": [
           "shipMethodId"
@@ -2640,6 +3209,123 @@
           }
         }
       },
+      "DemandForecast": {
+        "required": [
+          "productId",
+          "history",
+          "next",
+          "monthly",
+          "baseline",
+          "growth",
+          "last3",
+          "same3LastYear",
+          "leadTimeDays",
+          "leadTimeDemand",
+          "method"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DemandMonth"
+            }
+          },
+          "next": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ForecastPoint"
+            }
+          },
+          "monthly": {
+            "type": "number",
+            "format": "double"
+          },
+          "baseline": {
+            "type": "number",
+            "format": "double"
+          },
+          "growth": {
+            "type": "number",
+            "format": "double"
+          },
+          "last3": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "same3LastYear": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "leadTimeDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "leadTimeDemand": {
+            "type": "number",
+            "format": "double"
+          },
+          "method": {
+            "type": "string"
+          }
+        }
+      },
+      "DemandMonth": {
+        "required": [
+          "month",
+          "qty",
+          "orders"
+        ],
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "qty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orders": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "DlqSample": {
+        "required": [
+          "table",
+          "op",
+          "error",
+          "attempts",
+          "position"
+        ],
+        "type": "object",
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "op": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "position": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "FeedEntry": {
         "required": [
           "id",
@@ -2672,6 +3358,44 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "ForecastPoint": {
+        "required": [
+          "month",
+          "qty"
+        ],
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "qty": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "LagMs": {
+        "required": [
+          "last",
+          "p50",
+          "max"
+        ],
+        "type": "object",
+        "properties": {
+          "last": {
+            "type": "number",
+            "format": "double"
+          },
+          "p50": {
+            "type": "number",
+            "format": "double"
+          },
+          "max": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -4459,6 +5183,30 @@
           }
         }
       },
+      "SmartSuggestion": {
+        "required": [
+          "rule",
+          "forecast",
+          "smartQty",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "rule": {
+            "$ref": "#/components/schemas/ReorderSuggestion"
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/DemandForecast"
+          },
+          "smartQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
       "StatusCount": {
         "required": [
           "status",
@@ -4595,6 +5343,12 @@
             "format": "int32"
           },
           "trackingNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "note": {
             "type": [
               "null",
               "string"
@@ -4927,6 +5681,151 @@
           },
           "active": {
             "type": "boolean"
+          }
+        }
+      },
+      "WatchCause": {
+        "required": [
+          "key",
+          "title",
+          "severity",
+          "nextStep",
+          "runbook"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "nextStep": {
+            "type": "string"
+          },
+          "runbook": {
+            "type": "string"
+          }
+        }
+      },
+      "WatchChange": {
+        "required": [
+          "table",
+          "op",
+          "lagMs"
+        ],
+        "type": "object",
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "op": {
+            "type": "string"
+          },
+          "lagMs": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "WatchdogReport": {
+        "required": [
+          "snapshot",
+          "cause",
+          "scenarios",
+          "replay"
+        ],
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/WatchSnapshot"
+          },
+          "cause": {
+            "$ref": "#/components/schemas/WatchCause"
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "replay": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WatchSnapshot": {
+        "required": [
+          "scenario",
+          "status",
+          "changes",
+          "dlqSamples"
+        ],
+        "type": "object",
+        "properties": {
+          "scenario": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WatchStatus"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WatchChange"
+            }
+          },
+          "dlqSamples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DlqSample"
+            }
+          }
+        }
+      },
+      "WatchStatus": {
+        "required": [
+          "paused",
+          "queued",
+          "appliedEvents",
+          "dlq",
+          "lagMs",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "paused": {
+            "type": "boolean"
+          },
+          "queued": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "appliedEvents": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dlq": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "lagMs": {
+            "$ref": "#/components/schemas/LagMs"
+          },
+          "source": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

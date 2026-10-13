@@ -1,0 +1,17 @@
+{
+ "scenario": "paused",
+ "status": {
+  "paused": true,
+  "queued": 1260,
+  "applied_events": 18240,
+  "dlq": 0,
+  "lag_ms": {
+   "last": 0,
+   "p50": 900,
+   "max": 2500
+  },
+  "source": "replay"
+ },
+ "changes": [],
+ "dlq_samples": []
+}

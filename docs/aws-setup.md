@@ -13,7 +13,7 @@ flowchart LR
     ALB --> AFTER["ECS Fargate: .NET 10 app (after)"]
     ALB -- ":8080" --> BEFORE["ECS Fargate: original app (before, optional)"]
     BEFORE --> RDS[("RDS SQL Server 2022 SE<br/>AdventureWorks2022 + CDC")]
-    TOOLS["ECS tools task<br/>db-init · bulk-load · reset-demo"] --> RDS
+    TOOLS["ECS tools task<br/>db-init · bulk-load · derive-ai · reset-demo"] --> RDS
     RDS --> DMS["DMS (cdc task)"] -- "VPC endpoint" --> KIN["Kinesis (1 shard)"]
     RS["Redshift Serverless<br/>8-32 RPU, usage limit"]
   end
@@ -86,6 +86,7 @@ scripts/aws/push-showcase.sh demo                    # Phase 8 showcase site -> 
 scripts/aws/run-tool.sh demo db-init     # stages + restores AdventureWorks2022/LT, enables CDC on 68 tables, 7-day retention
 #   -> prints CDC_START_TIME=2026-..Z  (note it)
 scripts/aws/run-tool.sh demo bulk-load   # SQL Server -> 7 DynamoDB tables via the mapping (same loader as locally)
+scripts/aws/run-tool.sh demo derive-ai   # C2-6: monthly demand (DEMAND#) + customers also bought (ALSO#), after bulk-load
 scripts/aws/start-cdc.sh demo <CDC_START_TIME>
 aws dms describe-replication-tasks --query 'ReplicationTasks[].{id:ReplicationTaskIdentifier,status:Status}'
 ```
@@ -132,6 +133,19 @@ the app with `Ai__Mode=bedrock`. Four manual steps after the first apply (and af
 
 Checks: CloudWatch app log lines `ai.ask` (question, SQL, rows, tokens, block reason). A question about salaries or customer
 emails must come back "Blocked by the Bedrock guardrail". To turn AI off again, set `enable_ai = false` and apply.
+
+
+### 5c. C2-6 AI features (same `enable_ai` flag)
+- **Data**: run `scripts/aws/run-tool.sh demo derive-ai` after `bulk-load` (and again whenever you want app orders in the
+  reorder history). Without it the forecast shows "no history" and the product page has no *Customers also bought*.
+- **Models**: Nova Pro (drafts, explanations) and **Nova Lite** (`amazon.nova-lite-v1:0`, shopper chat) need model access
+  in step 1 above.
+- **Shop guardrail**: created by Terraform (`terraform -chdir=infra/live output -raw ai_shop_guardrail_id`). Competitor words
+  go in `ai_competitor_words` (list, empty by default) in the env's tfvars.
+- **Watchdog**: on AWS it shows the recorded scenarios until `Ai__MonitorApiUrl` is wired (follow-up, decision R4/W in
+  docs/chapter-2/PLAN.md). It never reads or redrives the DLQ.
+- **Cost**: the same per-session budget as C2-5 (20 model calls / 40k tokens per day); the chat adds at most 10 Nova Lite
+  turns per session. The PO e-mail is a draft only (no SES).
 
 ## 6. Demo + smoke checks
 - `terraform -chdir=infra/live output after_url before_url`

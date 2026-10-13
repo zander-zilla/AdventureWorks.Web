@@ -24,7 +24,7 @@ export function BackOffice({ data }: { data: Data }) {
         {live.flatMap(ph => ph.pages.map(pg => {
           const href = link(pg.path)
           return (
-            <li key={pg.path} className="rounded-aw border border-line bg-panel px-4 py-3" data-testid="live-screen">
+            <li key={ph.id + pg.path} className="rounded-aw border border-line bg-panel px-4 py-3" data-testid="live-screen">
               <b>{href ? <a href={href} target="_blank" rel="noreferrer">{pg.name}</a> : pg.name}</b><br />
               <code className="text-xs text-mute">{pg.path}</code>
               <div className="mt-2"><StatusPill tone="ok" label={`Live · ${ph.id}`} /></div>

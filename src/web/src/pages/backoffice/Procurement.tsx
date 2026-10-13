@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { NavLink, Route, Routes } from 'react-router'
 import { useAuth } from '../../api/auth'
-import { api, ApiError, hasRole, money, type PurchaseOrder, type PurchaseOrderSummary, type ReorderSuggestion, type VendorProduct, type VendorSummary } from '../../api/client'
+import { AssistBox, plain } from '../ai/AssistPanel'
+import { cssVar } from '../../theme/tokens'
+import { api, ApiError, hasRole, money, type AssistResult, type SmartSuggestion, type PurchaseOrder, type PurchaseOrderSummary, type ReorderSuggestion, type VendorProduct, type VendorSummary } from '../../api/client'
 import { useLoad } from '../../api/useLoad'
 import { Button, DataTable, Drawer, EmptyState, KpiCard, PageHeader, SelectField, StatusPill, Timeline, useToast, type Column, type Tone } from '../../components'
 
@@ -45,6 +48,10 @@ type Draft = Record<number, { qty: number; on: boolean }>
 function Suggestions() {
   const s = useLoad(() => api.suggestions())
   const methods = useLoad(() => api.shipMethods())
+  const ai = useLoad(() => api.aiStatus(), [])
+  const smart = useLoad(async () => (ai.data?.enabled ? await api.smartSuggestions() : []), [ai.data?.enabled])
+  const smartBy = useMemo(() => new Map((smart.data ?? []).map(x => [x.rule.productId, x])), [smart.data])
+  const [why, setWhy] = useState<number>()
   const [draft, setDraft] = useState<Draft>({})
   const [busy, setBusy] = useState<number>()
   const [created, setCreated] = useState<number>()
@@ -79,8 +86,16 @@ function Suggestions() {
         <KpiCard label="Made in house" value={String(rows.filter(r => r.vendors.length === 0).length)} delta="production floor · C2-4" />
       </div>
       {s.loading && <p className="text-mute">Loading…</p>}
+      {ai.data?.enabled && smartBy.size > 0 && (
+        <div className="mb-4 flex items-center gap-3 rounded-aw border border-accent/60 bg-panel px-4 py-3 text-sm" data-testid="smart-bar">
+          <span className="text-xs uppercase text-mute">✦ Smart reorder</span>
+          <span className="text-mute">Forecast column = safety stock + forecast demand over the vendor lead time − on hand − on order (INV-07). The reorder rule stays the default.</span>
+          <Button size="sm" className="ml-auto" data-testid="use-forecast" onClick={() => setDraft(d => {
+            const n = { ...d }; for (const x of smartBy.values()) if (x.smartQty > 0) n[x.rule.productId] = { qty: x.smartQty, on: true }; return n })}>Use forecast quantities</Button>
+        </div>)}
+      {why !== undefined && smartBy.get(why) && <SmartWhy s={smartBy.get(why)!} onClose={() => setWhy(undefined)} />}
       <div className="flex flex-col gap-4" data-testid="suggestions">
-        {groups.map(g => <VendorGroup key={g.vendor.vendorId} g={g} line={line} set={set} busy={busy === g.vendor.vendorId}
+        {groups.map(g => <VendorGroup key={g.vendor.vendorId} g={g} line={line} set={set} busy={busy === g.vendor.vendorId} smart={smartBy} onWhy={setWhy}
           methods={methods.data ?? []} onCreate={(m) => create(g.vendor.vendorId, g.items, m)} />)}
         {!s.loading && groups.length === 0 && <EmptyState title="Nothing to order">Every product below its reorder point is covered by open purchase orders.</EmptyState>}
       </div>
@@ -94,7 +109,32 @@ function Suggestions() {
   )
 }
 
-function VendorGroup({ g, line, set, busy, methods, onCreate }: {
+function SmartWhy({ s, onClose }: { s: SmartSuggestion; onClose: () => void }) {
+  const [r, setR] = useState<AssistResult | null>(null)
+  const [busy, setBusy] = useState(false)
+  const f = s.forecast
+  const data = [...f.history.slice(-24).map(h => ({ month: h.month, actual: h.qty, forecast: null as number | null })),
+    ...f.next.map(n => ({ month: n.month, actual: null as number | null, forecast: n.qty }))]
+  return (
+    <section className="mb-4 rounded-aw border border-line bg-panel p-4" aria-label={`Forecast for ${s.rule.name}`} data-testid="smart-why">
+      <header className="mb-2 flex items-center gap-3"><b>{s.rule.name}</b>
+        <span className="text-xs text-mute">{f.method} · monthly {f.monthly} · 12-month baseline {f.baseline} · growth ×{f.growth} · lead time {f.leadTimeDays} d → {f.leadTimeDemand} units</span>
+        <Button size="sm" variant="ghost" className="ml-auto" onClick={onClose}>Close</Button></header>
+      <div className="h-48" data-testid="forecast-chart">
+        <ResponsiveContainer><LineChart data={data}><CartesianGrid strokeDasharray="3 3" stroke={cssVar('line')} /><XAxis dataKey="month" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip />
+          <Line dataKey="actual" name="units sold" stroke={cssVar('accent')} dot={false} isAnimationActive={false} />
+          <Line dataKey="forecast" name="forecast" stroke={cssVar('warn')} strokeDasharray="4 3" isAnimationActive={false} /></LineChart></ResponsiveContainer>
+      </div>
+      <AssistBox title="Why this quantity" r={r}>
+        <div className="flex gap-2"><Button size="sm" variant="ghost" disabled={busy} data-testid="explain-reorder"
+          onClick={async () => { setBusy(true); try { setR(await api.explainReorder(s.rule.productId)) } finally { setBusy(false) } }}>Explain</Button>
+          <span className="self-center text-xs text-mute">Rule {s.rule.suggestedQty} · forecast {s.smartQty} · {s.reason}</span></div>
+      </AssistBox>
+    </section>)
+}
+
+function VendorGroup({ g, line, set, busy, methods, onCreate, smart, onWhy }: {
+  smart: Map<number, SmartSuggestion>; onWhy: (id: number) => void
   g: { vendor: VendorProduct; items: ReorderSuggestion[] }; line: (r: ReorderSuggestion) => { qty: number; on: boolean }
   set: (id: number, v: Partial<{ qty: number; on: boolean }>, r: ReorderSuggestion) => void; busy: boolean
   methods: { id: number; name: string }[]; onCreate: (shipMethodId: number) => void
@@ -114,7 +154,7 @@ function VendorGroup({ g, line, set, busy, methods, onCreate }: {
       </header>
       <table className="w-full text-sm">
         <thead><tr className="text-left text-xs text-mute"><th className="w-8 px-4 py-2" /><th>Product</th><th className="text-right">On hand</th><th className="text-right">Reorder pt</th>
-          <th className="text-right">Safety stock</th><th className="text-right">On order</th><th className="text-right">Unit price</th><th className="w-28 px-4 text-right">Qty</th><th className="px-4">Note</th></tr></thead>
+          <th className="text-right">Safety stock</th><th className="text-right">On order</th><th className="text-right">Unit price</th>{smart.size > 0 && <th className="text-right">Forecast</th>}<th className="w-28 px-4 text-right">Qty</th><th className="px-4">Note</th></tr></thead>
         <tbody>
           {g.items.map(r => (
             <tr key={r.productId} className="border-t border-line" data-testid="suggestion">
@@ -122,6 +162,8 @@ function VendorGroup({ g, line, set, busy, methods, onCreate }: {
               <td>{r.name} <span className="font-mono text-xs text-mute">{r.productNumber}</span>{r.vendors.length > 1 && <span className="text-xs text-mute"> · {r.vendors.length} vendors</span>}</td>
               <td className="text-right text-warn">{r.stockQty}</td><td className="text-right">{r.reorderPoint}</td><td className="text-right">{r.safetyStockLevel}</td>
               <td className="text-right">{r.onOrder}</td><td className="text-right">{money.format(r.vendor?.standardPrice ?? 0)}</td>
+              {smart.size > 0 && <td className="text-right">{smart.get(r.productId) ? <button type="button" className="font-mono text-accent underline-offset-2 hover:underline" data-testid="smart-qty"
+                title={smart.get(r.productId)!.reason} onClick={() => onWhy(r.productId)}>{smart.get(r.productId)!.smartQty}</button> : '—'}</td>}
               <td className="px-4 text-right"><input aria-label={`Quantity for ${r.name}`} type="number" min={1} value={line(r).qty}
                 onChange={e => set(r.productId, { qty: Math.max(0, Number(e.target.value)) }, r)} className="w-20 rounded-aw border border-line bg-bg px-2 py-1 text-right" /></td>
               <td className="px-4 text-xs text-mute">{r.note}</td>
@@ -196,6 +238,15 @@ export function PoDrawer({ id, onClose, onChanged }: { id: number; onClose: () =
   }
   const setLine = (detail: number, k: 'rcv' | 'rej' | 'loc', v: string) => setRcv(x => ({ ...x, [detail]: { ...{ rcv: '', rej: '', loc: '' }, ...x[detail], [k]: v } }))
   const actions = o?.actions ?? []
+  const ai = useLoad(() => api.aiStatus(), [])
+  const [mail, setMail] = useState<AssistResult | null>(null)
+  const [mailText, setMailText] = useState('')
+  const draftMail = async () => {
+    setBusy(true)
+    try { const r = await api.poEmailDraft(id); setMail(r); setMailText(plain(r.text)) } catch (e) { toast(e instanceof ApiError ? e.message : 'Draft failed', 'error') } finally { setBusy(false) }
+  }
+  const subject = mailText.match(/^Subject: (.*)$/m)?.[1] ?? `Purchase order ${o?.number ?? ''}`
+  const bodyText = mailText.replace(/^Subject: .*\n+/, '')
   return (
     <Drawer open wide title={o ? `Purchase order ${o.number}` : 'Purchase order'} onClose={onClose}
       footer={o && <>
@@ -235,6 +286,16 @@ export function PoDrawer({ id, onClose, onChanged }: { id: number; onClose: () =
                 </tr>))}
             </tbody>
           </table>
+          {ai.data?.enabled && !o.readOnly && (
+            <AssistBox title="Vendor e-mail draft" r={mail}>
+              <div className="flex gap-2"><Button size="sm" variant="ghost" disabled={busy} onClick={draftMail} data-testid="po-email-draft">Draft e-mail to vendor</Button>
+                <span className="self-center text-xs text-mute">Draft only: nothing is sent. Edit, then copy or open in your mail app.</span></div>
+              {mail?.text && <>
+                <textarea aria-label="E-mail draft" className="rounded-aw border border-line bg-bg p-2 font-mono text-xs text-ink" rows={10} value={mailText} onChange={e => setMailText(e.target.value)} data-testid="po-email-text" />
+                <div className="flex gap-2"><Button size="sm" variant="ghost" onClick={() => { void navigator.clipboard?.writeText(mailText); toast('Copied', 'ok') }} data-testid="po-email-copy">Copy</Button>
+                  <a className="rounded-aw border border-line px-3 py-1 text-sm" href={`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`} data-testid="po-email-mailto">Open in mail app</a></div>
+              </>}
+            </AssistBox>)}
           {receiving && <p className="text-xs text-mute">One transaction: PO lines (received / rejected / stocked) + stock per location (INV-01) + stock total and REORDER marker (INV-02) + TransactionHistory type P (INV-03).</p>}
           {(o.events ?? []).length > 0 && (
             <div><div className="mb-1 text-xs text-mute uppercase">History</div>

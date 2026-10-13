@@ -1,0 +1,33 @@
+{
+ "scenario": "healthy",
+ "status": {
+  "paused": false,
+  "queued": 0,
+  "applied_events": 18240,
+  "dlq": 0,
+  "lag_ms": {
+   "last": 840,
+   "p50": 910,
+   "max": 2400
+  },
+  "source": "replay"
+ },
+ "changes": [
+  {
+   "table": "Sales.SalesOrderHeader",
+   "op": "update",
+   "lag_ms": 840
+  },
+  {
+   "table": "Sales.SalesOrderDetail",
+   "op": "insert",
+   "lag_ms": 870
+  },
+  {
+   "table": "Production.ProductInventory",
+   "op": "update",
+   "lag_ms": 930
+  }
+ ],
+ "dlq_samples": []
+}

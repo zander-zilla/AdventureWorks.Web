@@ -15,12 +15,63 @@ const hits = [
 ]
 const key = (q: string) => q.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
+const assist = (feature: string, kind: string, text: string, facts: Record<string, unknown>) => ({ feature, kind, text, facts,
+  cites: [...text.matchAll(/\[([a-z0-9_.]+)\]/g)].map(m => m[1]), blocked: null, error: null, inputTokens: 520, outputTokens: 60, questionsLeft: 18, tokensLeft: 38800, mode: 'mock' })
+type MockOrder = { number: string; status: number; orderDate?: unknown; totalDue?: unknown; shipMethodName?: unknown; lines: { name?: unknown; quantity: number; productId: number }[] }
+const stockOf = (pid: number) => (pid === 749 ? 3 : 288)
+// facts built from the order shown (like TriageFacts on the server), so the text matches the drawer
+export function orderFacts(o: MockOrder): Record<string, unknown> {
+  const f: Record<string, unknown> = { 'order.number': o.number, 'order.status': ['', 'In process', 'Approved', 'Backordered'][o.status] ?? String(o.status), 'order.status_age_days': 0,
+    'queue.median_age_days': 0, 'order.lines': o.lines.length, 'order.total_due': o.totalDue, 'order.ship_method': o.shipMethodName, 'customer.prior_orders': 0 }
+  o.lines.forEach((l, i) => { const s = stockOf(l.productId); Object.assign(f, { [`line${i + 1}.product`]: l.name, [`line${i + 1}.qty`]: l.quantity, [`line${i + 1}.stock`]: s, [`line${i + 1}.short`]: Math.max(0, l.quantity - s) }) })
+  f['order.can_ship'] = o.lines.every((_, i) => f[`line${i + 1}.short`] === 0)
+  return f
+}
+export function triageMock(kind: string, o: MockOrder) {
+  const f = orderFacts(o); const short = o.lines.findIndex((_, i) => (f[`line${i + 1}.short`] as number) > 0); const n = short + 1
+  if (kind === 'explain') return assist('triage', 'triage-explain', short >= 0
+    ? `Needs attention: line ${n} ${f[`line${n}.product`]} has ${f[`line${n}.stock`]} in stock but needs ${f[`line${n}.qty`]} [line${n}.short]. This is the customer's first order [customer.prior_orders].`
+    : `Ready to approve: all ${f['order.lines']} lines are in stock [order.can_ship]; ${f['line1.product']} needs ${f['line1.qty']} with ${f['line1.stock']} on hand [line1.stock]. It has waited ${f['order.status_age_days']} days vs a queue median of ${f['queue.median_age_days']} [order.status_age_days] [queue.median_age_days]; first order for this customer [customer.prior_orders].`, f)
+  if (kind === 'approve-note') return assist('triage', 'triage-approve-note', `Approved ${o.number} [order.number]: all ${f['order.lines']} lines in stock [order.can_ship], ${f['order.total_due']} due [order.total_due], ships via ${f['order.ship_method']} [order.ship_method].`, f)
+  return assist('triage', 'triage-backorder-note', short >= 0 ? `Backordered ${o.number} [order.number]: ${f[`line${n}.product`]} short by ${f[`line${n}.short`]} [line${n}.short]. Ship once stock arrives.` : `Backordered ${o.number} [order.number] at the customer's request; all ${f['order.lines']} lines are in stock [order.can_ship].`, f)
+}
+
+export const alsoBought: Record<number, { productId: number; name: string; productNumber: string; listPrice: number; orders: number }[]> = {
+  707: [{ productId: 711, name: 'Sport-100 Helmet, Blue', productNumber: 'HL-U509-B', listPrice: 34.99, orders: 412 }, { productId: 870, name: 'Water Bottle - 30 oz.', productNumber: 'WB-H098', listPrice: 4.99, orders: 388 },
+    { productId: 712, name: 'AWC Logo Cap', productNumber: 'CA-1098', listPrice: 8.99, orders: 301 }, { productId: 715, name: 'Long-Sleeve Logo Jersey, L', productNumber: 'LJ-0192-L', listPrice: 49.99, orders: 254 }],
+  749: [{ productId: 707, name: 'Sport-100 Helmet, Red', productNumber: 'HL-U509-R', listPrice: 34.99, orders: 96 }, { productId: 921, name: 'Mountain Tire Tube', productNumber: 'TT-M928', listPrice: 4.99, orders: 71 }],
+}
+const ALSO = /\b(also|goes? with|go with|pairs?|accessor(y|ies)|match(es|ing)?|together)\b/i
+const BLOCK = /discount|% off|coupon|deliver(ed|y)? by|order (of|for) |ignore (all |the )?previous|system prompt|politic|medical|password/i
+export function chatMock(message: string, productId: number | null, turnsLeft: number) {
+  const f: Record<string, unknown> = { shop: 'Adventure Works Cycles online shop' }
+  if (turnsLeft < 0) return { answer: { ...assist('shop', 'shop-reply', '', f), text: null, cites: [], blocked: 'This chat is limited to 10 questions a day. Browse the catalog or search instead.' }, cards: [], tools: [], turnsLeft: 0 }
+  if (BLOCK.test(message)) return { answer: { ...assist('shop', 'shop-reply', '', f), text: null, cites: [], blocked: 'Sorry, I can only help with Adventure Works products. (no price, discount or delivery promises; the cart shows current prices and delivery options)' }, cards: [], tools: [], turnsLeft }
+  const wantsAlso = ALSO.test(message); const onlyAlso = wantsAlso && productId != null && message.split(/\s+/).length <= 8
+  const tools: string[] = []; const cards: { productId: number; name: string; listPrice: number; category: string | null; source: string }[] = []
+  let text = ''
+  if (!onlyAlso) {
+    tools.push('search'); const hs = /helmet/i.test(message) ? [{ productId: 707, name: 'Sport-100 Helmet, Red', category: 'Accessories', listPrice: 34.99 }, { productId: 711, name: 'Sport-100 Helmet, Blue', category: 'Accessories', listPrice: 34.99 }] : hits
+    Object.assign(f, { 'search.query': message, 'search.count': hs.length }); hs.forEach((h, i) => { f[`p${i + 1}.name`] = h.name; cards.push({ productId: h.productId, name: h.name, listPrice: h.listPrice, category: h.category, source: 'search' }) })
+    text = `Here are ${hs.length} matches for "${message}" [search.count]: ${hs.slice(0, 3).map(h => h.name).join(', ')} [p1.name].`
+  }
+  const forId = productId ?? cards[0]?.productId
+  if (wantsAlso && forId != null) {
+    tools.push('also-bought'); const list = (alsoBought[forId] ?? []).slice(0, 3); const forName = forId === 707 ? 'Sport-100 Helmet, Red' : forId === 749 ? 'Road-150 Red, 62' : cards[0]?.name
+    f['also.for'] = forName; list.forEach((a, i) => { f[`also${i + 1}.name`] = a.name; cards.push({ productId: a.productId, name: a.name, listPrice: a.listPrice, category: null, source: 'also-bought' }) })
+    if (list.length) text += ` Customers who bought ${forName} also bought ${list.map(a => a.name).join(', ')} [also.for].`
+  }
+  return { answer: assist('shop', 'shop-reply', text.trim() || 'Ask me about bikes, components, clothing or accessories [shop].', f), cards, tools, turnsLeft }
+}
+
 export function aiMock() {
+  let turns = 10
   let left = 20, tokens = 40000
   const status = () => ({ enabled: true, mode: 'mock', chatModel: 'amazon.nova-pro-v1:0', embeddingModel: 'amazon.titan-embed-text-v2:0', rowLimit: 200, timeoutSeconds: 15,
     questionsLeft: left, tokensLeft: tokens, warehouseConnected: true })
   return (p: string, m: string, url: URL, body: () => Record<string, unknown>): { status?: number; json: unknown } | null => {
     if (p === '/ai/status') return { json: status() }
+    if (p === '/ai/chat' && m === 'POST') { turns--; const b = body(); return { json: chatMock(String(b.message ?? ''), (b.productId as number | null) ?? null, turns) } }
     if (p === '/ai/examples') return { json: examples }
     if (p === '/ai/search') return { json: { query: url.searchParams.get('q'), mode: 'mock', hits } }
     if (p === '/ai/ask' && m === 'POST') {
@@ -34,4 +85,28 @@ export function aiMock() {
     }
     return null
   }
+}
+
+// C2-6 watchdog stand-in: the same recorded scenarios and rules as the server (Ai/watchdog/*.json, WatchRules.Classify).
+const scenarios = {"dlq": {"scenario": "dlq", "status": {"paused": false, "queued": 3, "appliedEvents": 18240, "dlq": 7, "lagMs": {"last": 1300, "p50": 980, "max": 3100}, "source": "replay"}, "changes": [{"table": "Production.Product", "op": "update", "lagMs": 1300}, {"table": "Sales.SalesOrderHeader", "op": "update", "lagMs": 990}], "dlqSamples": [{"table": "Sales.SalesOrderDetail", "op": "insert", "error": "parent ORDER#75124 not found after 5 lookups", "attempts": 5, "position": "0000A8C1:0003B2F0:0004"}, {"table": "Sales.SalesOrderDetail", "op": "insert", "error": "parent ORDER#75124 not found after 5 lookups", "attempts": 5, "position": "0000A8C1:0003B2F0:0005"}, {"table": "Person.EmailAddress", "op": "update", "error": "ConditionalCheckFailed: stale src_lsn", "attempts": 5, "position": "0000A8C2:00001A10:0002"}]}, "lag-spike": {"scenario": "lag-spike", "status": {"paused": false, "queued": 4820, "appliedEvents": 18240, "dlq": 0, "lagMs": {"last": 186000, "p50": 1150, "max": 192000}, "source": "replay"}, "changes": [{"table": "Sales.SalesOrderDetail", "op": "insert", "lagMs": 186000}, {"table": "Sales.SalesOrderDetail", "op": "insert", "lagMs": 184500}, {"table": "Sales.SalesOrderHeader", "op": "update", "lagMs": 181200}], "dlqSamples": []}, "healthy": {"scenario": "healthy", "status": {"paused": false, "queued": 0, "appliedEvents": 18240, "dlq": 0, "lagMs": {"last": 840, "p50": 910, "max": 2400}, "source": "replay"}, "changes": [{"table": "Sales.SalesOrderHeader", "op": "update", "lagMs": 840}, {"table": "Sales.SalesOrderDetail", "op": "insert", "lagMs": 870}, {"table": "Production.ProductInventory", "op": "update", "lagMs": 930}], "dlqSamples": []}, "paused": {"scenario": "paused", "status": {"paused": true, "queued": 1260, "appliedEvents": 18240, "dlq": 0, "lagMs": {"last": 0, "p50": 900, "max": 2500}, "source": "replay"}, "changes": [], "dlqSamples": []}} as Record<string, { scenario: string; status: { paused: boolean; queued: number; appliedEvents: number; dlq: number; lagMs: { last: number; p50: number; max: number }; source: string }; changes: unknown[]; dlqSamples: { error: string }[] }>
+const RB = 'docs/runbooks/replication-watchdog.md'
+function classify(s: (typeof scenarios)[string]) {
+  const st = s.status
+  if (st.paused) return { key: 'paused', title: 'The consumer is paused', severity: 'warn', nextStep: 'Resume the consumer (POST /api/resume) once the maintenance is over', runbook: RB + '#paused' }
+  if (st.dlq > 0) return s.dlqSamples.some(d => /not found/i.test(d.error))
+    ? { key: 'dlq-orphans', title: 'Child rows reached the dead-letter queue before their parent order', severity: 'danger', nextStep: 'Wait for the parent to replicate, then redrive the DLQ', runbook: RB + '#dead-letter-orphans' }
+    : { key: 'dlq', title: 'Changes failed to apply and wait in the dead-letter queue', severity: 'danger', nextStep: 'Read the error on each message, fix the cause, then redrive', runbook: RB + '#dead-letter-queue' }
+  if (st.lagMs.last > 60000) return st.queued > 1000
+    ? { key: 'backlog', title: 'A burst of changes built a backlog: lag is above the 60 s target', severity: 'warn', nextStep: 'Watch the queue drain; scale the consumer if it keeps growing', runbook: RB + '#backlog' }
+    : { key: 'slow-apply', title: 'Changes apply slowly: lag is above the 60 s target with a short queue', severity: 'warn', nextStep: 'Check DynamoDB throttling and the consumer logs', runbook: RB + '#slow-apply' }
+  return { key: 'healthy', title: 'Replication is healthy', severity: 'ok', nextStep: 'Nothing to do', runbook: RB + '#healthy' }
+}
+export function watchdogMock(path: string, scenario: string | null) {
+  const s = scenarios[scenario ?? 'healthy'] ?? scenarios.healthy; const c = classify(s)
+  if (path.endsWith('/explain')) {
+    const f = { 'cause.key': c.key, 'cause.title': c.title, 'cause.next_step': c.nextStep, 'cause.runbook': c.runbook, 'status.dlq': s.status.dlq, 'status.queued': s.status.queued,
+      'status.lag_last_ms': s.status.lagMs.last, 'status.lag_p50_ms': s.status.lagMs.p50, 'status.lag_max_ms': s.status.lagMs.max }
+    return assist('watchdog', 'watchdog-explain', `${c.title} [cause.key]. Replication lag is ${s.status.lagMs.last} ms (p50 ${s.status.lagMs.p50}, max ${s.status.lagMs.max}) [status.lag_last_ms] and ${s.status.dlq} messages wait in the dead-letter queue [status.dlq]. Next step: ${c.nextStep} [cause.next_step] (runbook: ${c.runbook}) [cause.runbook].`, f)
+  }
+  return { snapshot: s, cause: c, scenarios: ['healthy', 'lag-spike', 'dlq', 'paused'], replay: true }
 }

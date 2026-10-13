@@ -1,0 +1,50 @@
+{
+ "scenario": "dlq",
+ "status": {
+  "paused": false,
+  "queued": 3,
+  "applied_events": 18240,
+  "dlq": 7,
+  "lag_ms": {
+   "last": 1300,
+   "p50": 980,
+   "max": 3100
+  },
+  "source": "replay"
+ },
+ "changes": [
+  {
+   "table": "Production.Product",
+   "op": "update",
+   "lag_ms": 1300
+  },
+  {
+   "table": "Sales.SalesOrderHeader",
+   "op": "update",
+   "lag_ms": 990
+  }
+ ],
+ "dlq_samples": [
+  {
+   "table": "Sales.SalesOrderDetail",
+   "op": "insert",
+   "error": "parent ORDER#75124 not found after 5 lookups",
+   "attempts": 5,
+   "position": "0000A8C1:0003B2F0:0004"
+  },
+  {
+   "table": "Sales.SalesOrderDetail",
+   "op": "insert",
+   "error": "parent ORDER#75124 not found after 5 lookups",
+   "attempts": 5,
+   "position": "0000A8C1:0003B2F0:0005"
+  },
+  {
+   "table": "Person.EmailAddress",
+   "op": "update",
+   "error": "ConditionalCheckFailed: stale src_lsn",
+   "attempts": 5,
+   "position": "0000A8C2:00001A10:0002"
+  }
+ ]
+}

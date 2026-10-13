@@ -132,6 +132,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/products/{id}/also-bought": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAlsoBought"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/products/{id}/reviews": {
         parameters: {
             query?: never;
@@ -340,6 +356,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/back-office/orders/{id}/assist/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["triageAssist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/back-office/orders/bulk-approve": {
         parameters: {
             query?: never;
@@ -404,6 +436,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/back-office/replication/watchdog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWatchdog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/replication/watchdog/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["explainWatchdog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/back-office/procurement/suggestions": {
         parameters: {
             query?: never;
@@ -414,6 +478,70 @@ export interface paths {
         get: operations["listReorderSuggestions"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/smart-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listSmartSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/products/{id}/forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDemandForecast"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/smart-suggestions/{id}/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["explainReorder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/back-office/procurement/orders/{id}/email-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["draftPoEmail"];
         delete?: never;
         options?: never;
         head?: never;
@@ -788,6 +916,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/ai/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["shopChat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/ai/examples": {
         parameters: {
             query?: never;
@@ -855,6 +999,16 @@ export interface components {
             tokensLeft: number;
             warehouseConnected: boolean;
         };
+        AlsoBought: {
+            /** Format: int32 */
+            productId: number;
+            name: string;
+            productNumber: null | string;
+            /** Format: double */
+            listPrice: number;
+            /** Format: int32 */
+            orders: number;
+        };
         AskRequest: {
             question: string;
         };
@@ -884,6 +1038,24 @@ export interface components {
             /** Format: int32 */
             productId: number;
             name: string;
+        };
+        AssistResult: {
+            feature: string;
+            kind: string;
+            text: null | string;
+            cites: string[];
+            facts: Record<string, never>;
+            blocked: null | string;
+            error: null | string;
+            /** Format: int32 */
+            inputTokens: number;
+            /** Format: int32 */
+            outputTokens: number;
+            /** Format: int32 */
+            questionsLeft: number;
+            /** Format: int32 */
+            tokensLeft: number;
+            mode: string;
         };
         BackOfficeOrder: {
             order: components["schemas"]["Order"];
@@ -956,6 +1128,27 @@ export interface components {
             name: string;
             subcategories: components["schemas"]["Subcategory"][];
         };
+        ChatCard: {
+            /** Format: int32 */
+            productId: number;
+            name: string;
+            /** Format: double */
+            listPrice: number;
+            category: null | string;
+            source: string;
+        };
+        ChatRequest: {
+            message: string;
+            /** Format: int32 */
+            productId?: null | number;
+        };
+        ChatResponse: {
+            answer: components["schemas"]["AssistResult"];
+            cards: components["schemas"]["ChatCard"][];
+            tools: string[];
+            /** Format: int32 */
+            turnsLeft: number;
+        };
         CheckoutRequest: {
             /** Format: int32 */
             shipMethodId: null | number;
@@ -985,6 +1178,42 @@ export interface components {
             /** Format: date-time */
             dueDate: null | string;
         };
+        DemandForecast: {
+            /** Format: int32 */
+            productId: number;
+            history: components["schemas"]["DemandMonth"][];
+            next: components["schemas"]["ForecastPoint"][];
+            /** Format: double */
+            monthly: number;
+            /** Format: double */
+            baseline: number;
+            /** Format: double */
+            growth: number;
+            /** Format: int32 */
+            last3: number;
+            /** Format: int32 */
+            same3LastYear: number;
+            /** Format: int32 */
+            leadTimeDays: number;
+            /** Format: double */
+            leadTimeDemand: number;
+            method: string;
+        };
+        DemandMonth: {
+            month: string;
+            /** Format: int32 */
+            qty: number;
+            /** Format: int32 */
+            orders: number;
+        };
+        DlqSample: {
+            table: string;
+            op: string;
+            error: string;
+            /** Format: int32 */
+            attempts: number;
+            position: null | string;
+        };
         FeedEntry: {
             id: string;
             /** Format: date-time */
@@ -993,6 +1222,19 @@ export interface components {
             subject: string;
             actor: string;
             writes: string[];
+        };
+        ForecastPoint: {
+            month: string;
+            /** Format: double */
+            qty: number;
+        };
+        LagMs: {
+            /** Format: double */
+            last: number;
+            /** Format: double */
+            p50: number;
+            /** Format: double */
+            max: number;
         };
         LineStock: {
             /** Format: int32 */
@@ -1524,6 +1766,13 @@ export interface components {
             /** Format: double */
             shipRate: number;
         };
+        SmartSuggestion: {
+            rule: components["schemas"]["ReorderSuggestion"];
+            forecast: components["schemas"]["DemandForecast"];
+            /** Format: int32 */
+            smartQty: number;
+            reason: string;
+        };
         StatusCount: {
             /** Format: int32 */
             status: number;
@@ -1563,6 +1812,7 @@ export interface components {
             /** Format: int32 */
             shipMethodId: null | number;
             trackingNumber: null | string;
+            note?: null | string;
         };
         TransitionResult: {
             order: components["schemas"]["Order"];
@@ -1648,6 +1898,42 @@ export interface components {
             creditRating: number;
             preferred: boolean;
             active: boolean;
+        };
+        WatchCause: {
+            key: string;
+            title: string;
+            severity: string;
+            nextStep: string;
+            runbook: string;
+        };
+        WatchChange: {
+            table: string;
+            op: string;
+            /** Format: double */
+            lagMs: null | number;
+        };
+        WatchdogReport: {
+            snapshot: components["schemas"]["WatchSnapshot"];
+            cause: components["schemas"]["WatchCause"];
+            scenarios: string[];
+            replay: boolean;
+        };
+        WatchSnapshot: {
+            scenario: string;
+            status: components["schemas"]["WatchStatus"];
+            changes: components["schemas"]["WatchChange"][];
+            dlqSamples: components["schemas"]["DlqSample"][];
+        };
+        WatchStatus: {
+            paused: boolean;
+            /** Format: int32 */
+            queued: number;
+            /** Format: int64 */
+            appliedEvents: number;
+            /** Format: int32 */
+            dlq: null | number;
+            lagMs: components["schemas"]["LagMs"];
+            source: null | string;
         };
         WorkOrderDetail: {
             order: components["schemas"]["WorkOrderSummary"];
@@ -1898,6 +2184,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Product"][];
+                };
+            };
+        };
+    };
+    listAlsoBought: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlsoBought"][];
                 };
             };
         };
@@ -2306,6 +2614,47 @@ export interface operations {
             };
         };
     };
+    triageAssist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     bulkApprove: {
         parameters: {
             query?: never;
@@ -2409,6 +2758,68 @@ export interface operations {
             };
         };
     };
+    getWatchdog: {
+        parameters: {
+            query?: {
+                scenario?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchdogReport"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    explainWatchdog: {
+        parameters: {
+            query?: {
+                scenario?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     listReorderSuggestions: {
         parameters: {
             query?: never;
@@ -2425,6 +2836,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReorderSuggestion"][];
+                };
+            };
+        };
+    };
+    listSmartSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartSuggestion"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getDemandForecast: {
+        parameters: {
+            query?: {
+                leadTimeDays?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemandForecast"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    explainReorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    draftPoEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
@@ -3179,6 +3714,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    shopChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatResponse"];
                 };
             };
             /** @description Bad Request */

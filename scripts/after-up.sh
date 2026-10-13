@@ -14,6 +14,7 @@ fi
 if [ "${SKIP_LOAD:-0}" != 1 ]; then
   scripts/ddb-local-up.sh
   $PY scripts/loader/load.py --recreate --workers 8 --stats /tmp/load-stats.json
+  $PY scripts/loader/derive_ai.py
 fi
 docker compose -f docker/after/docker-compose.yml up -d --build app
 for i in $(seq 1 60); do curl -fs http://localhost:5090/healthz >/dev/null && break; sleep 2; done

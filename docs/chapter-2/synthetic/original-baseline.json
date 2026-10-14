@@ -1,0 +1,345 @@
+{
+ "note": "C2-7: per-source counts and SQL-side checksums of the ORIGINAL AdventureWorks2022 rows (scripts/reconcile.py --write-baseline)",
+ "per_source": {
+  "HumanResources.Department": {
+   "checksum_sql": "da1919fc51b756f1",
+   "expected_items": 16,
+   "sql_rows": 16
+  },
+  "HumanResources.Employee": {
+   "checksum_sql": "5297009b6b84bc9f",
+   "expected_items": 290,
+   "sql_rows": 290
+  },
+  "HumanResources.EmployeeDepartmentHistory": {
+   "checksum_sql": "d0d93f11a0691c5b",
+   "expected_items": 296,
+   "sql_rows": 296
+  },
+  "HumanResources.EmployeePayHistory": {
+   "checksum_sql": "9b57292ee3ab401d",
+   "expected_items": 316,
+   "sql_rows": 316
+  },
+  "HumanResources.JobCandidate": {
+   "checksum_sql": "233bacb2b5ab178d",
+   "expected_items": 13,
+   "sql_rows": 13
+  },
+  "HumanResources.Shift": {
+   "checksum_sql": "4ac5debc332e17f5",
+   "expected_items": 3,
+   "sql_rows": 3
+  },
+  "Person.Address": {
+   "checksum_sql": "50a549c3d6b43674",
+   "expected_items": 19614,
+   "sql_rows": 19614
+  },
+  "Person.AddressType": {
+   "checksum_sql": "81a80f01a245dc6a",
+   "expected_items": 6,
+   "sql_rows": 6
+  },
+  "Person.BusinessEntity": {
+   "checksum_sql": "e9659f0dc6bcde26",
+   "expected_items": 20777,
+   "sql_rows": 20777
+  },
+  "Person.BusinessEntityAddress": {
+   "checksum_sql": "5eca94ea822f52de",
+   "expected_items": 19718,
+   "sql_rows": 19614
+  },
+  "Person.BusinessEntityContact": {
+   "checksum_sql": "e631a144c80639d3",
+   "expected_items": 1065,
+   "sql_rows": 909
+  },
+  "Person.ContactType": {
+   "checksum_sql": "ae6ebc21605839bb",
+   "expected_items": 20,
+   "sql_rows": 20
+  },
+  "Person.CountryRegion": {
+   "checksum_sql": "0c92b777832b3d3c",
+   "expected_items": 238,
+   "sql_rows": 238
+  },
+  "Person.EmailAddress": {
+   "checksum_sql": "b958356308251374",
+   "expected_items": 39944,
+   "sql_rows": 19972
+  },
+  "Person.Password": {
+   "checksum_sql": "92eddf456f43b888",
+   "expected_items": 19972,
+   "sql_rows": 19972
+  },
+  "Person.Person": {
+   "checksum_sql": "9183cd6dd910adad",
+   "expected_items": 19972,
+   "sql_rows": 19972
+  },
+  "Person.PersonPhone": {
+   "checksum_sql": "ca06f46f6d8934ea",
+   "expected_items": 19972,
+   "sql_rows": 19972
+  },
+  "Person.PhoneNumberType": {
+   "checksum_sql": "ec9c89922ca44030",
+   "expected_items": 3,
+   "sql_rows": 3
+  },
+  "Person.StateProvince": {
+   "checksum_sql": "35403ac7cacd5e60",
+   "expected_items": 181,
+   "sql_rows": 181
+  },
+  "Production.BillOfMaterials": {
+   "checksum_sql": "52aeca4c69f5de5d",
+   "expected_items": 2679,
+   "sql_rows": 2679
+  },
+  "Production.Culture": {
+   "checksum_sql": "d9093fcb612af3a2",
+   "expected_items": 8,
+   "sql_rows": 8
+  },
+  "Production.Document": {
+   "checksum_sql": "d381b6cde7b8a9f1",
+   "expected_items": 13,
+   "sql_rows": 13
+  },
+  "Production.Illustration": {
+   "checksum_sql": "c82a366da1d3eac7",
+   "expected_items": 5,
+   "sql_rows": 5
+  },
+  "Production.Location": {
+   "checksum_sql": "7085b7311160bf43",
+   "expected_items": 14,
+   "sql_rows": 14
+  },
+  "Production.Product": {
+   "checksum_sql": "a1b1aa3eb7734b3a",
+   "expected_items": 2016,
+   "sql_rows": 504
+  },
+  "Production.ProductCategory": {
+   "checksum_sql": "c2f0f374c6d6e6ff",
+   "expected_items": 4,
+   "sql_rows": 4
+  },
+  "Production.ProductCostHistory": {
+   "checksum_sql": "ce9d49cbe230aaa8",
+   "expected_items": 395,
+   "sql_rows": 395
+  },
+  "Production.ProductDescription": {
+   "checksum_sql": "1f419fa60ba5c6e2",
+   "expected_items": 762,
+   "sql_rows": 762
+  },
+  "Production.ProductDocument": {
+   "checksum_sql": "9d08b84e9ec7c318",
+   "expected_items": 32,
+   "sql_rows": 32
+  },
+  "Production.ProductInventory": {
+   "checksum_sql": "899846fd25c645b5",
+   "expected_items": 1069,
+   "sql_rows": 1069
+  },
+  "Production.ProductListPriceHistory": {
+   "checksum_sql": "b073702119d902bd",
+   "expected_items": 395,
+   "sql_rows": 395
+  },
+  "Production.ProductModel": {
+   "checksum_sql": "e68574ca96bcdaae",
+   "expected_items": 128,
+   "sql_rows": 128
+  },
+  "Production.ProductModelIllustration": {
+   "checksum_sql": "48691b683145bf93",
+   "expected_items": 7,
+   "sql_rows": 7
+  },
+  "Production.ProductModelProductDescriptionCulture": {
+   "checksum_sql": "a2bdad8791095d6a",
+   "expected_items": 762,
+   "sql_rows": 762
+  },
+  "Production.ProductPhoto": {
+   "checksum_sql": "3232fb64600e4455",
+   "expected_items": 101,
+   "sql_rows": 101
+  },
+  "Production.ProductProductPhoto": {
+   "checksum_sql": "305fd16133e73592",
+   "expected_items": 504,
+   "sql_rows": 504
+  },
+  "Production.ProductReview": {
+   "checksum_sql": "7fcda01e27a19d27",
+   "expected_items": 4,
+   "sql_rows": 4
+  },
+  "Production.ProductSubcategory": {
+   "checksum_sql": "9d713c20a8546214",
+   "expected_items": 37,
+   "sql_rows": 37
+  },
+  "Production.ScrapReason": {
+   "checksum_sql": "96fef6da7341fc9c",
+   "expected_items": 16,
+   "sql_rows": 16
+  },
+  "Production.TransactionHistory": {
+   "checksum_sql": "088133fd1965d94d",
+   "expected_items": 113443,
+   "sql_rows": 113443
+  },
+  "Production.TransactionHistoryArchive": {
+   "checksum_sql": "ff22b7303378ede7",
+   "expected_items": 89253,
+   "sql_rows": 89253
+  },
+  "Production.UnitMeasure": {
+   "checksum_sql": "a2868c892ffc1a77",
+   "expected_items": 38,
+   "sql_rows": 38
+  },
+  "Production.WorkOrder": {
+   "checksum_sql": "38d21cc4565460c4",
+   "expected_items": 72591,
+   "sql_rows": 72591
+  },
+  "Production.WorkOrderRouting": {
+   "checksum_sql": "15aec1be9ac55331",
+   "expected_items": 67131,
+   "sql_rows": 67131
+  },
+  "Purchasing.ProductVendor": {
+   "checksum_sql": "d575d86cc53cefc5",
+   "expected_items": 460,
+   "sql_rows": 460
+  },
+  "Purchasing.PurchaseOrderDetail": {
+   "checksum_sql": "5cbbeed8423f7b77",
+   "expected_items": 8845,
+   "sql_rows": 8845
+  },
+  "Purchasing.PurchaseOrderHeader": {
+   "checksum_sql": "3d23a6c9154f693d",
+   "expected_items": 4249,
+   "sql_rows": 4012
+  },
+  "Purchasing.ShipMethod": {
+   "checksum_sql": "65afc1224523aeab",
+   "expected_items": 5,
+   "sql_rows": 5
+  },
+  "Purchasing.Vendor": {
+   "checksum_sql": "e1eae42c246d3d57",
+   "expected_items": 104,
+   "sql_rows": 104
+  },
+  "Sales.CountryRegionCurrency": {
+   "checksum_sql": "07d46982d0c092e3",
+   "expected_items": 109,
+   "sql_rows": 109
+  },
+  "Sales.CreditCard": {
+   "checksum_sql": "e0a14197e3a813ae",
+   "expected_items": 19118,
+   "sql_rows": 19118
+  },
+  "Sales.Currency": {
+   "checksum_sql": "a7373666c3a71ab0",
+   "expected_items": 105,
+   "sql_rows": 105
+  },
+  "Sales.CurrencyRate": {
+   "checksum_sql": "16ea0b5d7b71c18e",
+   "expected_items": 13532,
+   "sql_rows": 13532
+  },
+  "Sales.Customer": {
+   "checksum_sql": "dea93edc9248bff0",
+   "expected_items": 19820,
+   "sql_rows": 19820
+  },
+  "Sales.PersonCreditCard": {
+   "checksum_sql": "d15fb42af3ffa242",
+   "expected_items": 19118,
+   "sql_rows": 19118
+  },
+  "Sales.SalesOrderDetail": {
+   "checksum_sql": "ca5d497e0612c7e8",
+   "expected_items": 121317,
+   "sql_rows": 121317
+  },
+  "Sales.SalesOrderHeader": {
+   "checksum_sql": "405cbe72d6fcf46d",
+   "expected_items": 65605,
+   "sql_rows": 31465
+  },
+  "Sales.SalesOrderHeaderSalesReason": {
+   "checksum_sql": "d03c956e66fcab43",
+   "expected_items": 27647,
+   "sql_rows": 27647
+  },
+  "Sales.SalesPerson": {
+   "checksum_sql": "4c7b4785ee9f2241",
+   "expected_items": 17,
+   "sql_rows": 17
+  },
+  "Sales.SalesPersonQuotaHistory": {
+   "checksum_sql": "e49e846640eb3282",
+   "expected_items": 163,
+   "sql_rows": 163
+  },
+  "Sales.SalesReason": {
+   "checksum_sql": "6a338883bfa49241",
+   "expected_items": 10,
+   "sql_rows": 10
+  },
+  "Sales.SalesTaxRate": {
+   "checksum_sql": "0a5e8c2a08a2e03e",
+   "expected_items": 29,
+   "sql_rows": 29
+  },
+  "Sales.SalesTerritory": {
+   "checksum_sql": "24776237c5279614",
+   "expected_items": 10,
+   "sql_rows": 10
+  },
+  "Sales.SalesTerritoryHistory": {
+   "checksum_sql": "67e0e6309a536c6d",
+   "expected_items": 17,
+   "sql_rows": 17
+  },
+  "Sales.ShoppingCartItem": {
+   "checksum_sql": "6557ac922cf3dbf5",
+   "expected_items": 3,
+   "sql_rows": 3
+  },
+  "Sales.SpecialOffer": {
+   "checksum_sql": "de88216f41e89d4e",
+   "expected_items": 16,
+   "sql_rows": 16
+  },
+  "Sales.SpecialOfferProduct": {
+   "checksum_sql": "350d1f71b7dc8ad9",
+   "expected_items": 538,
+   "sql_rows": 538
+  },
+  "Sales.Store": {
+   "checksum_sql": "451e89fd23eb173c",
+   "expected_items": 701,
+   "sql_rows": 701
+  }
+ }
+}

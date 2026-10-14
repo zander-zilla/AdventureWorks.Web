@@ -14,6 +14,8 @@ services:
       # C2-5: AI layer in mock mode for the e2e run (no AWS; eval-replay model, hash embeddings, no warehouse)
       Ai__Enabled: "${AW_AI_ENABLED:-true}"
       Ai__Mode: mock
+      # C2-7: SYNTHETIC=1 (scripts/after-up.sh) -> generated data loaded, offers priced as of today (no 2014-05-01 workaround)
+      Pricing__OfferDate: "${AW_OFFER_DATE:-2014-05-01}"
       DynamoDb__Endpoints__aw-catalog: http://localhost:8001
       DynamoDb__Endpoints__aw-customer: http://localhost:8002
       DynamoDb__Endpoints__aw-sales: http://localhost:8007

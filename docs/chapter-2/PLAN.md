@@ -637,7 +637,7 @@ shopper's question as `query`. Model and guardrail are configurable per feature 
 | 7 | Shopper chat for anonymous visitors | **Yes, 10 turns per session**, keyed by the `aw_ai` cookie, on the shared daily budget. |
 | 8 | Backlog | **Review insights next (S-M), then scrap explainer (S)**; not in C2-6. |
 
-## C2-7 Synthetic data to the present (plan, docs only – decisions pending John)
+## C2-7 Synthetic data to the present (plan; decisions *confirmed by John (Oct 13, 2026)*)
 
 John's scope (2026-10-13): a **seeded, repeatable generator** that continues the AdventureWorks data from where it stops
 (orders end 2014-06-30, work orders 2014-07, POs 2014-09) up to the current date (Oct 2026), so the demo shows twelve years of
@@ -702,8 +702,8 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
   ≈ 8 GB, Redshift ≈ 3 GB, RDS ≈ 3 GB inside the current allocation). **Total ≈ $10-20 per load, + ≈ $3 / month** while loaded.
 - **Load time**: SQL Server inserts ≈ 15-30 min; DMS → Lambda apply at ≈ 1 000-2 000 changes / s (child lookups, conditional
   writes) ≈ 1-2 h for ≈ 6 M changes, with the Lambda reserved concurrency raised for the load; zero-ETL lag minutes; star rebuild
-  ≈ 10-20 min. **≈ 2-3 h end to end on AWS**; the local CI fast path (bulk loader) ≈ 15 min for a 2-year slice.
-- CI never loads the full 12 years: it generates a 2-year slice (seeded) for the tests and runs the constraint checks on it.
+  ≈ 10-20 min. **≈ 2-3 h end to end on AWS**; the local CI fast path (bulk loader) ≈ 5 min for the 6-month slice.
+- CI never loads the full 12 years: it loads a 6-month slice (2014-07..2014-12, `SYNTHETIC_END`; *confirmed by John (Oct 13, 2026)*) into SQL Server / DynamoDB / the warehouse; the pure-Python generator tests still use 2 years and runs the constraint checks on it.
 
 ### Steps and effort
 1. Fit the profile from the original data + constraint test suite (2 d).
@@ -714,7 +714,7 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
 6. Loading switch: SQL inserts in monthly batches, Terraform / tools-task command `synthetic-load`, local `SYNTHETIC=1`, offer-date
    switch, docs and the measured dry run (2 d).
 7. Showcase / demo updates, derived AI inputs refreshed (`derive-ai`), screenshots (0.5 d).
-**≈ 12 days.**
+**≈ 13 days.**
 
 ### Risks
 - **Realism**: generated data can look fake (flat curves, odd baskets). Mitigated by fitting on the original data and the shape tests.
@@ -731,19 +731,61 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
 - "Customers also bought" and reviews reflect recent activity; new 2020s models appear next to the classic range.
 - One switch: the original sample (Chapter 1 evidence) or the continued data, both loaded through the same CDC pipeline.
 
-### Backlog (not in C2-7)
-- **Daily trickle job**: a scheduled task that generates one more day each night so the data stays current (John did not pick it).
+8. **Daily trickle job (last step, John's change)**: an EventBridge schedule starts the tools ECS task (`synthetic-trickle`) once a
+   day; it generates the previous day(s) deterministically (same seed, day-keyed streams) up to yesterday, catching up any missed
+   days from the `SyntheticBatch` end date, and inserts through the SQL source → CDC path. Terraform switch `synthetic_trickle`
+   (default false, needs `synthetic_data`). Tests (idempotent catch-up, plan tests) and docs (1 d).
 
-### Decisions for John (C2-7, with recommendations) – pending John's review
+### Decisions C2-7 – *confirmed by John (Oct 13, 2026)* (1–6 as recommended, 7 changed by John)
 | # | Decision | Recommendation |
 |---|---|---|
 | 1 | Real calendar holidays | **Yes**: US holidays (Thanksgiving / Black Friday, Christmas) and the main holidays of the other territories (UK, DE, FR, CA, AU) via the `holidays` package, with an effect size fitted on 2011-2014 where possible. More realistic charts at low cost. |
 | 2 | Growth rate | **5 % a year** on orders (fitted 2013 → 2014 growth is far higher and would explode over 12 years), with a dip in 2020 (−15 %) and a rebound in 2021 as an optional scenario flag, off by default. |
 | 3 | Rebase "now" at load time | **No rebase; generate up to the load date.** The generator is deterministic for a given end date; the load step generates up to today (end date stored in `SyntheticBatch`). Rebasing (shifting all dates) would change the original 2011-2014 data and break the Chapter 1 evidence. |
 | 4 | New products | **Yes, a few per year** (≈ 6-10 new models / colours, cloned BOMs and vendors) and discontinue old ones on a schedule, so the catalog has a lifecycle; no new categories. |
-| 5 | Load switch default | **Off** in `demo.tfvars` until John has seen a measured dry run; local and CI use a 2-year slice. |
+| 5 | Load switch default | **Off** in `demo.tfvars` until John has seen a measured dry run; local and CI use a 2-year slice. *Changed by John (Oct 13, 2026): CI / local slice 6 months, configurable via `SYNTHETIC_END`; the full AWS load to today is unchanged.* |
 | 6 | Path | **SQL Server inserts → CDC → DMS → DynamoDB → zero-ETL** (the normal path) for AWS; the bulk loader only as the local / CI fast path. |
-| 7 | Daily trickle job | **Backlog only** (not picked by John). |
+| 7 | Daily trickle job | Recommended backlog only; **John changed it: build it as the last step of C2-7**, off by default (`synthetic_trickle = false`), EventBridge schedule → ECS tools task, previous day deterministic, catch-up of missed days, through the SQL source + CDC path. |
+
+### C2-7 as built (PR #28)
+- **Scripts** (`scripts/synthetic/`): `fit.py` (fits 2013-07..2014-06 → `profile.json`), `generate.py` (day-keyed, stateless
+  generator), `marking.py` (synthetic / original predicates), `load_sql.py` (bulk or trickle load into SQL Server),
+  `original_checksum.py`, `restore-original.sh`. Local one-shot: `scripts/synthetic-up.sh`; app with data: `SYNTHETIC=1 scripts/after-up.sh`.
+- **Generator**: every day is generated from `seed + stream + day` (numpy PCG64 / SeedSequence) with fixed per-day key slots,
+  so bulk = day-by-day trickle (tested). Orders are inserted with status 1 and shipped by an UPDATE 7 days later (or written
+  shipped when the batch end already covers that day); work orders and POs are written when they complete. Holidays (Black
+  Friday ×1.8, Cyber Monday ×1.5, Christmas ×0.4, other holidays ×0.8), 5 %/yr growth, `dip2020` flag off. Two releases a year
+  (1 Mar, 1 Sep) clone one model per size in a new colour (`SY-%05d`); yearly offers; price rises every 1 July.
+- **Marking**: key ranges (`awmap.SYNTHETIC`): customers / persons / addresses ≥ 500 000, orders ≥ 1 000 000, order lines
+  ≥ 10 M, WO / PO ≥ 500 000, transactions ≥ 10 M, products ≥ 5 000, offers ≥ 100, histories / quotas dated ≥ 2014-07-01.
+  DynamoDB items for generated rows carry `syn = 1`; warehouse uses `--original-only` views.
+- **SQL load**: one transaction per day batch under an applock, the four "summary" triggers disabled in-transaction, explicit
+  identities, reseed below the synthetic floors afterwards; every batch recorded in `dbo.SyntheticBatch` (resumable, refuses a
+  different seed or profile). Original rows are never updated (checksummed before / after).
+- **Switches**: `synthetic_data` (default false) sets `Pricing__OfferDate` = today, which removes the 2014 offer-date
+  workaround when generated data is loaded; `synthetic_trickle` (default false, requires `synthetic_data` and `enable_source`)
+  adds an EventBridge Scheduler schedule (`cron(30 2 * * ? *)`) that runs the ECS tools task `synthetic-trickle`: it generates
+  every missing day up to yesterday (catch-up) into SQL Server, and CDC carries it on like any other write.
+- **Tests**: `tests/synthetic/` (generator determinism + pinned hash, realism constraints, marking, SQL load: original
+  unchanged, counts, resumable, identities, constraints, trickle = bulk), warehouse test, CDC e2e (trickle days replicate with
+  `syn = 1`), reconcile all rows + original-only against `original-baseline.json`, 5 Terraform plan tests.
+- **Measured volume** (generator, 2014-07-01..2026-10-12, seed 2026): **7.0 M source rows** (orders 413 594, lines 1.41 M,
+  customers 228 481 (×7 person-related rows), work orders 479 732, POs 39 147, transactions 1.99 M, 113 new products), ≈ 0.46-0.67 M
+  rows per full year. 6-month CI / local slice (2014-07..12) ≈ 0.20 M rows (the 2-year slice, ≈ 0.92 M rows and ≈ 1.77 M DynamoDB items, ran a 16 GB runner out of memory: DynamoDB Local in-memory JVMs grew past 3 GB each).
+
+#### Changes from initial design
+| Planned | As built | Why |
+|---|---|---|
+| Stateful stock simulation | Stateless day-keyed generator; `ProductInventory` not updated | Needed so the trickle produces exactly the bulk rows |
+| Retire old products on a schedule | Retirement only in generated demand; original rows untouched | Keeps Chapter 1 evidence exact (S-1) |
+| `synthetic` flag column in the warehouse | Filtered `dwo` views (`--original-only`) by key / date ranges | No schema change to the star |
+| App checks `SyntheticBatch` for the offer date | `synthetic_data` switch sets `Pricing__OfferDate` | The app does not read SQL Server |
+| TransactionHistory via triggers | Inserted explicitly with real dates, triggers disabled | Triggers would stamp load time |
+| Not mentioned | Not generated: CreditCard, CurrencyRate, new stores | Out of scope for the demo |
+| CI / local slice 2 years | 6 months (`SYNTHETIC_END`, default 2014-12-31); generator unit tests keep 2 years | 2 years did not fit a 16 GB runner; *confirmed by John (Oct 13, 2026)* |
+| Generated e-mails "first + 1-99" like the original | "first + customer key" | The original-only reconcile found generated addresses taking over original `EMAIL#` lookup items |
+| Trickle in backlog | Built (step 8), off by default | John's decision 7 |
+| CDC consumer HTTP/1.0 | HTTP/1.1 keep-alive + chunked bodies | Debezium bursts of a whole day stopped the engine |
 
 ---
 

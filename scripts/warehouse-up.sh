@@ -20,4 +20,4 @@ if [ "${STOP_DDB_AFTER_EXPORT:-0}" = 1 ]; then docker rm -f $(docker ps -aq --fi
 $PY warehouse/local/load_landing.py --export "$EXPORT"
 $PY warehouse/local/static_export.py --pg --out /tmp/aw-static
 $PY warehouse/local/run_star.py
-$PY warehouse/local/reconcile.py --out /tmp/warehouse-reconcile.json
+$PY warehouse/local/reconcile.py --out /tmp/warehouse-reconcile.json ${WH_RECONCILE_ARGS:-}   # C2-7: --original-only with generated data

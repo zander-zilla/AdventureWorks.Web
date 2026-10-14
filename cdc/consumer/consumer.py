@@ -101,6 +101,9 @@ class Applier(threading.Thread):
 
 def make_handler(store):
     class H(BaseHTTPRequestHandler):
+        # HTTP/1.1 keep-alive: Debezium's Java client pools connections; an HTTP/1.0 close-after-response made it reuse a
+        # closed socket under a burst (C2-7 trickle day) -> "header parser received no bytes" and the engine stopped.
+        protocol_version = "HTTP/1.1"
         def log_message(self, *a):
             pass
 
@@ -110,7 +113,16 @@ def make_handler(store):
             self.send_header("Access-Control-Allow-Origin", "*"); self.end_headers(); self.wfile.write(body)
 
         def do_POST(self):
-            n = int(self.headers.get("Content-Length") or 0); data = self.rfile.read(n) if n else b""
+            if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
+                # C2-7: large Debezium batches (e.g. a generated day) arrive chunked, without Content-Length
+                data = b""
+                while True:
+                    size = int(self.rfile.readline().split(b";")[0].strip() or b"0", 16)
+                    if size == 0:
+                        self.rfile.readline(); break
+                    data += self.rfile.read(size); self.rfile.readline()
+            else:
+                n = int(self.headers.get("Content-Length") or 0); data = self.rfile.read(n) if n else b""
             path = urlparse(self.path).path
             if path == "/events":
                 if not data.strip():

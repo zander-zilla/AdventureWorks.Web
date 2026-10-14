@@ -1,6 +1,7 @@
 *
 !design/mapping/
 !scripts/loader/
+!scripts/synthetic/
 !scripts/aws/
 !scripts/reset-demo.sql
 !cdc/awcdc/

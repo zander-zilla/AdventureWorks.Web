@@ -44,12 +44,16 @@ curl -sf -X POST localhost:8090/control/pause >/dev/null
 
 (cd docker/cdc && docker compose down -v >/dev/null 2>&1 || true; docker compose up -d)
 echo "waiting for Debezium to start streaming..."
+# read the log into a variable first: `docker logs | grep -q` under pipefail fails on SIGPIPE when grep exits early,
+# which made a streaming Debezium look not started (intermittent CI failure)
 for i in $(seq 1 120); do
-  docker logs aw-cdc-debezium-1 2>&1 | grep -q "Starting streaming" && break
-  docker logs aw-cdc-debezium-1 2>&1 | grep -qE "ERROR .*(Connector|Engine)" && { docker logs aw-cdc-debezium-1 2>&1 | tail -50; exit 1; }
+  dlog=$(docker logs aw-cdc-debezium-1 2>&1 || true)
+  grep -q "Starting streaming" <<<"$dlog" && break
+  grep -qE "ERROR .*(Connector|Engine)" <<<"$dlog" && { tail -50 <<<"$dlog"; exit 1; }
   sleep 2
 done
-docker logs aw-cdc-debezium-1 2>&1 | grep -m1 "Starting streaming" || { docker logs aw-cdc-debezium-1 2>&1 | tail -80; exit 1; }
+dlog=$(docker logs aw-cdc-debezium-1 2>&1 || true)
+grep -m1 "Starting streaming" <<<"$dlog" || { tail -80 <<<"$dlog"; exit 1; }
 
 $PY scripts/loader/load.py --workers 8 --stats /tmp/load-stats.json
 curl -sf -X POST localhost:8090/control/resume

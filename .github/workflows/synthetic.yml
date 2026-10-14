@@ -1,0 +1,70 @@
+name: synthetic (C2-7 generated data 2014-07 .. now)
+on:
+  push:
+    branches: [master, "c2-*"]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  synthetic-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-design.txt
+      - name: Generator - pinned sample hash, trickle == bulk, marking, realism constraints, fitted shape (2-year in-memory slice)
+        run: python -m pytest -q -p no:cacheprovider tests/synthetic/test_generator.py tests/synthetic/test_marking.py tests/cdc/test_transform.py
+  synthetic-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cache AdventureWorks backups
+        uses: actions/cache@v4
+        with:
+          path: docker/before/baks
+          key: aw-baks-2022-v1
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: src/global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pip install -r requirements-design.txt
+      - name: 6-month slice (2014-07..12, SYNTHETIC_END) into SQL Server, DB tests, DynamoDB Local, reconcile (all rows + original-only vs the Chapter 1 baseline)
+        run: PYTHON=python scripts/synthetic-up.sh
+      - name: Real app image over the generated slice (offers as of the slice end), C2-7 screens + screenshots
+        run: |
+          AW_OFFER_DATE=2014-12-31 SKIP_LOAD=1 PYTHON=python scripts/after-up.sh
+          cd src/web && npm ci --no-audit --no-fund && npx playwright install --with-deps chromium
+          AW_E2E_BASE=http://localhost:5090/app/ AW_SYNTHETIC_END=2014-12-31 AW_SCREENSHOTS=$GITHUB_WORKSPACE/synthetic-shots npx playwright test e2e/c2-7.spec.ts --reporter=line
+      - name: App logs
+        if: failure()
+        run: docker logs aw-after-app-1 2>&1 | tail -80 || true
+      - name: Warehouse - star over original + generated rows, original-only reconcile vs AdventureWorksDW2022
+        run: STOP_DDB_AFTER_EXPORT=1 WH_RECONCILE_ARGS=--original-only PYTHON=python scripts/warehouse-up.sh
+      - name: Warehouse - generated history reaches the star (facts, customers, new products, promotions)
+        run: AW_WH_SYN=1 python -m pytest -q -p no:cacheprovider tests/synthetic/test_warehouse.py
+      - name: Summary
+        if: always()
+        run: |
+          cat /tmp/synthetic-load.json || true
+          python -c "import json;d=json.load(open('/tmp/reconcile-all.json'));print(json.dumps({k:d['summary'][k] for k in ('ok','sources_matching','sql_rows','expected_items')}))" || true
+          python -c "import json;d=json.load(open('/tmp/reconcile-original.json'));print(json.dumps({k:d['summary'].get(k) for k in ('ok','sql_rows','baseline')}))" || true
+          python -c "import json;d=json.load(open('/tmp/warehouse-reconcile.json'));print(json.dumps({k:d[k] for k in ('counts','gate_failures')},indent=1))" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-reconcile
+          path: |
+            /tmp/synthetic-load.json
+            /tmp/reconcile-all.json
+            /tmp/reconcile-original.json
+            /tmp/warehouse-reconcile.json
+            /tmp/load-stats-synthetic.json
+            synthetic-shots/
+          if-no-files-found: ignore

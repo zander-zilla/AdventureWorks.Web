@@ -6,7 +6,35 @@ import argparse, json, os, sys
 sys.path.insert(0, os.path.dirname(__file__))
 import pg
 
+SCHEMA = {"dw": "dw"}
+# C2-7 --original-only: the rebuilt star restricted to the ORIGINAL rows (generated rows sit in fixed key ranges, see
+# scripts/loader/awmap.py SYNTHETIC), so the Chapter 1 reconcile against AdventureWorksDW2022 stays exact with generated data loaded.
+ORIGINAL_FILTERS = {
+    "fact_internet_sales": "CAST(SUBSTRING(sales_order_number FROM 3) AS integer) < 1000000",
+    "fact_reseller_sales": "CAST(SUBSTRING(sales_order_number FROM 3) AS integer) < 1000000",
+    "fact_internet_sales_reason": "CAST(SUBSTRING(sales_order_number FROM 3) AS integer) < 1000000",
+    "dim_customer": "CAST(SUBSTRING(customer_alternate_key FROM 3) AS integer) < 500000",
+    "dim_product": "product_alternate_key NOT LIKE 'SY-%' AND (start_date IS NULL OR start_date < DATE '2014-07-01')",
+    "dim_promotion": "promotion_alternate_key < 100",
+    "dim_date": "date_key <= 20141231",
+    "fact_sales_quota": "date < DATE '2014-07-01'",
+}
+ORIGINAL_KNOWN = {"fact_product_inventory": "C2-7: inventory balances are cumulative, generated movements change every later balance; "
+                  "the original-only check of this fact is the Chapter 1 run without generated data"}
+
+
+def original_views(cur):
+    cur.execute("CREATE SCHEMA IF NOT EXISTS dwo")
+    cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'dw'")
+    for (t,) in cur.fetchall():
+        cur.execute("CREATE OR REPLACE VIEW dwo.%s AS SELECT * FROM dw.%s%s" % (t, t, (" WHERE " + ORIGINAL_FILTERS[t]) if t in ORIGINAL_FILTERS else ""))
+    cur.connection.commit()
+    SCHEMA["dw"] = "dwo"
+
+
 def q(cur, sql):
+    if SCHEMA["dw"] != "dw":
+        sql = sql.replace("dw.", SCHEMA["dw"] + ".")
     cur.execute(sql); r = cur.fetchone(); return [float(x) if x is not None and not isinstance(x, (int, str)) else x for x in r]
 
 COUNT_TABLES = ["dim_date", "dim_customer", "dim_geography", "dim_reseller", "dim_product", "dim_product_category", "dim_product_subcategory",
@@ -102,8 +130,11 @@ def dims(cur):
     return d
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--out", default="/tmp/warehouse-reconcile.json"); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument("--out", default="/tmp/warehouse-reconcile.json")
+    ap.add_argument("--original-only", action="store_true", help="C2-7: reconcile only the original rows (generated data loaded)"); a = ap.parse_args()
     cur = pg.connect().cursor(); rep = {"counts": {}, "known_differences": KNOWN}
+    if a.original_only:
+        original_views(cur); KNOWN.update(ORIGINAL_KNOWN); rep["original_only"] = True
     for t in COUNT_TABLES:
         rep["counts"][t] = {"rebuilt": q(cur, "SELECT COUNT(*) FROM dw.%s" % t)[0], "dw": q(cur, "SELECT COUNT(*) FROM ref.%s" % t)[0]}
     rep["counts"]["fact_product_inventory"] = {"rebuilt": q(cur, "SELECT COUNT(*) FROM dw.fact_product_inventory")[0], "dw": 776286}
@@ -150,7 +181,7 @@ def gate(r):
             f.append("%s.%s %s/%s" % (t, k, r["facts"][t][k], r["facts"][t]["matched_lines"]))
     if r["facts"]["fact_internet_sales_reason"]["matched"] != r["counts"]["fact_internet_sales_reason"]["dw"]:
         f.append("fact_internet_sales_reason not fully matched")
-    if r["facts"]["fact_product_inventory"]["final_balance_vs_on_hand_mismatches"]:
+    if r["facts"]["fact_product_inventory"]["final_balance_vs_on_hand_mismatches"] and not r.get("original_only"):
         f.append("fact_product_inventory final balance != on-hand")
     return f
 

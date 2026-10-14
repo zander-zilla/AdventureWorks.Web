@@ -112,7 +112,7 @@ jobs:
         run: python -m pytest -q tests/cdc/test_identity.py
       - name: CDC stack - DynamoDB Local, consumer (paused), Debezium streaming, bulk load, resume
         run: PYTHON=python scripts/cdc-up.sh
-      - name: End-to-end - demo order -> aw-sales, reset-demo -> tombstones
+      - name: End-to-end - demo order -> aw-sales, reset-demo -> tombstones; C2-7 trickle days through CDC (syn = 1)
         run: AW_E2E=1 DDB_MULTI=1 python -m pytest -q tests/cdc/test_e2e.py
       - name: Reconcile SQL vs DynamoDB (counts + checksums)
         run: DDB_MULTI=1 python scripts/reconcile.py --out /tmp/reconcile.json

@@ -3,3 +3,5 @@ pymssql==2.*
 pytest==8.*
 pyyaml==6.*
 psycopg2-binary==2.*
+numpy==2.*
+holidays==0.*

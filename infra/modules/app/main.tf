@@ -56,7 +56,24 @@ variable "ai_policy_json" {
   default     = ""
 }
 
+variable "synthetic_data" {
+  description = "C2-7: generated data 2014-07 .. today is loaded (offers are then priced as of today instead of 2014-05-01)."
+  type        = bool
+  default     = false
+}
+variable "synthetic_trickle" {
+  description = "C2-7: daily trickle job (EventBridge Scheduler -> tools task 'synthetic-trickle'), generates the missed days up to yesterday."
+  type        = bool
+  default     = false
+}
+variable "synthetic_trickle_schedule" {
+  description = "C2-7: when the trickle runs (UTC)."
+  type        = string
+  default     = "cron(30 2 * * ? *)"
+}
+
 data "aws_region" "r" {}
+data "aws_caller_identity" "me" {}
 data "aws_partition" "p" {}
 
 locals {
@@ -300,6 +317,14 @@ locals {
   log = { logDriver = "awslogs", options = { "awslogs-group" = aws_cloudwatch_log_group.app.name, "awslogs-region" = local.region } }
 }
 
+locals {
+  app_environment = concat([
+    { name = "ASPNETCORE_URLS", value = "http://+:8080" },
+    { name = "DynamoDb__Region", value = local.region },
+    { name = "Showcase__FrameAncestors", value = var.frame_ancestors },
+  ], var.ai_environment, var.synthetic_data ? [{ name = "Pricing__OfferDate", value = "today" }] : [])
+}
+
 resource "aws_ecs_task_definition" "after" {
   family                   = "${var.name}-after"
   requires_compatibilities = ["FARGATE"]
@@ -318,12 +343,8 @@ resource "aws_ecs_task_definition" "after" {
     essential              = true
     readonlyRootFilesystem = true
     portMappings           = [{ containerPort = 8080, protocol = "tcp" }]
-    environment = concat([
-      { name = "ASPNETCORE_URLS", value = "http://+:8080" },
-      { name = "DynamoDb__Region", value = local.region },
-      { name = "Showcase__FrameAncestors", value = var.frame_ancestors },
-    ], var.ai_environment)
-    logConfiguration = merge(local.log, { options = merge(local.log.options, { "awslogs-stream-prefix" = "after" }) })
+    environment            = local.app_environment
+    logConfiguration       = merge(local.log, { options = merge(local.log.options, { "awslogs-stream-prefix" = "after" }) })
   }])
 }
 
@@ -441,6 +462,57 @@ resource "aws_ecs_task_definition" "tools" {
   }])
 }
 
+# C2-7 daily trickle: EventBridge Scheduler starts the tools task once a day; it inserts the missed days (up to yesterday)
+# into SQL Server, and CDC carries them on. Off by default.
+resource "aws_iam_role" "trickle" {
+  count = var.synthetic_trickle ? 1 : 0
+  name  = "${var.name}-synthetic-trickle"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{ Effect = "Allow", Principal = { Service = "scheduler.amazonaws.com" }, Action = "sts:AssumeRole",
+    Condition = { StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.me.account_id } } }]
+  })
+}
+
+resource "aws_iam_role_policy" "trickle" {
+  count = var.synthetic_trickle ? 1 : 0
+  name  = "run-tools-task"
+  role  = aws_iam_role.trickle[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { Effect = "Allow", Action = ["ecs:RunTask"], Resource = "${aws_ecs_task_definition.tools.arn_without_revision}:*",
+      Condition = { ArnEquals = { "ecs:cluster" = aws_ecs_cluster.c.arn } } },
+      { Effect = "Allow", Action = ["iam:PassRole"], Resource = [aws_iam_role.execution.arn, aws_iam_role.tools.arn] }
+    ]
+  })
+}
+
+resource "aws_scheduler_schedule" "trickle" {
+  count               = var.synthetic_trickle ? 1 : 0
+  name                = "${var.name}-synthetic-trickle"
+  schedule_expression = var.synthetic_trickle_schedule
+  flexible_time_window { mode = "OFF" }
+  target {
+    arn      = aws_ecs_cluster.c.arn
+    role_arn = aws_iam_role.trickle[0].arn
+    ecs_parameters {
+      task_definition_arn = aws_ecs_task_definition.tools.arn_without_revision
+      launch_type         = "FARGATE"
+      network_configuration {
+        subnets          = var.public_subnet_ids
+        security_groups  = [aws_security_group.tasks.id]
+        assign_public_ip = true
+      }
+    }
+    input = jsonencode({ containerOverrides = [{ name = "tools", command = ["synthetic-trickle"] }] })
+    retry_policy {
+      maximum_retry_attempts       = 2
+      maximum_event_age_in_seconds = 3600
+    }
+  }
+}
+
 output "alb_dns" { value = aws_lb.app.dns_name }
 output "after_url" { value = "${local.https ? "https" : "http"}://${local.host}/" }
 output "before_url" { value = var.enable_before_app ? "${local.https ? "https" : "http"}://${local.host}:8080/" : null }
@@ -451,3 +523,5 @@ output "cluster" { value = aws_ecs_cluster.c.name }
 output "tools_task_definition" { value = aws_ecs_task_definition.tools.family }
 output "tasks_security_group_id" { value = aws_security_group.tasks.id }
 output "ai_policy_count" { value = aws_iam_role_policy.ai[*].name }
+output "synthetic_trickle_schedule" { value = one(aws_scheduler_schedule.trickle[*].name) }
+output "app_environment" { value = local.app_environment }

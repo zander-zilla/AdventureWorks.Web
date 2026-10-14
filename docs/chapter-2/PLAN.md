@@ -814,3 +814,5 @@ history, today's dates, live offers and forecasts that run to the present. Nothi
 
 ## Changes to this plan
 Tracked in the decisions log of the root [PLAN.md](../../PLAN.md).
+
+S-1 to S-4 (C2-7 as built) *confirmed by John (Oct 13, 2026)*; Chapter 2 tagged `v2.0-extend` (see root decisions log).
